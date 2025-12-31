@@ -1,0 +1,105 @@
+:root {
+  /* Fonte Inter para um visual mais profissional e moderno */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: #1f2937; /* gray-800 para melhor leitura */
+  background-color: #f8fafc; /* fundo slate-50 mais elegante */
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- RESET DE BODY --- */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #f8fafc; /* Fundo off-white para destacar os cards brancos */
+}
+
+/* --- ELEVAÇÃO E SOMBRAS PROFISSIONAIS --- */
+
+/* Cards Principais (Seções e Instrumentos) */
+.card-section, .bg-white.rounded-\[2\.5rem\], .bg-white.rounded-\[2\.2rem\] {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+              0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+  border: 1px solid rgba(241, 245, 249, 1) !important; /* Borda bem sutil */
+}
+
+/* Efeito de destaque quando o grupo está aberto ou focado */
+.card-section:focus-within {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 
+              0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Botões de Ação Principal (Novo Ensaio / Salvar) */
+button.bg-blue-600 {
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2), 
+              0 4px 6px -2px rgba(37, 99, 235, 0.1) !important;
+}
+
+/* Nav de Rodapé flutuante com desfoque e sombra forte mas suave */
+footer nav {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+              0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* --- REGRAS PARA CARDS DE INSTRUMENTOS (BORDA LATERAL FIXA) --- */
+
+.card-section {
+  position: relative;
+  overflow: hidden;
+  border-left: 12px solid transparent !important;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cores específicas por Seção com leve brilho interno na borda */
+.border-cordas {
+  border-left-color: #fbbf24 !important; /* Amber-400 */
+}
+.border-madeiras {
+  border-left-color: #34d399 !important; /* Emerald-400 */
+}
+.border-metais {
+  border-left-color: #f87171 !important; /* Red-400 */
+}
+.border-orgao {
+  border-left-color: #a78bfa !important; /* Violet-400 */
+}
+
+/* --- CONFIGURAÇÕES DE INPUTS --- */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* --- COMPONENTES BASE --- */
+button {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+button:active {
+  transform: scale(0.96); /* Feedback de clique */
+}
+
+/* --- AJUSTE DE TEMA CLARO PADRÃO --- */
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #0f172a;
+    background-color: #f8fafc;
+  }
+}
