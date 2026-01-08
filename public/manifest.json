@@ -1,5 +1,5 @@
 {
-  "short_name": "Contador de Ensaios CCB",
+  "short_name": "Contador CCB",
   "name": "Contador de Ensaios CCB",
   "icons": [
     {
@@ -18,6 +18,6 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#1d4ed8",
+  "theme_color": "#FFFFFF",
   "background_color": "#ffffff"
 }

@@ -83,18 +83,30 @@ function App() {
     }
   };
 
-  // 1. MONITOR DE AUTENTICAÇÃO COM TRAVA DE LOOPING
+  // 1. MONITOR DE AUTENTICAÇÃO COM TRAVA DE LOOPING E PERSISTÊNCIA DE CONTEXTO
   useEffect(() => {
+    let unsubSnap = null;
     const unsubAuth = onAuthStateChanged(auth, u => {
       setUser(u);
       if (u) {
         // Monitora o documento do usuário com tratamento de erro
-        const unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
+        unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUserData(data);
-            setActiveComumId(data.comumId);
-            setActiveComumName(data.comum);
+
+            // Persistência Inteligente de Localidade para o Master
+            const savedId = localStorage.getItem('activeComumId');
+            const savedName = localStorage.getItem('activeComumName');
+
+            if (data.isMaster && savedId) {
+              setActiveComumId(savedId);
+              setActiveComumName(savedName);
+            } else {
+              setActiveComumId(data.comumId);
+              setActiveComumName(data.comum);
+            }
+
             setView(data.approved || data.isMaster ? 'lobby' : 'waiting-approval');
           } else { 
             setView('login'); 
@@ -104,22 +116,24 @@ function App() {
           console.error("Erro de permissão ou snapshot:", err);
           setView('login');
         });
-        return () => unsubSnap();
       } else { 
+        if (unsubSnap) unsubSnap();
+        setUserData(null);
         setView('login'); 
       }
     });
 
-    // Safety Timeout: Se em 6 segundos não carregar, força login para quebrar o loop
+    // Safety Timeout: Se em 8 segundos não carregar, força login para quebrar o loop
     const timer = setTimeout(() => {
       if (view === 'loading') {
         setView('login');
-        toast.error("Tempo de conexão excedido.");
+        toast.error("Sincronização lenta. Tente novamente.");
       }
-    }, 6000);
+    }, 8000);
 
     return () => {
       unsubAuth();
+      if (unsubSnap) unsubSnap();
       clearTimeout(timer);
     };
   }, []);
@@ -257,6 +271,8 @@ function App() {
                         onClick={() => {
                           setActiveComumId(igreja.id);
                           setActiveComumName(igreja.nome);
+                          localStorage.setItem('activeComumId', igreja.id);
+                          localStorage.setItem('activeComumName', igreja.nome);
                           setShowIgrejaSelector(false);
                           toast.success(`Ambiente: ${igreja.nome}`);
                         }}

@@ -9,15 +9,19 @@ export const eventService = {
 
   // Escuta os eventos de uma comum específica em tempo real
   subscribeToEvents: (comumId, callback) => {
+    if (!comumId) return; // Trava de segurança contra ID nulo
     const q = query(collection(db, 'comuns', comumId, 'events'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       callback(events);
+    }, (error) => {
+      console.error("Erro no Listener de Eventos:", error);
     });
   },
 
   // Cria um novo ensaio
   createEvent: async (comumId, eventData) => {
+    if (!comumId) throw new Error("ID da Localidade ausente.");
     const { type, date, responsavel } = eventData;
     return await addDoc(collection(db, 'comuns', comumId, 'events'), {
       type: type || 'Ensaio Local',
@@ -31,6 +35,7 @@ export const eventService = {
 
   // Exclui um ensaio e todos os seus dados
   deleteEvent: async (comumId, eventId) => {
+    if (!comumId || !eventId) return;
     return await deleteDoc(doc(db, 'comuns', comumId, 'events', eventId));
   },
 
@@ -38,6 +43,12 @@ export const eventService = {
    * Atualiza a contagem de um instrumento e grava log de auditoria
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
+    // PROTEÇÃO CRÍTICA: Impede escritas em caminhos indefinidos (resquício de troca de contexto)
+    if (!comumId || !eventId || !instId) {
+      console.warn("Tentativa de atualização com IDs incompletos:", { comumId, eventId, instId });
+      return; 
+    }
+
     const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
     const val = Math.max(0, parseInt(value) || 0);
     const timestamp = Date.now();
@@ -82,6 +93,7 @@ export const eventService = {
 
   // Remove um instrumento extra da contagem
   removeExtraInstrument: async (comumId, eventId, instId) => {
+    if (!comumId || !eventId || !instId) return;
     const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
     return await setDoc(eventRef, { 
       counts: { [instId]: deleteField() } 
@@ -92,6 +104,7 @@ export const eventService = {
    * Salva os dados da Ata e processa metadados de hinos
    */
   saveAtaData: async (comumId, eventId, ataData) => {
+    if (!comumId || !eventId) throw new Error("Referência de evento inválida.");
     const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
     
     // Processamento de hinos para estatísticas rápidas
