@@ -1,5 +1,10 @@
 import React, { useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { 
+  TrendingUp, Music, Star, 
+  Send, Share2, Activity, PieChart, 
+  CheckCircle2, Info, ShieldCheck
+} from 'lucide-react';
 
 const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   const stats = useMemo(() => {
@@ -84,117 +89,144 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
 
   const handleCopyCozinha = () => {
-    const bairro = userData?.comum || "Comum";
+    const bairro = userData?.comum || "Ponte São João";
     const dataEnsaio = ataData?.date ? ataData.date.split('T')[0].split('-').reverse().join('/') : new Date().toLocaleDateString();
     const msg = `Ensaio Local *${bairro}* - ${dataEnsaio} 🎵🎵\n\n_Informações para o lanche:_🍽️\n\n*Total Geral:* ${stats.geral} ✅\nOrquestra: ${stats.orquestra + stats.organistas} 🎶\nIrmandade: ${stats.irmandade} 🗣️\n\n*Deus abençoe grandemente.* 🙏`;
     navigator.clipboard.writeText(msg);
-    toast.success("Copiado!");
+    toast.success("Relatório da Cozinha Copiado!");
   };
 
   return (
-    <div className="space-y-6 pb-40 text-left animate-in fade-in duration-500 px-2 font-sans bg-gray-50 pt-4">
+    <div className="space-y-6 pb-44 px-4 pt-6 max-w-md mx-auto animate-premium bg-[#F1F5F9]">
       
-      {/* CARD LANCHES (BOTÃO COPIAR RESTRITO A ADMIN) */}
-      <div className="bg-orange-50 p-6 rounded-[2.5rem] border border-orange-200 shadow-sm">
-        <div className="flex justify-between items-start mb-4">
+      {/* CARD RELATÓRIO COZINHA - DESIGN PREMIUM SLATE */}
+      <div className="bg-slate-950 p-6 rounded-[2.5rem] shadow-2xl relative overflow-hidden border border-white/5">
+        <div className="absolute top-0 right-0 p-8 opacity-5 text-white pointer-events-none">
+           <Activity size={120} strokeWidth={4} />
+        </div>
+
+        <div className="flex justify-between items-start relative z-10">
           <div className="text-left leading-none">
-            <p className="text-[10px] font-black text-orange-900 uppercase italic mb-2 tracking-widest">Informações para Lanche</p>
-            <h3 className="text-3xl font-black text-gray-900 italic">{stats.geral} <small className="text-xs text-gray-500 uppercase not-italic font-bold">Total</small></h3>
+            <div className="flex items-center gap-1.5 mb-2">
+               <Info size={10} className="text-amber-500" />
+               <p className="text-[8px] font-black text-amber-500 uppercase tracking-[0.3em] italic leading-none">Relatório de Lanche</p>
+            </div>
+            <h3 className="text-4xl font-[900] text-white italic leading-none tracking-tighter">
+              {stats.geral} <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase ml-2">Total</span>
+            </h3>
           </div>
           {isAdmin && (
-            <button onClick={handleCopyCozinha} className="bg-green-700 text-white p-3 rounded-2xl shadow-lg active:scale-90 transition-all text-xl">📲</button>
+            <button onClick={handleCopyCozinha} className="bg-white/10 p-4 rounded-2xl text-emerald-500 shadow-sm border border-white/5 active:scale-90 transition-all">
+              <Share2 size={24} strokeWidth={2.5} />
+            </button>
           )}
         </div>
-        <div className="flex gap-4 border-t border-orange-200 pt-4">
-          <div className="leading-none text-gray-900 font-black">
-            <p className="text-[9px] text-gray-700 uppercase tracking-tighter">Orquestra</p>
-            <p className="text-lg">{stats.orquestra + stats.organistas}</p>
+
+        <div className="flex gap-6 mt-8 pt-6 border-t border-white/5 relative z-10">
+          <div className="flex-1">
+            <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest leading-none mb-2 italic">Músicos + Org</p>
+            <p className="text-xl font-[900] text-white italic tracking-tighter leading-none">{stats.orquestra + stats.organistas}</p>
           </div>
-          <div className="leading-none border-l border-orange-200 pl-4 text-gray-900 font-black">
-            <p className="text-[9px] text-gray-700 uppercase tracking-tighter">Irmandade</p>
-            <p className="text-lg">{stats.irmandade}</p>
+          <div className="w-[1px] bg-white/5 h-8 mt-2" />
+          <div className="flex-1">
+            <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest leading-none mb-2 italic">Irmandade</p>
+            <p className="text-xl font-[900] text-white italic tracking-tighter leading-none">{stats.irmandade}</p>
           </div>
         </div>
       </div>
 
-      {/* BIG NUMBERS */}
+      {/* BIG NUMBERS GRID - CARDS REDONDO PREMIUM */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard title="Total Geral" value={stats.geral} color="blue" />
-        <StatCard title="Músicos" value={stats.orquestra} color="emerald" />
-        <StatCard title="Organistas" value={stats.organistas} color="purple" />
-        <StatCard title="Ministério" value={stats.ministerio} color="indigo" />
-        <StatCard title="Visitas" value={stats.visitas} color="orange" />
-        <StatCard title="Encarregados" value={stats.encarregadosTotal} color="orange" />
+        <StatCard title="Músicos" value={stats.orquestra} color="blue" icon={<Music size={14}/>} />
+        <StatCard title="Organistas" value={stats.organistas} color="purple" icon={<PieChart size={14}/>} />
+        <StatCard title="Ministério" value={stats.ministerio} color="indigo" icon={<ShieldCheck size={14}/>} />
+        <StatCard title="Visitas" value={stats.visitas} color="orange" icon={<Star size={14}/>} />
         <div className="col-span-2">
-           <StatCard title="Hinos Ensaiados" value={stats.hinos} color="blue" />
+           <StatCard 
+             title="Hinos Ensaiados" 
+             value={stats.hinos} 
+             color="blue" 
+             full 
+             icon={<CheckCircle2 size={16} className="text-blue-500"/>} 
+           />
         </div>
       </div>
 
-      {/* MONITOR DE EQUILÍBRIO */}
-      <div className="bg-white p-8 rounded-[3rem] border border-gray-200 shadow-sm space-y-6">
-        <h3 className="text-[11px] font-black text-gray-900 uppercase italic border-b pb-4 text-center tracking-widest">Equilíbrio da Orquestra</h3>
+      {/* MONITOR DE EQUILÍBRIO - DESIGN VIBRANTE */}
+      <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm space-y-8 text-left">
+        <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
+          <TrendingUp className="text-slate-950" size={18} />
+          <h3 className="text-[12px] font-[900] text-slate-950 uppercase italic tracking-tighter leading-none">Equilíbrio da Orquestra</h3>
+        </div>
+        
         <ProgressBar label="Cordas" value={getPerc(stats.cordas, stats.orquestra)} refVal="50%" color="bg-amber-400" racional={`${stats.cordas}/${stats.orquestra}`} />
-        <div className="space-y-3">
-          <ProgressBar label="Madeiras" value={getPerc(stats.madeiras + stats.sax, stats.orquestra)} refVal="25%" color="bg-emerald-600" racional={`${stats.madeiras + stats.sax}/${stats.orquestra}`} />
-          <div className="pl-6 border-l-2 border-gray-100 ml-2">
+        
+        <div className="space-y-4">
+          <ProgressBar label="Madeiras" value={getPerc(stats.madeiras + stats.sax, stats.orquestra)} refVal="25%" color="bg-emerald-500" racional={`${stats.madeiras + stats.sax}/${stats.orquestra}`} />
+          <div className="pl-6 border-l-2 border-slate-50 ml-2 py-1">
             <ProgressBar label="Saxofones" value={getPerc(stats.sax, (stats.madeiras + stats.sax))} isSub color="bg-emerald-200" racional={`${stats.sax}/${stats.madeiras + stats.sax}`} />
           </div>
         </div>
-        <ProgressBar label="Metais" value={getPerc(stats.metais, stats.orquestra)} refVal="25%" color="bg-rose-600" racional={`${stats.metais}/${stats.orquestra}`} />
-        <hr className="border-gray-100" />
-        <ProgressBar label="Coral (Irmandade)" value={getPerc(stats.irmandade, stats.geral)} color="bg-sky-500" racional={`${stats.irmandade}/${stats.geral}`} />
+        
+        <ProgressBar label="Metais" value={getPerc(stats.metais, stats.orquestra)} refVal="25%" color="bg-rose-500" racional={`${stats.metais}/${stats.orquestra}`} />
+        
+        <div className="pt-4 mt-4 border-t border-slate-50">
+           <ProgressBar label="Coral (Irmandade)" value={getPerc(stats.irmandade, stats.geral)} color="bg-blue-600" racional={`${stats.irmandade}/${stats.geral}`} />
+        </div>
       </div>
 
-      {/* RESUMO ESTATÍSTICO */}
-      <div className="bg-white p-8 rounded-[3rem] border border-gray-200 shadow-sm space-y-4 text-gray-900">
-        <h3 className="text-base font-black uppercase italic border-b pb-4 leading-none">Resumo Estatístico</h3>
+      {/* RESUMO ESTATÍSTICO - ESTILO LISTA PREMIUM */}
+      <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm space-y-3">
+        <h3 className="text-sm font-[900] uppercase italic text-slate-950 border-b border-slate-50 pb-4 mb-4 tracking-tighter">Resumo Estatístico</h3>
         <AdminRow label="Encarregados Regionais" value={stats.encRegional} />
         <AdminRow label="Encarregados Locais" value={stats.encLocal} />
         <AdminRow label="Examinadoras" value={stats.examinadoras} />
         <AdminRow label="Ministério Presente" value={stats.ministerio} />
         <AdminRow label="Hinos Ensaiados" value={stats.hinos} />
-        <hr className="my-2 border-gray-100" />
-        <AdminRow label="Músicos" value={stats.orquestra} color="text-emerald-800" />
-        <AdminRow label="Organistas" value={stats.organistas} color="text-purple-800" />
-        <AdminRow label="Irmandade (Coral)" value={stats.irmandade} color="text-rose-800" />
-        <div className="pt-6 mt-4 border-t-2 border-gray-900 flex justify-between items-center font-black">
-          <span className="text-xl uppercase italic">TOTAL GERAL</span>
-          <span className="text-5xl tracking-tighter">{stats.geral}</span>
+        
+        <div className="pt-8 mt-6 border-t-2 border-slate-950 flex justify-between items-end">
+          <span className="text-[14px] font-[900] uppercase italic text-slate-950 tracking-tighter mb-1 leading-none">TOTAL GERAL</span>
+          <span className="text-6xl font-[900] text-slate-950 tracking-tighter italic leading-none">{stats.geral}</span>
         </div>
       </div>
     </div>
   );
 };
 
-const StatCard = ({ title, value, color }) => (
-  <div className="bg-white p-5 rounded-[2.2rem] border border-gray-200 shadow-sm flex flex-col items-center">
-    <p className={`text-[10px] font-black uppercase text-${color}-900 italic mb-1 tracking-widest leading-none`}>{title}</p>
-    <p className="text-3xl font-black text-gray-900 italic leading-none">{value}</p>
+const StatCard = ({ title, value, color, icon, full }) => (
+  <div className={`bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center group transition-all active:scale-95 ${full ? 'flex-row justify-between' : ''}`}>
+    <div className="flex flex-col items-center">
+      <div className="flex items-center gap-2 mb-2">
+         <span className="opacity-40">{icon}</span>
+         <p className={`text-[8px] font-black uppercase text-${color}-900 tracking-[0.3em] italic leading-none`}>{title}</p>
+      </div>
+      <p className="text-3xl font-[900] text-slate-950 italic leading-none tracking-tighter group-hover:text-blue-600 duration-300">{value}</p>
+    </div>
   </div>
 );
 
 const ProgressBar = ({ label, value, refVal, color, isSub, racional }) => (
-  <div className="space-y-1.5">
-    <div className="flex justify-between items-end px-1 leading-none text-gray-900 font-black">
-      <div className="flex flex-col text-left">
-        <span className={`${isSub ? 'text-[10px]' : 'text-[11px]'} uppercase italic tracking-wide`}>{label}</span>
-        <span className="text-[8px] text-gray-500 mt-1 uppercase">[{racional}]</span>
+  <div className="space-y-2">
+    <div className="flex justify-between items-end px-1 leading-none">
+      <div className="text-left">
+        <span className={`${isSub ? 'text-[8px]' : 'text-[10px]'} font-black uppercase italic tracking-widest text-slate-950 leading-none`}>{label}</span>
+        <span className="text-[7px] text-slate-400 ml-2 font-bold leading-none">[{racional}]</span>
       </div>
       <div className="text-right leading-none">
-        <span className="text-[11px] font-black italic">{value}%</span>
-        {refVal && <span className="text-[9px] text-gray-400 ml-1 font-bold">/ {refVal}</span>}
+        <span className="text-[11px] font-[900] text-slate-950 italic leading-none">{value}%</span>
+        {refVal && <span className="text-[8px] text-slate-300 ml-1 font-black leading-none">/ {refVal}</span>}
       </div>
     </div>
-    <div className={`w-full ${isSub ? 'h-2' : 'h-3'} bg-gray-100 rounded-full overflow-hidden border border-gray-100`}>
-      <div className={`h-full transition-all duration-1000 ${color}`} style={{ width: `${value}%` }} />
+    <div className={`w-full ${isSub ? 'h-1.5' : 'h-2.5'} bg-slate-100 rounded-full overflow-hidden`}>
+      <div className={`h-full transition-all duration-1000 ease-out ${color}`} style={{ width: `${value}%` }} />
     </div>
   </div>
 );
 
-const AdminRow = ({ label, value, color = "text-gray-900" }) => (
-  <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0 leading-none">
-    <span className="text-[11px] font-black uppercase italic text-gray-800">{label}:</span>
-    <span className={`text-sm font-black italic ${color}`}>{value}</span>
+const AdminRow = ({ label, value, color = "text-slate-950" }) => (
+  <div className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0 leading-none">
+    <span className="text-[10px] font-black uppercase italic text-slate-400 tracking-widest leading-none">{label}</span>
+    <span className={`text-[12px] font-[900] italic uppercase leading-none ${color}`}>{value}</span>
   </div>
 );
 

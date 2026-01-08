@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, doc, onSnapshot, setDoc, collection } from '../firebase';
+import { db, doc, onSnapshot, collection } from '../firebase';
+import { eventService } from '../services/eventService'; // Integrando o serviço
 import toast from 'react-hot-toast';
 
 const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
@@ -18,7 +19,7 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   });
   
   const [ministerios, setMinisterios] = useState([]);
-  const [localMinisterio, setLocalMinisterio] = useState([]); 
+  const [localMinisterio, setLocalMinisterio] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editIndex, setEditIndex] = useState(null);
   const [showConfirmLock, setShowConfirmLock] = useState(false);
@@ -30,7 +31,6 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   });
 
   const isClosed = ataData?.status === 'closed';
-  // Bloqueio de inputs se o ensaio estiver fechado OU se o usuário não for admin
   const isInputDisabled = isClosed || !isAdmin;
 
   const ordemMinisterio = [
@@ -49,6 +49,7 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
     });
   };
 
+  // 1. CARREGAMENTO DE DADOS [cite: 480-494]
   useEffect(() => {
     const unsubMinGlobal = onSnapshot(collection(db, 'config_ministerio'), (s) => {
       const lista = s.docs.map(d => d.data().ministerio).filter(val => val).sort();
@@ -64,31 +65,25 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
     const unsubAta = onSnapshot(doc(db, 'comuns', comumId, 'events', eventId), (s) => {
       if (s.exists()) {
         const eventData = s.data();
-        if (eventData.ata && eventData.ata.partes && eventData.ata.partes.length > 0) {
+        if (eventData.ata && eventData.ata.partes?.length > 0) {
           const data = eventData.ata;
           if (data.visitantes) data.visitantes = ordenarLista(data.visitantes, 'nome', 'min');
           setAtaData(data);
         } else {
+          // Inicialização via Service se a Ata não existir
           const estruturaInicial = {
             status: 'open',
-            atendimentoNome: eventData.ata?.atendimentoNome || '',
-            atendimentoMin: eventData.ata?.atendimentoMin || '',
-            oracaoAberturaNome: eventData.ata?.oracaoAberturaNome || '',
-            oracaoAberturaMin: eventData.ata?.oracaoAberturaMin || '',
-            ultimaOracaoNome: eventData.ata?.ultimaOracaoNome || '',
-            ultimaOracaoMin: eventData.ata?.ultimaOracaoMin || '',
+            atendimentoNome: '', atendimentoMin: '',
+            oracaoAberturaNome: '', oracaoAberturaMin: '',
+            ultimaOracaoNome: '', ultimaOracaoMin: '',
             partes: [
               { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
               { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
             ],
-            presencaLocal: eventData.ata?.presencaLocal || [],
-            presencaLocalFull: eventData.ata?.presencaLocalFull || [],
-            visitantes: eventData.ata?.visitantes || []
+            presencaLocal: [], presencaLocalFull: [], visitantes: []
           };
           setAtaData(estruturaInicial);
-          if (isAdmin) {
-             setDoc(doc(db, 'comuns', comumId, 'events', eventId), { ata: estruturaInicial }, { merge: true });
-          }
+          if (isAdmin) eventService.saveAtaData(comumId, eventId, estruturaInicial);
         }
       }
       setLoading(false);
@@ -97,23 +92,17 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
     return () => { unsubMinGlobal(); unsubLocal(); unsubAta(); };
   }, [eventId, comumId]);
 
+  // 2. LÓGICA DE PERSISTÊNCIA REFATORADA 
   const saveAta = async (newData) => {
-    if (!isAdmin) return toast.error("Sem permissão para editar");
+    if (!isAdmin) return toast.error("Sem permissão");
     if (isClosed && !isMaster) return toast.error("Ensaio fechado!");
     
-    let todosHinos = [];
-    (newData.partes || []).forEach(p => {
-      if (p.hinos) todosHinos = [...todosHinos, ...p.hinos.filter(h => h !== '')];
-    });
-
-    if (newData.visitantes) {
-      newData.visitantes = ordenarLista(newData.visitantes, 'nome', 'min');
-    }
-
-    const dataToSave = { ...newData, hinosChamados: todosHinos.length, hinosLista: todosHinos };
     try {
-      await setDoc(doc(db, 'comuns', comumId, 'events', eventId), { ata: dataToSave }, { merge: true });
-    } catch (error) { toast.error("Erro ao salvar"); }
+      // Delegamos a ordenação e limpeza de hinos para o serviço centralizado
+      await eventService.saveAtaData(comumId, eventId, newData);
+    } catch (error) { 
+      toast.error("Erro ao salvar"); 
+    }
   };
 
   const handleHinoChange = (pIdx, hIdx, val) => {
@@ -129,9 +118,7 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
     const novaParteIndex = ataData.partes.length + 1;
     const novaParte = { 
       label: `${novaParteIndex}ª Parte`, 
-      nome: '', 
-      min: '', 
-      hinos: ['', '', ''] 
+      nome: '', min: '', hinos: ['', '', ''] 
     };
     saveAta({ ...ataData, partes: [...ataData.partes, novaParte] });
   };
@@ -324,7 +311,7 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
         </div>
       </Accordion>
 
-      {/* BOTÕES DE GESTÃO (VISÍVEL APENAS PARA ADMINS/MASTER) */}
+      {/* BOTÕES DE GESTÃO */}
       <div className="pt-10 px-2">
         {!isClosed ? (
           isAdmin && (
