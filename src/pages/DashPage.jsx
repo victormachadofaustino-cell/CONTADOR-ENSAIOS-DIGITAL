@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, collection, onSnapshot, doc } from '../firebase';
+import { db, collection, onSnapshot, doc, query, where } from '../firebase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend, Cell
 } from 'recharts';
-import { Filter, Music, Star, MapPin, Activity, BarChart3, CheckCircle2, TrendingUp } from 'lucide-react';
+import { Filter, Music, Star, MapPin, Activity, BarChart3, CheckCircle2, TrendingUp, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const DashPage = ({ userData }) => {
@@ -24,25 +24,40 @@ const DashPage = ({ userData }) => {
   const [listCityFilter, setListCityFilter] = useState('all');
   const [listMinFilter, setListMinFilter] = useState('all');
 
-  const comumId = userData?.comumId || 'hsfjhZ3KNx7SsCM8EFpu';
+  // HIERARQUIA: Identificação de Poder de Visão
+  const isMaster = userData?.isMaster === true;
+  const [activeComumId, setActiveComumId] = useState(userData?.comumId || 'hsfjhZ3KNx7SsCM8EFpu');
+  const [listaIgrejasRegional, setListaIgrejasRegional] = useState([]);
 
   const [instrumentsConfig, setInstrumentsConfig] = useState([]);
 
+  // 1. MONITOR DE CONFIGURAÇÃO DE INSTRUMENTOS
   useEffect(() => {
-    const unsubInst = onSnapshot(doc(db, 'config_comum', comumId, 'instrumentos_config', 'lista'), (s) => {
+    const unsubInst = onSnapshot(doc(db, 'config_comum', activeComumId, 'instrumentos_config', 'lista'), (s) => {
       if (s.exists()) setInstrumentsConfig(s.data().groups || []);
     });
     return () => { if (unsubInst) unsubInst(); };
-  }, [comumId]);
+  }, [activeComumId]);
 
+  // 2. MONITOR DE IGREJAS (EXCLUSIVO MASTER)
   useEffect(() => {
-    const unsubEvents = onSnapshot(collection(db, 'comuns', comumId, 'events'), (snapshot) => {
+    if (!isMaster) return;
+    const unsubIgrejas = onSnapshot(collection(db, 'config_comum'), (s) => {
+      setListaIgrejasRegional(s.docs.map(d => ({ id: d.id, nome: d.data().nome || d.data().comum })));
+    });
+    return () => unsubIgrejas();
+  }, [isMaster]);
+
+  // 3. MONITOR DE EVENTOS (DINÂMICO POR COMUM SELECIONADA)
+  useEffect(() => {
+    setLoading(true);
+    const unsubEvents = onSnapshot(collection(db, 'comuns', activeComumId, 'events'), (snapshot) => {
       const evs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setEvents(evs);
       setLoading(false);
     });
     return () => unsubEvents();
-  }, [comumId]);
+  }, [activeComumId]);
 
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -174,19 +189,15 @@ const DashPage = ({ userData }) => {
       const cordasTotal = g.cordasTotal || 0;
       const cordasComum = g.cordasComum || 0;
       const cordasVis = g.cordasVis || 0;
-
       const madeirasTotal = g.madeirasTotal || 0;
       const madeirasComum = g.madeirasComum || 0;
       const madeirasVis = g.madeirasVis || 0;
-
       const metaisTotal = g.metaisTotal || 0;
       const metaisComum = g.metaisComum || 0;
       const metaisVis = g.metaisVis || 0;
-
       const teclasTotal = g.teclasTotal || 0;
       const teclasComum = g.teclasComum || 0;
       const teclasVis = g.teclasVis || 0;
-
       const organistas = g.organistasTotal || 0;
       const irmandade = g.irmandadeTotal || 0;
 
@@ -218,12 +229,7 @@ const DashPage = ({ userData }) => {
     const nEnsSafe = filtered.length || 1;
 
     return {
-      chartArray,
-      tM: totalMusicos,
-      tO: totalOrgaos,
-      tI: totalIrmandade,
-      tH: totalHinos,
-      nEnsSafe,
+      chartArray, tM: totalMusicos, tO: totalOrgaos, tI: totalIrmandade, tH: totalHinos, nEnsSafe,
       topHinosData: Object.entries(hinosMap).map(([num, count]) => ({ num, count })).sort((a, b) => b.count - a.count).slice(0, 15),
       cityList: [...citySet].map(name => ({ name, value: nominal.filter(x => x.cidadeUf?.toUpperCase() === name).length })).sort((a, b) => b.value - a.value).slice(0, 6),
       bairroList: Object.entries(bairroMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6),
@@ -254,17 +260,30 @@ const DashPage = ({ userData }) => {
   return (
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col font-sans text-left animate-premium">
       
-      {/* 1. FILTRO DINÂMICO GLASSMORPHISM (ESTILO CALENDÁRIO) */}
-      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl p-4 border-b border-slate-200 flex flex-wrap gap-2 shadow-sm rounded-b-[2.5rem]">
-        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl w-full">
-           <Filter size={14} className="text-white ml-2 opacity-50" />
-           <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setSubFilter('0'); }} className="bg-transparent text-white font-[900] text-[10px] uppercase outline-none flex-1 py-1 cursor-pointer">
-              <option value="all" className="text-slate-900">Histórico Total</option>
-              <option value="year" className="text-slate-900">Visão Anual</option>
-              <option value="semester" className="text-slate-900">Por Semestre</option>
-              <option value="quarter" className="text-slate-900">Por Trimestre</option>
-              <option value="month" className="text-slate-900">Visão Mensal</option>
-           </select>
+      {/* 1. CABEÇALHO DE HIERARQUIA & FILTROS */}
+      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl p-4 border-b border-slate-200 space-y-3 shadow-sm rounded-b-[2.5rem]">
+        
+        {/* SELETOR DE ESCOPO (EXCLUSIVO MASTER) */}
+        {isMaster && (
+          <div className="flex items-center gap-2 bg-blue-600 p-2 rounded-2xl w-full shadow-lg shadow-blue-200">
+             <Building2 size={14} className="text-white ml-2 opacity-80" />
+             <select value={activeComumId} onChange={(e) => setActiveComumId(e.target.value)} className="bg-transparent text-white font-[900] text-[10px] uppercase outline-none flex-1 py-1 cursor-pointer">
+                {listaIgrejasRegional.map(igreja => (
+                  <option key={igreja.id} value={igreja.id} className="text-slate-900">{igreja.nome}</option>
+                ))}
+             </select>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-2xl w-full">
+            <Filter size={14} className="text-white ml-2 opacity-50" />
+            <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setSubFilter('0'); }} className="bg-transparent text-white font-[900] text-[10px] uppercase outline-none flex-1 py-1 cursor-pointer">
+               <option value="all" className="text-slate-900">Histórico Total</option>
+               <option value="year" className="text-slate-900">Visão Anual</option>
+               <option value="semester" className="text-slate-900">Por Semestre</option>
+               <option value="quarter" className="text-slate-900">Por Trimestre</option>
+               <option value="month" className="text-slate-900">Visão Mensal</option>
+            </select>
         </div>
         
         <div className="flex gap-2 w-full">
@@ -281,6 +300,17 @@ const DashPage = ({ userData }) => {
 
       <div className="p-4 space-y-8 pb-44 max-w-md mx-auto no-scrollbar">
         
+        {/* IDENTIDADE DE ESCOPO */}
+        <div className="flex items-center gap-3 ml-2">
+           <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
+           <div className="text-left leading-none">
+              <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Análise de Fluxo</p>
+              <h2 className="text-xl font-[900] text-slate-950 uppercase italic tracking-tighter">
+                {isMaster ? listaIgrejasRegional.find(i => i.id === activeComumId)?.nome : userData?.comum}
+              </h2>
+           </div>
+        </div>
+
         {/* 2. BIG NUMBERS PREMIUM */}
         <section className="grid grid-cols-2 gap-3">
           <StatCard label="Total Músicos" val={tM} color="bg-blue-600" icon={<Music size={12}/>} />
@@ -291,7 +321,7 @@ const DashPage = ({ userData }) => {
           <StatCard label="Média/Ensaio" val={(tI / nEnsSafe).toFixed(1)} color="bg-slate-500" isAvg />
         </section>
 
-        {/* 3. CARROSSEL FREQUÊNCIA (DESIGN PREMIUM) */}
+        {/* 3. CARROSSEL FREQUÊNCIA */}
         <section className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative group overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transition-transform group-hover:scale-125">
              <BarChart3 size={100} />
@@ -307,13 +337,8 @@ const DashPage = ({ userData }) => {
              </div>
           </div>
 
-          <motion.div 
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', presencaSlide, setPresencaSlide, 2)}
-            className="h-64 w-full cursor-grab active:cursor-grabbing"
-          >
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <motion.div drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', presencaSlide, setPresencaSlide, 2)} className="h-64 w-full cursor-grab active:cursor-grabbing">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartArray}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900', fill: '#94a3b8' }} />
@@ -349,13 +374,8 @@ const DashPage = ({ userData }) => {
                {[0, 1, 2, 3].map(i => <button key={i} onClick={() => setEquiSlide(i)} className={`w-1.5 h-1.5 rounded-full transition-all ${equiSlide === i ? 'bg-amber-500 w-4' : 'bg-slate-200'}`} />)}
              </div>
           </div>
-          <motion.div 
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', equiSlide, setEquiSlide, 4)}
-            className="h-56 w-full cursor-grab active:cursor-grabbing"
-          >
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <motion.div drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', equiSlide, setEquiSlide, 4)} className="h-56 w-full cursor-grab active:cursor-grabbing">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartArray}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8' }} />
@@ -388,13 +408,8 @@ const DashPage = ({ userData }) => {
                  <button onClick={() => setHinosSlide(1)} className={`w-1.5 h-1.5 rounded-full transition-all ${hinosSlide === 1 ? 'bg-emerald-600 w-4' : 'bg-slate-200'}`} />
                </div>
             </div>
-            <motion.div 
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', hinosSlide, setHinosSlide, 2)}
-              className="h-64 w-full cursor-grab active:cursor-grabbing"
-            >
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <motion.div drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', hinosSlide, setHinosSlide, 2)} className="h-64 w-full cursor-grab active:cursor-grabbing">
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartArray}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
@@ -422,7 +437,7 @@ const DashPage = ({ userData }) => {
              </div>
              
              <div style={{ height: topLimit * 40 }} className="w-full">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart layout="vertical" data={topHinosData.slice(0, topLimit)} margin={{ left: -20, right: 30 }}>
                   <XAxis type="number" hide />
                   <YAxis dataKey="num" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '900', fill: '#fff' }} width={45} />
@@ -437,7 +452,7 @@ const DashPage = ({ userData }) => {
           </div>
         </section>
 
-        {/* 6. VISITAS (DESIGN CALENDÁRIO) */}
+        {/* 6. VISITAS */}
         <section className="space-y-4">
           <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative group overflow-hidden">
             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transition-transform group-hover:scale-125">
@@ -451,13 +466,8 @@ const DashPage = ({ userData }) => {
                   {[0, 1, 2].map(i => <button key={i} onClick={() => setVisitaSlide(i)} className={`w-1.5 h-1.5 rounded-full transition-all ${visitaSlide === i ? 'bg-orange-600 w-4' : 'bg-slate-200'}`} />)}
                </div>
             </div>
-            <motion.div 
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', visitaSlide, setVisitaSlide, 3)}
-              className="h-64 w-full cursor-grab active:cursor-grabbing"
-            >
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <motion.div drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => handleSwipe(info.offset.x < 0 ? 'left' : 'right', visitaSlide, setVisitaSlide, 3)} className="h-64 w-full cursor-grab active:cursor-grabbing">
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart layout="vertical" data={visitaSlide === 0 ? cityList : visitaSlide === 1 ? bairroList : minVisList} margin={{ left: -10, right: 30 }}>
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900', fill: '#94a3b8' }} width={100} />
@@ -471,6 +481,7 @@ const DashPage = ({ userData }) => {
             </motion.div>
           </div>
 
+          {/* LISTA DE VISITAS */}
           <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm space-y-6">
             <div className="flex justify-between items-center border-b border-slate-50 pb-4">
                <h3 className="text-[10px] font-black text-slate-950 uppercase italic tracking-widest">Registros de Visita</h3>
@@ -507,6 +518,12 @@ const DashPage = ({ userData }) => {
             </div>
           </div>
         </section>
+
+        {/* RODAPÉ INSTITUCIONAL */}
+        <div className="mt-8 flex flex-col items-center justify-center gap-1 opacity-20 text-center pb-10">
+          <span className="text-[8px] font-[900] text-slate-950 uppercase tracking-[0.3em]">Sistema Regional</span>
+          <span className="text-[7px] font-black text-slate-950 uppercase tracking-[0.2em]">Secretaria da Musica Regional</span>
+        </div>
       </div>
     </div>
   );

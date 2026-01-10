@@ -4,7 +4,8 @@ import {
   setDoc, updateDoc, deleteDoc, addDoc, getDoc,
   query, orderBy, where, enableIndexedDbPersistence,
   getDocs,    // INCLUÍDO PARA A FÁBRICA
-  writeBatch  // INCLUÍDO PARA A FÁBRICA
+  writeBatch,  // INCLUÍDO PARA A FÁBRICA
+  initializeFirestore // NOVO: Para configuração de estabilidade
 } from "firebase/firestore";
 import { 
   getAuth, signInWithEmailAndPassword, 
@@ -22,7 +23,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+
+// Configuração robusta para evitar ERR_QUIC_PROTOCOL_ERROR
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true, // Força conexão estável em dev local
+  useFetchStreams: false
+});
+
 const auth = getAuth(app);
 
 // ATIVAÇÃO DA PERSISTÊNCIA OFFLINE

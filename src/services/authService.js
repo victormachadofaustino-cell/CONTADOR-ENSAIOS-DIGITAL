@@ -20,20 +20,23 @@ export const authService = {
     return cred.user;
   },
 
-  // Registra um novo usuário vinculado a uma ComumId
-  register: async ({ email, password, name, role, comum, comumId }) => {
+  // Registra um novo usuário vinculado a uma ComumId e sua Hierarquia
+  // Adicionado suporte para cidadeId e regionalId para escalabilidade
+  register: async ({ email, password, name, role, comum, comumId, cidadeId, regionalId }) => {
     // 1. Cria o usuário no Auth
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     
-    // 2. Cria o perfil no Firestore (Lógica Multitenancy)
-    // Aqui gravamos o comumId que define qual "balde" de dados esse usuário verá
+    // 2. Cria o perfil no Firestore (Lógica Multitenancy Hierárquica)
+    // O comumId define o acesso local, enquanto cidadeId e regionalId definem a visibilidade macro
     await setDoc(doc(db, 'users', cred.user.uid), {
       email,
       name,
       role,
       comum,
-      comumId: comumId || 'hsfjhZ3KNx7SsCM8EFpu', // ID padrão inicial [cite: 421]
-      approved: false, // Inicia aguardando aprovação [cite: 421]
+      comumId: comumId, // Removido ID fixo para garantir integridade multi-igreja
+      cidadeId: cidadeId || 'jundiai_central', // Vincula à cidade (Padrão Jundiaí se omitido)
+      regionalId: regionalId || 'regional_jundiai', // Vincula à regional administrativa
+      approved: false, // Inicia aguardando aprovação
       disabled: false,
       isMaster: false,
       createdAt: Date.now()

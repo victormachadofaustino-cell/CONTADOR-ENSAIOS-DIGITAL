@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { db, collection, onSnapshot, query, where } from '../firebase';
 import { eventService } from '../services/eventService';
 import toast from 'react-hot-toast';
-import { Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck } from 'lucide-react';
+import { Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home } from 'lucide-react';
 
 const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   const [events, setEvents] = useState([]);
@@ -12,16 +13,96 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   const [eventToDelete, setEventToDelete] = useState(null);
   const [openYears, setOpenYears] = useState({});
 
-  const comumId = userData?.comumId || 'hsfjhZ3KNx7SsCM8EFpu';
+  const [cidades, setCidades] = useState([]);
+  const [comuns, setComuns] = useState([]);
+  
+  const [selectedCityId, setSelectedCityId] = useState(userData?.cidadeId || '');
+  const [selectedChurchId, setSelectedChurchId] = useState(userData?.comumId || '');
 
+  const isMaster = userData?.isMaster === true;
+  const isRegional = userData?.escopoRegional === true || isMaster;
+  const isLocal = userData?.escopoLocal === true && !isRegional;
+  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
+
+  // 1. SINCRONIZAÇÃO DE CASCATA: REGIONAL -> CIDADE
   useEffect(() => {
-    const unsubscribe = eventService.subscribeToEvents(comumId, (fetchedEvents) => {
-      setEvents(fetchedEvents);
+    if (!activeRegionalId) return;
+    
+    const q = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
+    const unsub = onSnapshot(q, (s) => {
+      const list = s.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+      setCidades(list);
+
+      if (isRegional) {
+        if (list.length > 0) {
+          const firstCity = list[0].id;
+          setSelectedCityId(firstCity);
+        } else {
+          setSelectedCityId('');
+          setSelectedChurchId(''); 
+        }
+      }
+    });
+    return () => unsub();
+  }, [activeRegionalId]);
+
+  // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM
+  useEffect(() => {
+    if (!selectedCityId) {
+      setComuns([]);
+      setSelectedChurchId(''); 
+      return;
+    }
+
+    const q = query(collection(db, 'config_comum'), where('cidadeId', '==', selectedCityId));
+    const unsub = onSnapshot(q, (s) => {
+      const list = s.docs.map(d => ({ 
+        id: d.id, 
+        nome: d.data().comum || d.data().bairro || d.data().nome || "Sem Nome" 
+      }));
+      setComuns(list);
+
+      if (!isLocal) {
+        if (list.length > 0) {
+          const exists = list.find(c => c.id === selectedChurchId);
+          if (!exists) setSelectedChurchId(list[0].id);
+        } else {
+          setSelectedChurchId('');
+        }
+      }
+    });
+    return () => unsub();
+  }, [selectedCityId]);
+
+  // 3. BUSCA PROFUNDA DE ENSAIOS: /comuns/{selectedChurchId}/events
+  useEffect(() => {
+    if (!selectedChurchId) {
+      setEvents([]);
+      return;
+    }
+
+    const eventsRef = collection(db, 'comuns', selectedChurchId, 'events');
+    
+    const unsub = onSnapshot(eventsRef, (snapshot) => {
+      const evs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      const filtered = evs.filter(ev => {
+        return ev.regionalId === activeRegionalId || 
+               ev.regionalId === "JUNDIAÍ" || 
+               ev.regionalId === "regional_jundiai" ||
+               !ev.regionalId; // Fallback para não perder dados legados
+      });
+
+      setEvents(filtered);
       const currentYear = new Date().getFullYear().toString();
       setOpenYears(prev => ({ [currentYear]: true, ...prev }));
+    }, (error) => {
+      console.error("Erro ao carregar ensaios:", error);
+      setEvents([]);
     });
-    return () => unsubscribe();
-  }, [comumId]);
+
+    return () => unsub();
+  }, [selectedChurchId, activeRegionalId]);
 
   const groupedEvents = useMemo(() => {
     return events.reduce((acc, event) => {
@@ -33,48 +114,70 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   }, [events]);
 
   const years = Object.keys(groupedEvents).sort((a, b) => b - a);
-
-  const toggleYear = (year) => {
-    setOpenYears(prev => ({ ...prev, [year]: !prev[year] }));
-  };
-
+  const toggleYear = (year) => setOpenYears(prev => ({ ...prev, [year]: !prev[year] }));
+  
   const formatMonth = (dateStr) => {
     const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const monthIndex = parseInt(dateStr.split('-')[1]) - 1;
-    return months[monthIndex];
+    const m = parseInt(dateStr.split('-')[1]) - 1;
+    return months[m] || '---';
   };
 
   const handleCreate = async () => {
+    if (!selectedChurchId) return toast.error("Selecione uma comum");
     try {
-      await eventService.createEvent(comumId, {
+      await eventService.createEvent(selectedChurchId, {
         type: newEventType,
         date: newEventDate,
-        responsavel: responsavel || 'Pendente'
+        responsavel: responsavel || 'Pendente',
+        regionalId: activeRegionalId 
       });
       setShowModal(false);
       toast.success("Ensaio criado!");
-    } catch (error) {
-      toast.error("Erro ao criar.");
-    }
+    } catch (error) { toast.error("Erro ao criar."); }
   };
 
   const confirmDelete = async () => {
-    if (!eventToDelete) return;
+    if (!eventToDelete || !selectedChurchId) return;
     try {
-      await eventService.deleteEvent(comumId, eventToDelete);
+      await eventService.deleteEvent(selectedChurchId, eventToDelete);
       toast.success("Ensaio removido!");
       setEventToDelete(null);
-    } catch (error) {
-      toast.error("Erro ao excluir.");
-    }
+    } catch (error) { toast.error("Erro ao excluir."); }
   };
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium">
       
-      {/* HEADER DE AÇÃO - PADRÃO VICTOR FAUSTINO */}
-      {isAdmin && (
-        <div className="mb-8">
+      {/* SELETORES DISCRETOS COM SINCRONIZAÇÃO TOTAL */}
+      <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${!isRegional ? 'opacity-50' : ''}`}>
+          <MapPin size={10} className="text-blue-600 shrink-0" />
+          <select 
+            disabled={!isRegional}
+            value={selectedCityId} 
+            onChange={(e) => { setSelectedCityId(e.target.value); setSelectedChurchId(''); }}
+            className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
+          >
+            {cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        </div>
+
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${isLocal ? 'opacity-50' : ''}`}>
+          <Home size={10} className="text-blue-600 shrink-0" />
+          <select 
+            disabled={isLocal}
+            value={selectedChurchId} 
+            onChange={(e) => setSelectedChurchId(e.target.value)}
+            className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
+          >
+            {comuns.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            {comuns.length === 0 && <option value="">Sem Comuns</option>}
+          </select>
+        </div>
+      </div>
+
+      {isAdmin && selectedChurchId && (
+        <div className="mb-8 max-w-md mx-auto">
           <button 
             onClick={() => setShowModal(true)} 
             className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all"
@@ -84,6 +187,7 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         </div>
       )}
 
+      {/* LISTAGEM DE ENSAIOS */}
       <div className="space-y-8 max-w-md mx-auto">
         {years.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm">
@@ -93,11 +197,7 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         ) : (
           years.map(year => (
             <div key={year} className="space-y-4">
-              {/* ACCORDION HEADER (ANO) */}
-              <button 
-                onClick={() => toggleYear(year)}
-                className="flex items-center gap-4 w-full px-2 group active:opacity-60 transition-all"
-              >
+              <button onClick={() => toggleYear(year)} className="flex items-center gap-4 w-full px-2 group active:opacity-60 transition-all">
                 <span className="text-3xl font-[900] italic text-slate-950 tracking-tighter">{year}</span>
                 <div className="h-[2px] flex-1 bg-slate-200 rounded-full opacity-50 group-hover:opacity-100 transition-opacity"></div>
                 <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-100">
@@ -105,66 +205,31 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
                 </div>
               </button>
 
-              {/* LISTA DE ENSAIOS */}
               {openYears[year] && (
                 <div className="space-y-4 animate-in">
-                  {groupedEvents[year].map(e => {
-                    const isClosed = e.ata?.status === 'closed';
-                    const day = e.date.split('-')[2];
-                    const monthExtenso = formatMonth(e.date);
-
-                    return (
-                      <div 
-                        key={e.id} 
-                        onClick={() => onSelectEvent(e.id)} 
-                        className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex justify-between items-center shadow-sm active:scale-95 transition-all relative overflow-hidden group"
-                      >
-                        {/* INDICADOR LATERAL DE STATUS */}
-                        <div className={`absolute left-0 top-0 h-full w-1.5 ${isClosed ? 'bg-slate-300' : 'bg-amber-500'}`} />
-
-                        <div className="flex items-center gap-5">
-                          {/* FOLHA DE CALENDÁRIO PREMIUM */}
-                          <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-[1.8rem] leading-none border-2 ${isClosed ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-950 text-slate-950 shadow-md'}`}>
-                            <span className="text-2xl font-[900] italic">{day}</span>
-                            <span className="text-[8px] font-black uppercase mt-1 tracking-widest">{monthExtenso}</span>
-                          </div>
-
-                          <div className="text-left">
-                            <p className={`text-[8px] font-black uppercase italic tracking-[0.2em] mb-1 ${isClosed ? 'text-slate-300' : 'text-amber-500'}`}>
-                              {e.type || 'Ensaio Local'}
-                            </p>
-                            <h4 className={`text-[13px] font-[900] uppercase italic tracking-tighter leading-none ${isClosed ? 'text-slate-400' : 'text-slate-950'}`}>
-                              Resp: {e.responsavel}
-                            </h4>
-                            <div className="flex items-center gap-1.5 mt-2">
-                               <Clock size={10} className={isClosed ? 'text-slate-200' : 'text-slate-400'} />
-                               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{e.createdAt ? new Date(e.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
-                            </div>
-                          </div>
+                  {groupedEvents[year].map(e => (
+                    <div key={e.id} onClick={() => onSelectEvent(e.id)} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex justify-between items-center shadow-sm active:scale-95 transition-all relative overflow-hidden group">
+                      <div className={`absolute left-0 top-0 h-full w-1.5 ${e.ata?.status === 'closed' ? 'bg-slate-300' : 'bg-amber-500'}`} />
+                      <div className="flex items-center gap-5">
+                        <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-[1.8rem] leading-none border-2 ${e.ata?.status === 'closed' ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-950 text-slate-950 shadow-md'}`}>
+                          <span className="text-2xl font-[900] italic">{e.date?.split('-')[2]}</span>
+                          <span className="text-[8px] font-black uppercase mt-1 tracking-widest">{formatMonth(e.date)}</span>
                         </div>
-                        
-                        <div className="flex items-center gap-2">
-                          {isClosed ? (
-                             <div className="bg-slate-100 p-2.5 rounded-2xl text-slate-400"><Lock size={16} /></div>
-                          ) : (
-                             <div className="bg-emerald-50 p-2.5 rounded-2xl text-emerald-500 animate-pulse"><ShieldCheck size={16} /></div>
-                          )}
-                          
-                          {isAdmin && (
-                            <button 
-                              onClick={(ex) => { 
-                                ex.stopPropagation(); 
-                                setEventToDelete(e.id);
-                              }} 
-                              className="bg-red-50 text-red-200 p-3 rounded-2xl active:bg-red-500 active:text-white transition-all shadow-sm"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
+                        <div className="text-left leading-none">
+                          <p className={`text-[8px] font-black uppercase italic tracking-[0.2em] mb-1.5 ${e.ata?.status === 'closed' ? 'text-slate-300' : 'text-amber-500'}`}>{e.type || 'Ensaio Local'}</p>
+                          <h4 className={`text-[13px] font-[900] uppercase italic tracking-tighter mb-2 ${e.ata?.status === 'closed' ? 'text-slate-400' : 'text-slate-950'}`}>Resp: {e.responsavel}</h4>
+                          <div className="flex items-center gap-1.5">
+                             <Clock size={10} className="text-slate-400" />
+                             <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{e.createdAt ? new Date(e.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
+                      <div className="flex items-center gap-2">
+                        {e.ata?.status === 'closed' ? <Lock size={16} className="text-slate-200" /> : <ShieldCheck size={16} className="text-emerald-500 animate-pulse" />}
+                        {isAdmin && <button onClick={(ex) => { ex.stopPropagation(); setEventToDelete(e.id); }} className="bg-red-50 text-red-200 p-3 rounded-2xl active:bg-red-500 active:text-white transition-all shadow-sm"><Trash2 size={16} /></button>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -172,83 +237,45 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         )}
       </div>
 
-      {/* MODAL DE CRIAÇÃO (DNA CALENDÁRIO MUSICAL) */}
+      {/* MODAL DE CRIAÇÃO PRESERVADO */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-[340px] rounded-[3rem] p-8 shadow-2xl relative text-left overflow-hidden">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-[340px] rounded-[3rem] p-8 shadow-2xl relative text-left overflow-hidden border border-white/20">
             <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8 leading-none tracking-tighter">Novo Registro</h3>
-            
             <div className="space-y-5">
               <div className="space-y-1.5">
                 <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Tipo de Evento</label>
-                <select 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black uppercase outline-none" 
-                  value={newEventType} 
-                  onChange={e => setNewEventType(e.target.value)}
-                >
+                <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black uppercase outline-none" value={newEventType} onChange={e => setNewEventType(e.target.value)}>
                    <option value="Ensaio Local">Ensaio Local</option>
                    <option value="Ensaio Regional">Ensaio Regional</option>
                    <option value="Reunião">Reunião Musical</option>
                 </select>
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Data Agendada</label>
-                <input 
-                  type="date" 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none" 
-                  value={newEventDate} 
-                  onChange={e => setNewEventDate(e.target.value)} 
-                />
+                <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Responsável / Encarregado</label>
-                <input 
-                  type="text" 
-                  placeholder="Nome completo" 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none uppercase placeholder:text-slate-300 shadow-inner" 
-                  value={responsavel} 
-                  onChange={e => setResponsavel(e.target.value)} 
-                />
+                <input type="text" placeholder="Nome completo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none uppercase placeholder:text-slate-300 shadow-inner" value={responsavel} onChange={e => setResponsavel(e.target.value)} />
               </div>
             </div>
-
-            <button 
-              onClick={handleCreate} 
-              className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-10 transition-all"
-            >
-              <Send size={16}/> Confirmar Agenda
-            </button>
+            <button onClick={handleCreate} className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-10 transition-all border border-white/10"><Send size={16}/> Confirmar Agenda</button>
           </div>
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO PRESERVADO */}
       {eventToDelete && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6 animate-in zoom-in duration-200">
           <div className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl relative border border-slate-100">
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Trash2 size={24} />
-            </div>
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><Trash2 size={24} /></div>
             <h3 className="text-lg font-[900] uppercase italic text-slate-950 tracking-tighter leading-tight">Remover Agenda?</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase mt-4 mb-8 leading-relaxed">
-              Todos os dados e contagens deste ensaio serão permanentemente excluídos.
-            </p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase mt-4 mb-8 leading-relaxed">Todos os dados e contagens deste ensaio serão permanentemente excluídos.</p>
             <div className="flex flex-col gap-2">
-              <button 
-                onClick={confirmDelete} 
-                className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg shadow-red-100"
-              >
-                Sim, Remover Ensaio
-              </button>
-              <button 
-                onClick={() => setEventToDelete(null)} 
-                className="w-full py-2 font-black uppercase text-[9px] text-slate-300 tracking-widest"
-              >
-                Manter Ensaio
-              </button>
+              <button onClick={confirmDelete} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg shadow-red-100">Sim, Remover Ensaio</button>
+              <button onClick={() => setEventToDelete(null)} className="w-full py-2 font-black uppercase text-[9px] text-slate-300 tracking-widest">Manter Ensaio</button>
             </div>
           </div>
         </div>

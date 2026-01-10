@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
-import { db, collection, onSnapshot, query, orderBy } from '../firebase'; // Importações adicionadas
+import { db, collection, onSnapshot, query, orderBy } from '../firebase'; 
 import toast from 'react-hot-toast';
 import { Mail, Lock, LogIn, ShieldCheck, Activity, User, Briefcase, MapPin } from 'lucide-react';
 
@@ -9,33 +9,47 @@ const LoginPage = ({
   userName, setUserName, userRole, setUserRole, cargosDinamicos 
 }) => {
   const [loading, setLoading] = useState(false);
-  const [igrejasDisponiveis, setIgrejasDisponiveis] = useState([]); // Estado para as igrejas
-  const [selectedChurch, setSelectedChurch] = useState(null); // Igreja selecionada no cadastro
-  const [listaCargosLocal, setListaCargosLocal] = useState([]); // Backup para garantir carregamento dos cargos
+  const [igrejasDisponiveis, setIgrejasDisponiveis] = useState([]); 
+  const [selectedChurch, setSelectedChurch] = useState(null); 
+  const [listaCargosLocal, setListaCargosLocal] = useState([]); 
 
-  // Monitora as igrejas disponíveis na coleção config_comum
+  // 1. Monitora as igrejas com tratamento de erro e ordenação segura
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'config_comum'), (snapshot) => {
-      const lista = snapshot.docs.map(d => ({ 
-        id: d.id, 
-        nome: d.data().comum || d.data().nome 
-      })).sort((a, b) => a.nome.localeCompare(b.nome));
-      
-      setIgrejasDisponiveis(lista);
-      if (lista.length > 0 && !selectedChurch) {
-        setSelectedChurch(lista[0]);
+      try {
+        const lista = snapshot.docs
+          .map(d => {
+            const data = d.data();
+            return { 
+              id: d.id, 
+              nome: data.comum || data.nome || "Localidade sem nome",
+              // Captura os metadados de hierarquia da igreja
+              cidadeId: data.cidadeId || 'jundiai_central',
+              regionalId: data.regionalId || 'regional_jundiai'
+            };
+          })
+          // A trava (a.nome || "") evita o erro de localeCompare em propriedades nulas
+          .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
+        
+        setIgrejasDisponiveis(lista);
+        
+        // Define a primeira igreja apenas se nada estiver selecionado ainda
+        if (lista.length > 0 && !selectedChurch) {
+          setSelectedChurch(lista[0]);
+        }
+      } catch (err) {
+        console.error("Erro ao processar lista de igrejas:", err);
       }
     });
     return () => unsub();
-  }, []);
+  }, [selectedChurch]); // Dependência estável
 
-  // NOVO: Monitora cargos dinâmicos caso cargosDinamicos venha vazio
+  // 2. Monitora cargos dinâmicos
   useEffect(() => {
     const q = query(collection(db, 'config_cargos'), orderBy('cargo', 'asc'));
     const unsub = onSnapshot(q, (snapshot) => {
-      const lista = snapshot.docs.map(d => d.data().cargo);
+      const lista = snapshot.docs.map(d => d.data().cargo).filter(Boolean);
       setListaCargosLocal(lista);
-      // Se não houver cargo selecionado, define o primeiro da lista
       if (lista.length > 0 && !userRole) {
         setUserRole(lista[0]);
       }
@@ -59,13 +73,16 @@ const LoginPage = ({
         if (pass.length < 6) throw new Error("Senha deve ter no mínimo 6 caracteres");
         if (!selectedChurch) throw new Error("Selecione sua localidade");
 
+        // ENVIO HIERÁRQUICO: Agora enviamos cidadeId e regionalId capturados da igreja
         await authService.register({
           email,
           password: pass,
           name: userName,
           role: userRole || listaCargosLocal[0],
           comum: selectedChurch.nome,
-          comumId: selectedChurch.id
+          comumId: selectedChurch.id,
+          cidadeId: selectedChurch.cidadeId,
+          regionalId: selectedChurch.regionalId
         });
         toast.success("Verifique seu e-mail!");
       }
@@ -87,22 +104,21 @@ const LoginPage = ({
         
         <div className="space-y-4 mb-8 text-center">
           <div className="flex justify-center mb-4">
-             {/* ALINHAMENTO DA LOGO COM FUNDO TRANSPARENTE (TELA PRINCIPAL) */}
              <div className="drop-shadow-2xl">
                 <img 
                   src="/assets/Logo_oficial_CCB.png" 
                   alt="Logo Oficial CCB" 
                   className="w-48 h-48 object-contain"
                   onError={(e) => {
-                    e.target.src = "https://via.placeholder.com/150?text=CCB"; // Fallback se falhar
+                    e.target.src = "https://via.placeholder.com/150?text=CCB";
                   }}
                 />
              </div>
           </div>
           <div className="text-center space-y-1">
             <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none">Contador de</h2>
-            <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaio Local</h2>
-            <p className="text-slate-400 text-[8px] font-black uppercase tracking-[0.5em] pt-2">Regional Jundiaí</p>
+            <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaios Locais</h2>
+            <p className="text-slate-400 text-[8px] font-black uppercase tracking-[0.5em] pt-2">Sistema Regional</p>
           </div>
         </div>
 
@@ -126,7 +142,6 @@ const LoginPage = ({
                   <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none focus:ring-2 focus:ring-slate-950 transition-all uppercase" type="text" value={userName} onChange={e => setUserName(e.target.value)} required />
                 </div>
 
-                {/* SELEÇÃO DINÂMICA DE IGREJA */}
                 <div className="space-y-1.5 text-left">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><MapPin size={10} /> Localidade / Comum</label>
                   <select 
@@ -161,7 +176,7 @@ const LoginPage = ({
 
             <div className="space-y-1.5 text-left">
               <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Lock size={10} /> Senha de Segurança</label>
-              <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none focus:ring-2 focus:ring-slate-950 transition-all" type="password" value={pass} onChange={e => setPass(e.target.value)} required />
+              <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none focus:ring-2 focus:ring-slate-950 transition-all" type="password" value={pass} onChange={setPass ? (e => setPass(e.target.value)) : undefined} required />
             </div>
 
             <button disabled={loading} type="submit" className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-[0.2em] shadow-xl active:scale-95 transition-all mt-6 flex justify-center items-center gap-3">
@@ -180,7 +195,7 @@ const LoginPage = ({
         </div>
 
         <div className="mt-8 flex items-center justify-center gap-2 opacity-20 text-center">
-            <span className="text-[7px] font-black text-white uppercase tracking-[0.3em]">Secretaria de Música Regional Jundiaí</span>
+            <span className="text-[7px] font-black text-white uppercase tracking-[0.3em]">Secretaria da Musica Regional</span>
         </div>
       </div>
     </div>

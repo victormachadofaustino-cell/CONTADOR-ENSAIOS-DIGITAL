@@ -19,14 +19,16 @@ export const eventService = {
     });
   },
 
-  // Cria um novo ensaio
+  // Cria um novo ensaio amarrado à Regional Ativa
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
-    const { type, date, responsavel } = eventData;
+    const { type, date, responsavel, regionalId } = eventData;
+    
     return await addDoc(collection(db, 'comuns', comumId, 'events'), {
       type: type || 'Ensaio Local',
       date,
       responsavel: responsavel || 'Pendente',
+      regionalId, // CRÍTICO: Carimba o ensaio com o ID alfanumérico da Regional
       ata: { status: 'open' },
       counts: {},
       createdAt: Date.now()
@@ -43,7 +45,7 @@ export const eventService = {
    * Atualiza a contagem de um instrumento e grava log de auditoria
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
-    // PROTEÇÃO CRÍTICA: Impede escritas em caminhos indefinidos (resquício de troca de contexto)
+    // PROTEÇÃO CRÍTICA: Impede escritas em caminhos indefinidos
     if (!comumId || !eventId || !instId) {
       console.warn("Tentativa de atualização com IDs incompletos:", { comumId, eventId, instId });
       return; 
@@ -53,7 +55,7 @@ export const eventService = {
     const val = Math.max(0, parseInt(value) || 0);
     const timestamp = Date.now();
     
-    // Objeto de Log para auditoria (Quem, O que, Valor, Quando)
+    // Objeto de Log para auditoria
     const logEntry = {
       user: userData?.name || 'Sistema',
       field: field,
@@ -66,17 +68,14 @@ export const eventService = {
       lastEditBy: userData?.name || 'Sistema',
       timestamp: timestamp,
       section: section || 'Outros',
-      // Adiciona o log ao array sem sobrescrever o histórico anterior
       history: arrayUnion(logEntry)
     };
 
     if (customName) baseUpdate.name = customName;
 
-    // Mapeamento lógico de campos de contagem
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Realiza a atualização atômica no Firestore
       await setDoc(eventRef, { 
         counts: { 
           [instId]: { 
@@ -107,7 +106,6 @@ export const eventService = {
     if (!comumId || !eventId) throw new Error("Referência de evento inválida.");
     const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
     
-    // Processamento de hinos para estatísticas rápidas
     let todosHinos = [];
     (ataData.partes || []).forEach(p => {
       if (p.hinos) {
