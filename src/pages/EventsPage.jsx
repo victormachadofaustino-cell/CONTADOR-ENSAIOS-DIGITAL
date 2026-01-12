@@ -143,7 +143,8 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         date: newEventDate,
         responsavel: responsavel || 'Pendente',
         regionalId: activeRegionalId,
-        comumNome: nomeRealDaComum.toUpperCase() // SALVA O TEXTO E NÃO O CÓDIGO
+        comumNome: nomeRealDaComum.toUpperCase(), // SALVA O TEXTO E NÃO O CÓDIGO
+        comumId: selectedChurchId // Salva também o ID para filtros de isolamento
       });
       setShowModal(false);
       toast.success("Ensaio criado!");

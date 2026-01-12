@@ -52,6 +52,9 @@ function App() {
   // Define qual comum o app está "olhando" agora
   const comumIdEfetivo = activeComumId || userData?.comumId;
 
+  // REGRA DE SEGURANÇA: Nível de acesso "Cidade para cima" para extrações e relatórios
+  const canAdminReport = userData?.escopoRegional || userData?.isMaster || userData?.escopoCidade;
+
   const ORDEM_TABS = useMemo(() => {
     const temAcessoAjustes = isMaster || userData?.escopoRegional || userData?.escopoCidade || userData?.escopoLocal;
     return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
@@ -316,7 +319,8 @@ function App() {
             comum: activeComumName, 
             activeRegionalId,
             activeRegionalName,
-            regionalId: activeRegionalId
+            regionalId: activeRegionalId,
+            canAdminReport // INJEÇÃO DA REGRA DE EXTRAÇÃO (Cidade p/ cima)
           }}
           allEvents={events}
           onNavigateEvent={handleNavigateEvent}

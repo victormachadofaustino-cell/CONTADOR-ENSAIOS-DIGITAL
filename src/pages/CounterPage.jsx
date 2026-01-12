@@ -20,31 +20,52 @@ const CounterPage = ({ currentEventId, counts, onBack, isMaster, isAdmin, userDa
   const [eventDateRaw, setEventDateRaw] = useState('');
   const [showOwnershipModal, setShowOwnershipModal] = useState(null);
   
-  const comumId = userData?.comumId;
+  // ESTADO PARA ISOLAMENTO DE AMBIENTE
+  const [eventComumId, setEventComumId] = useState(null);
+  
   const isClosed = ataData?.status === 'closed'; 
   const myUID = auth.currentUser?.uid || userData?.uid || userData?.id;
 
   useEffect(() => {
-    if (!comumId || !currentEventId) return;
+    if (!currentEventId) return;
 
-    const unsubInst = onSnapshot(collection(db, 'config_comum', comumId, 'instrumentos_config'), (snapshot) => {
-      setInstrumentsConfig(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
+    // 1. BUSCA O EVENTO PARA DESCOBRIR A QUAL COMUM ELE PERTENCE (Isolamento de Ambiente)
+    // Procuramos em todas as comuns possíveis ou usamos a prop comumId se disponível.
+    // Como os eventos estão aninhados em comuns/{id}/events/{id}, pegamos a referência do pai.
+    
+    const findEventData = () => {
+      // Tentativa de encontrar a comum correta através do allEvents passado via props
+      const currentEvent = allEvents?.find(e => e.id === currentEventId);
+      const targetComumId = currentEvent?.comumId || userData?.comumId;
 
-    const unsubEvent = onSnapshot(doc(db, 'comuns', comumId, 'events', currentEventId), (s) => {
-      if (s.exists()) {
-        const data = s.data();
-        setAtaData(data.ata || { status: 'open' });
-        setEventDateRaw(data.date || '');
+      if (targetComumId) {
+        setEventComumId(targetComumId);
+
+        // 2. CARREGA CONFIGURAÇÕES ESPECÍFICAS DESTA COMUM (Não do perfil do usuário)
+        const unsubInst = onSnapshot(collection(db, 'config_comum', targetComumId, 'instrumentos_config'), (snapshot) => {
+          setInstrumentsConfig(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+          setLoading(false);
+        });
+
+        const unsubEvent = onSnapshot(doc(db, 'comuns', targetComumId, 'events', currentEventId), (s) => {
+          if (s.exists()) {
+            const data = s.data();
+            setAtaData(data.ata || { status: 'open' });
+            setEventDateRaw(data.date || '');
+          }
+        });
+
+        return () => { unsubInst(); unsubEvent(); };
       }
-    });
+    };
 
-    return () => { unsubInst(); unsubEvent(); };
-  }, [currentEventId, comumId]);
+    return findEventData();
+  }, [currentEventId, allEvents, userData?.comumId]);
 
   const updateCount = async (instId, field, value, section, evalType = "Sem") => {
     if (isClosed) return toast.error("Ensaio Lacrado.");
+    if (!eventComumId) return;
+
     const metaKey = `meta_${section?.toLowerCase().replace(/\s/g, '_')}`;
     const responsibleId = counts?.[metaKey]?.responsibleId;
 
@@ -57,7 +78,7 @@ const CounterPage = ({ currentEventId, counts, onBack, isMaster, isAdmin, userDa
     if (field === 'enc' && finalValue > instData.total) return toast.error("Avaliação não pode exceder o Total");
 
     try {
-      await eventService.updateInstrumentCount(comumId, currentEventId, {
+      await eventService.updateInstrumentCount(eventComumId, currentEventId, {
         instId, field, value: finalValue, userData, section
       });
     } catch (e) { toast.error("Erro na sincronização"); }
@@ -74,10 +95,11 @@ const CounterPage = ({ currentEventId, counts, onBack, isMaster, isAdmin, userDa
   };
 
   const setOwnership = async (sec, wantsToOwn) => {
+    if (!eventComumId) return;
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
     if (wantsToOwn) {
         try {
-            await updateDoc(doc(db, 'comuns', comumId, 'events', currentEventId), {
+            await updateDoc(doc(db, 'comuns', eventComumId, 'events', currentEventId), {
                 [`counts.${metaKey}.responsibleId`]: myUID,
                 [`counts.${metaKey}.responsibleName`]: userData?.name || "Colaborador",
                 [`counts.${metaKey}.updatedAt`]: Date.now()
@@ -92,15 +114,10 @@ const CounterPage = ({ currentEventId, counts, onBack, isMaster, isAdmin, userDa
   const allInstruments = useMemo(() => {
     const base = [...instrumentsConfig];
     const pesosInst = {
-      // CORDAS
       'VIOLINO': 1, 'VIOLA': 2, 'VIOLONCELO': 3,
-      // MADEIRAS (Sequência Corrigida)
       'FLAUTA': 10, 'CLARINETE': 11, 'CLARONE ALTO': 12, 'CLARONE BAIXO': 13, 'OBOÉ': 14, 'CORNE INGLES': 15, 'FAGOTE': 16,
-      // SAXOFONES
       'SAXOFONE SOPRANO': 20, 'SAXOFONE ALTO': 21, 'SAXOFONE TENOR': 22, 'SAXOFONE BARÍTONO': 23,
-      // METAIS
       'TROMPETE': 30, 'FLUGEL': 31, 'TROMPA': 32, 'TROMBONE': 33, 'EUFÔNIO': 34, 'BOMBARDINO': 35, 'TUBA': 36,
-      // TECLAS / ÓRGÃO
       'ACORDEON': 40, 'ÓRGÃO': 50
     };
 
@@ -135,7 +152,9 @@ const CounterPage = ({ currentEventId, counts, onBack, isMaster, isAdmin, userDa
         <div className="flex justify-between items-center max-w-md mx-auto w-full">
           <button onClick={onBack} className="bg-slate-100 p-3 rounded-2xl text-slate-400 active:scale-90 transition-all"><ChevronLeft size={20} strokeWidth={3} /></button>
           <div className="text-center px-4">
-            <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1.5 italic leading-none">Ensaio • {userData?.comum}</p>
+            <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1.5 italic leading-none">
+              Ensaio • {ataData?.comumNome || userData?.comum || "Localidade"}
+            </p>
             <h2 className="text-xl font-[900] text-slate-950 italic uppercase tracking-tighter">
                 {eventDateRaw ? `${eventDateRaw.split('-')[2]}/${eventDateRaw.split('-')[1]}` : '---'}
             </h2>
@@ -186,7 +205,7 @@ const CounterPage = ({ currentEventId, counts, onBack, isMaster, isAdmin, userDa
               </div>
             );
           })}
-          {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={comumId} userData={userData} isMaster={isMaster} isAdmin={isAdmin} />}
+          {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId || comumId} userData={userData} isMaster={isMaster} isAdmin={isAdmin} />}
           {activeTab === 'dash' && <DashEventPage counts={counts} ataData={ataData} userData={userData} isAdmin={isAdmin} />}
         </div>
       </motion.main>

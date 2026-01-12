@@ -94,7 +94,8 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
             {isMaster && <ChevronDown size={10} strokeWidth={4} />}
           </span>
           <h1 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight truncate max-w-[200px]">
-            {userData?.activeRegionalName || "Selecionar Regional"}
+            {/* AJUSTE: Prioriza o Nome Amigável da Regional em vez de IDs */}
+            {userData?.activeRegionalName || userData?.regional || "Selecionar Regional"}
           </h1>
         </div>
 
@@ -160,7 +161,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: SELETOR DE CONTEXTO REGIONAL (ROOT ONLY) [cite: 638-643] */}
+      {/* MODAL: SELETOR DE CONTEXTO REGIONAL (ROOT ONLY) */}
       <AnimatePresence>
         {isRegionalSelectorOpen && (
           <div className="fixed inset-0 z-[600] flex items-start justify-center p-4 pt-20">
@@ -190,7 +191,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: MEU PERFIL (EDIÇÃO) [cite: 644-651] */}
+      {/* MODAL: MEU PERFIL (EDIÇÃO) */}
       <AnimatePresence>
         {isEditUserModalOpen && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 text-left">
@@ -228,7 +229,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: GESTÃO DE REGIONAIS (SÓ MASTER VÊ) [cite: 652-657] */}
+      {/* MODAL: GESTÃO DE REGIONAIS (SÓ MASTER VÊ) */}
       <AnimatePresence>
         {isRegionalManagerOpen && podeGerenciarInfraRoot && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 text-left">
