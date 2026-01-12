@@ -9,7 +9,7 @@ export const eventService = {
 
   // Escuta os eventos de uma comum específica em tempo real
   subscribeToEvents: (comumId, callback) => {
-    if (!comumId) return; // Trava de segurança contra ID nulo
+    if (!comumId) return; 
     const q = query(collection(db, 'comuns', comumId, 'events'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -28,7 +28,7 @@ export const eventService = {
       type: type || 'Ensaio Local',
       date,
       responsavel: responsavel || 'Pendente',
-      regionalId, // CRÍTICO: Carimba o ensaio com o ID alfanumérico da Regional
+      regionalId, 
       ata: { status: 'open' },
       counts: {},
       createdAt: Date.now()
@@ -43,9 +43,9 @@ export const eventService = {
 
   /**
    * Atualiza a contagem de um instrumento e grava log de auditoria
+   * Suporta campos dinâmicos (total, irmas, comum, enc)
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
-    // PROTEÇÃO CRÍTICA: Impede escritas em caminhos indefinidos
     if (!comumId || !eventId || !instId) {
       console.warn("Tentativa de atualização com IDs incompletos:", { comumId, eventId, instId });
       return; 
@@ -55,7 +55,6 @@ export const eventService = {
     const val = Math.max(0, parseInt(value) || 0);
     const timestamp = Date.now();
     
-    // Objeto de Log para auditoria
     const logEntry = {
       user: userData?.name || 'Sistema',
       field: field,
@@ -63,7 +62,6 @@ export const eventService = {
       time: timestamp
     };
 
-    // Objeto base de metadados
     const baseUpdate = {
       lastEditBy: userData?.name || 'Sistema',
       timestamp: timestamp,

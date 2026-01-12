@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, collection, onSnapshot, query, where } from '../firebase';
 import { eventService } from '../services/eventService';
+import AtaPage from './AtaPage';
+import DashEventPage from './DashEventPage';
 import toast from 'react-hot-toast';
-import { Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home } from 'lucide-react';
+import { 
+  Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   const [events, setEvents] = useState([]);
@@ -16,6 +21,7 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   const [cidades, setCidades] = useState([]);
   const [comuns, setComuns] = useState([]);
   
+  // REGRA DE OURO: Inicializa com os dados do perfil do usuário
   const [selectedCityId, setSelectedCityId] = useState(userData?.cidadeId || '');
   const [selectedChurchId, setSelectedChurchId] = useState(userData?.comumId || '');
 
@@ -34,17 +40,15 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
       setCidades(list);
 
       if (isRegional) {
-        if (list.length > 0) {
-          const firstCity = list[0].id;
-          setSelectedCityId(firstCity);
-        } else {
-          setSelectedCityId('');
-          setSelectedChurchId(''); 
+        if (!selectedCityId && list.length > 0) {
+          setSelectedCityId(list[0].id);
         }
+      } else {
+        setSelectedCityId(userData?.cidadeId);
       }
     });
     return () => unsub();
-  }, [activeRegionalId]);
+  }, [activeRegionalId, isRegional, selectedCityId]); 
 
   // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM
   useEffect(() => {
@@ -69,12 +73,14 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         } else {
           setSelectedChurchId('');
         }
+      } else {
+        setSelectedChurchId(userData?.comumId);
       }
     });
     return () => unsub();
-  }, [selectedCityId]);
+  }, [selectedCityId, isLocal, selectedChurchId, userData?.comumId]);
 
-  // 3. BUSCA PROFUNDA DE ENSAIOS: /comuns/{selectedChurchId}/events
+  // 3. BUSCA PROFUNDA DE ENSAIOS
   useEffect(() => {
     if (!selectedChurchId) {
       setEvents([]);
@@ -90,7 +96,7 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         return ev.regionalId === activeRegionalId || 
                ev.regionalId === "JUNDIAÍ" || 
                ev.regionalId === "regional_jundiai" ||
-               !ev.regionalId; // Fallback para não perder dados legados
+               !ev.regionalId; 
       });
 
       setEvents(filtered);
@@ -117,19 +123,27 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   const toggleYear = (year) => setOpenYears(prev => ({ ...prev, [year]: !prev[year] }));
   
   const formatMonth = (dateStr) => {
+    if (!dateStr || typeof dateStr !== 'string' || !dateStr.includes('-')) return '---';
     const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const m = parseInt(dateStr.split('-')[1]) - 1;
+    const parts = dateStr.split('-');
+    const m = parseInt(parts[1]) - 1;
     return months[m] || '---';
   };
 
   const handleCreate = async () => {
     if (!selectedChurchId) return toast.error("Selecione uma comum");
+    
+    // BUSCA O NOME AMIGÁVEL DA COMUM (Ponte São João) PARA O PRÓXIMO EVENTO
+    const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
+    const nomeRealDaComum = comumSelecionada?.nome || userData?.comum || "LOCALIDADE";
+
     try {
       await eventService.createEvent(selectedChurchId, {
         type: newEventType,
         date: newEventDate,
         responsavel: responsavel || 'Pendente',
-        regionalId: activeRegionalId 
+        regionalId: activeRegionalId,
+        comumNome: nomeRealDaComum.toUpperCase() // SALVA O TEXTO E NÃO O CÓDIGO
       });
       setShowModal(false);
       toast.success("Ensaio criado!");
@@ -148,9 +162,8 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium">
       
-      {/* SELETORES DISCRETOS COM SINCRONIZAÇÃO TOTAL */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${!isRegional ? 'opacity-50' : ''}`}>
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${!isRegional ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
           <select 
             disabled={!isRegional}
@@ -162,10 +175,10 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
           </select>
         </div>
 
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${isLocal ? 'opacity-50' : ''}`}>
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${!isRegional && !userData?.escopoCidade ? 'opacity-50 pointer-events-none' : ''}`}>
           <Home size={10} className="text-blue-600 shrink-0" />
           <select 
-            disabled={isLocal}
+            disabled={!isRegional && !userData?.escopoCidade}
             value={selectedChurchId} 
             onChange={(e) => setSelectedChurchId(e.target.value)}
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
@@ -187,7 +200,6 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         </div>
       )}
 
-      {/* LISTAGEM DE ENSAIOS */}
       <div className="space-y-8 max-w-md mx-auto">
         {years.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm">
@@ -211,8 +223,8 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
                     <div key={e.id} onClick={() => onSelectEvent(e.id)} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex justify-between items-center shadow-sm active:scale-95 transition-all relative overflow-hidden group">
                       <div className={`absolute left-0 top-0 h-full w-1.5 ${e.ata?.status === 'closed' ? 'bg-slate-300' : 'bg-amber-500'}`} />
                       <div className="flex items-center gap-5">
-                        <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-[1.8rem] leading-none border-2 ${e.ata?.status === 'closed' ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-950 text-slate-950 shadow-md'}`}>
-                          <span className="text-2xl font-[900] italic">{e.date?.split('-')[2]}</span>
+                        <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-[1.8rem] border-2 ${e.ata?.status === 'closed' ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-950 text-slate-950 shadow-md'}`}>
+                          <span className="text-2xl font-[900] italic">{e.date?.split('-')[2] || '--'}</span>
                           <span className="text-[8px] font-black uppercase mt-1 tracking-widest">{formatMonth(e.date)}</span>
                         </div>
                         <div className="text-left leading-none">
@@ -237,7 +249,6 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         )}
       </div>
 
-      {/* MODAL DE CRIAÇÃO PRESERVADO */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-[340px] rounded-[3rem] p-8 shadow-2xl relative text-left overflow-hidden border border-white/20">
@@ -266,7 +277,6 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO PRESERVADO */}
       {eventToDelete && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6 animate-in zoom-in duration-200">
           <div className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl relative border border-slate-100">

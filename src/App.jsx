@@ -85,7 +85,7 @@ function App() {
     }
   };
 
-  // 1. MONITOR DE AUTENTICAÇÃO
+  // 1. MONITOR DE AUTENTICAÇÃO (Sincronização de Identidade Corrigida)
   useEffect(() => {
     let unsubSnap = null;
     const unsubAuth = onAuthStateChanged(auth, u => {
@@ -94,18 +94,25 @@ function App() {
         unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
-            setUserData(data);
+            
+            // GARANTIA DE IDENTIDADE: Injeta o UID real do login nos campos de ID do estado
+            const userWithId = { ...data, uid: u.uid, id: u.uid };
+            setUserData(userWithId);
 
-            // Recupera a última comum selecionada pelo Master
-            const savedId = localStorage.getItem('activeComumId');
-            const savedName = localStorage.getItem('activeComumName');
+            // REGRA: Prioriza sempre os dados cadastrados no perfil para abrir na sua própria localidade
+            const initialComumId = data.comumId || localStorage.getItem('activeComumId');
+            const initialComumName = data.comum || localStorage.getItem('activeComumName');
+            const initialRegionalId = data.regionalId || localStorage.getItem('activeRegionalId');
 
-            if (data.isMaster && savedId) {
-              setActiveComumId(savedId);
-              setActiveComumName(savedName);
+            if (data.isMaster && localStorage.getItem('activeComumId')) {
+              // Se for Master, mantém a navegação livre anterior
+              setActiveComumId(localStorage.getItem('activeComumId'));
+              setActiveComumName(localStorage.getItem('activeComumName'));
             } else {
-              setActiveComumId(data.comumId);
-              setActiveComumName(data.comum);
+              // Usuário comum sempre abre no dele
+              setActiveComumId(initialComumId);
+              setActiveComumName(initialComumName);
+              if (initialRegionalId) setActiveRegionalId(initialRegionalId);
             }
 
             setView(data.approved || data.isMaster ? 'lobby' : 'waiting-approval');
@@ -130,7 +137,6 @@ function App() {
   useEffect(() => {
     if (!comumIdEfetivo) return;
     
-    // Consulta simplificada para evitar erro de índice e trazer dados antigos/legados
     const q = query(
       collection(db, 'comuns', comumIdEfetivo, 'events'), 
       orderBy('date', 'desc')
@@ -139,12 +145,11 @@ function App() {
     return onSnapshot(q, (snapshot) => {
       const todosEventos = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // Filtro de isolamento Regional inteligente (Aceita ID Master e Legados)
       const filtrados = todosEventos.filter(ev => {
         return ev.regionalId === activeRegionalId || 
                ev.regionalId === "JUNDIAÍ" || 
                ev.regionalId === "regional_jundiai" ||
-               !ev.regionalId; // Mostra o que não tem carimbo para não perder dado
+               !ev.regionalId; 
       });
 
       setEvents(filtrados);
@@ -171,7 +176,6 @@ function App() {
     if (isMaster || userData?.escopoRegional || userData?.escopoCidade) {
       const qP = query(collection(db, 'users'), where('approved', '==', false));
       unsubPendentes = onSnapshot(qP, (s) => {
-        // Filtro manual de pendências por regional ativa
         const list = s.docs.filter(d => d.data().regionalId === activeRegionalId);
         setPendentesCount(list.length);
       });

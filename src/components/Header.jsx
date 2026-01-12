@@ -84,7 +84,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
   return (
     <>
       <div className="sticky top-0 z-[100] bg-white/90 backdrop-blur-md border-b border-slate-200/60 px-6 py-4 flex justify-between items-center shadow-sm">
-        {/* TÍTULO INTERATIVO - ALTERADO PARA "REGIONAL" E REMOÇÃO DO TEXTO CINZA */}
+        {/* TÍTULO INTERATIVO - REGRAS DE CONTEXTO APLICADAS  */}
         <div 
           onClick={() => isMaster && setIsRegionalSelectorOpen(true)}
           className={`flex flex-col items-start leading-none text-left ${isMaster ? 'cursor-pointer active:scale-95 transition-all' : ''}`}
@@ -160,7 +160,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: SELETOR DE CONTEXTO REGIONAL (ROOT ONLY) */}
+      {/* MODAL: SELETOR DE CONTEXTO REGIONAL (ROOT ONLY) [cite: 638-643] */}
       <AnimatePresence>
         {isRegionalSelectorOpen && (
           <div className="fixed inset-0 z-[600] flex items-start justify-center p-4 pt-20">
@@ -190,7 +190,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: MEU PERFIL (EDIÇÃO) */}
+      {/* MODAL: MEU PERFIL (EDIÇÃO) [cite: 644-651] */}
       <AnimatePresence>
         {isEditUserModalOpen && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 text-left">
@@ -228,7 +228,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: GESTÃO DE REGIONAIS (SÓ MASTER VÊ) */}
+      {/* MODAL: GESTÃO DE REGIONAIS (SÓ MASTER VÊ) [cite: 652-657] */}
       <AnimatePresence>
         {isRegionalManagerOpen && podeGerenciarInfraRoot && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 text-left">
