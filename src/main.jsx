@@ -1,7 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import './index.css' // Conecta o design e Tailwind v4
+// Ajuste de caminho: Referência relativa correta saindo de /src
+import './styles/index.css' 
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -10,7 +11,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 
 // REGISTRO DO SERVICE WORKER (PWA)
-if ('serviceWorker' in navigator) {
+// Mantido apenas para produção para evitar erros de cache (Response error) no desenvolvimento local
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then(reg => console.log('PWA: Service Worker Ativo', reg.scope))

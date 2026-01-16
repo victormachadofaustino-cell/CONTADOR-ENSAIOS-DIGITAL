@@ -1,4 +1,4 @@
-import { db, doc, setDoc, collection, addDoc, deleteDoc, query, orderBy, onSnapshot } from '../firebase';
+import { db, doc, setDoc, collection, addDoc, deleteDoc, query, orderBy, onSnapshot, getDocs } from '../config/firebase';
 import { deleteField, arrayUnion } from "firebase/firestore";
 
 /**
@@ -19,18 +19,50 @@ export const eventService = {
     });
   },
 
-  // Cria um novo ensaio amarrado à Regional Ativa
+  // Cria um novo ensaio amarrado à Regional Ativa e injeta instrumentos da Configuração Local
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
-    const { type, date, responsavel, regionalId } = eventData;
+    const { type, date, responsavel, regionalId, comumNome } = eventData;
+    
+    let initialCounts = {};
+
+    try {
+      // BUSCA EXCLUSIVAMENTE NA CONFIGURAÇÃO DA SUA COMUM
+      const configRef = collection(db, 'comuns', comumId, 'instrumentos_config');
+      const configSnap = await getDocs(configRef);
+
+      if (!configSnap.empty) {
+        // Se houver configuração nos Ajustes, prepara os instrumentos
+        const instrumentosBase = configSnap.docs.map(d => d.data());
+        
+        instrumentosBase.forEach(inst => {
+          if (inst.id) {
+            initialCounts[inst.id] = {
+              total: 0,
+              comum: 0,
+              enc: 0,
+              irmas: 0,
+              name: inst.name || inst.id.toUpperCase(),
+              section: inst.section || 'GERAL',
+              evalType: inst.evalType || 'Sem'
+            };
+          }
+        });
+      } 
+      // Fallback Nacional removido para respeitar o isolamento local
+      
+    } catch (err) {
+      console.error("Erro ao carregar base de instrumentos para o novo evento:", err);
+    }
     
     return await addDoc(collection(db, 'comuns', comumId, 'events'), {
       type: type || 'Ensaio Local',
       date,
       responsavel: responsavel || 'Pendente',
+      comumNome: comumNome || '',
       regionalId, 
       ata: { status: 'open' },
-      counts: {},
+      counts: initialCounts, // Injeta vazio se não houver Ajustes configurados
       createdAt: Date.now()
     });
   },

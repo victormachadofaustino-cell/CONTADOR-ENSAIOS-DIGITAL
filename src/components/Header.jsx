@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, doc, updateDoc, auth, collection, onSnapshot, addDoc, deleteDoc, query, where } from '../firebase';
+import { db, doc, updateDoc, auth, collection, onSnapshot, addDoc, deleteDoc, query, where } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { 
   User, Settings, LogOut, ChevronRight, Check, 
@@ -20,25 +20,37 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
   const [tempName, setTempName] = useState(userData?.name || '');
   const [tempRole, setTempRole] = useState(userData?.role || '');
 
-  // DEFINIÇÃO DE PODER (A CASCATA)
   const isMaster = userData?.isMaster === true;
-  const isRegional = userData?.escopoRegional === true;
-  const isCidade = userData?.escopoCidade === true;
-  const isGEM = userData?.escopoLocal === true;
+  // Identifica se o usuário é estritamente local para travar a identidade visual
+  const isLocalOnly = !isMaster && !userData?.escopoRegional && !userData?.escopoCidade && userData?.escopoLocal;
 
-  // REGRAS DE VISIBILIDADE (Não vê o que está acima)
-  const podeGerenciarInfraRoot = isMaster; 
-  const podeVerFlagsDeHierarquia = isMaster;
-
+  // BLOQUEIO DE SEGURANÇA: Só tenta ler o banco se houver um usuário autenticado e for Master
   useEffect(() => {
-    if (!isMaster) return;
-    const unsub = onSnapshot(collection(db, 'config_regional'), (s) => {
-      setListaRegionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    if (!auth.currentUser || !isMaster) {
+      setListaRegionais([]);
+      return;
+    }
+
+    const unsub = onSnapshot(collection(db, 'config_regional'), 
+      (s) => {
+        setListaRegionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (error) => {
+        // Silencia erro de permissão no console durante o processo de auth
+        console.log("Aguardando validação de nível Master...");
+      }
+    );
     return () => unsub();
   }, [isMaster]);
 
-  const handleLogout = () => { signOut(auth); toast.success("Sessão encerrada"); };
+  const handleLogout = async () => { 
+    try {
+      await signOut(auth); 
+      toast.success("Sessão encerrada"); 
+    } catch (e) {
+      toast.error("Erro ao sair");
+    }
+  };
 
   const handleUpdateUserData = async () => {
     try {
@@ -60,10 +72,13 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
 
   const handleCreateRegional = async (e) => {
     e.preventDefault();
-    if (!podeGerenciarInfraRoot) return toast.error("Acesso restrito ao Master");
+    if (!isMaster) return toast.error("Acesso restrito");
     if (!newRegionalName.trim()) return toast.error("Digite o nome");
     try {
-      await addDoc(collection(db, 'config_regional'), { nome: newRegionalName.toUpperCase().trim(), createdAt: Date.now() });
+      await addDoc(collection(db, 'config_regional'), { 
+        nome: newRegionalName.toUpperCase().trim(), 
+        createdAt: Date.now() 
+      });
       setNewRegionalName('');
       toast.success("Regional Ativada!");
     } catch (e) { toast.error("Erro ao criar"); }
@@ -84,23 +99,37 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
   return (
     <>
       <div className="sticky top-0 z-[100] bg-white/90 backdrop-blur-md border-b border-slate-200/60 px-6 py-4 flex justify-between items-center shadow-sm">
-        {/* TÍTULO INTERATIVO - REGRAS DE CONTEXTO APLICADAS  */}
-        <div 
-          onClick={() => isMaster && setIsRegionalSelectorOpen(true)}
-          className={`flex flex-col items-start leading-none text-left ${isMaster ? 'cursor-pointer active:scale-95 transition-all' : ''}`}
-        >
-          <span className="text-[10px] font-black text-blue-600 uppercase italic tracking-tighter flex items-center gap-1">
-            Regional
-            {isMaster && <ChevronDown size={10} strokeWidth={4} />}
-          </span>
-          <h1 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight truncate max-w-[200px]">
-            {/* AJUSTE: Prioriza o Nome Amigável da Regional em vez de IDs */}
-            {userData?.activeRegionalName || userData?.regional || "Selecionar Regional"}
-          </h1>
+        
+        <div className="flex items-center gap-3">
+          {/* LOGOTIPO COM TRATAMENTO DE ERRO DE CARREGAMENTO */}
+          <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 overflow-hidden shadow-inner">
+            <img 
+              src="/assets/Logo_oficial_CCB.png" 
+              alt="CCB" 
+              className="w-8 h-8 object-contain"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentElement.innerHTML = '<span class="text-[10px] font-black text-slate-400 italic">CCB</span>';
+              }}
+            />
+          </div>
+
+          <div 
+            onClick={() => isMaster && setIsRegionalSelectorOpen(true)}
+            className={`flex flex-col items-start leading-none text-left ${isMaster ? 'cursor-pointer active:scale-95 transition-all' : ''}`}
+          >
+            <span className="text-[10px] font-black text-blue-600 uppercase italic tracking-tighter flex items-center gap-1">
+              {isLocalOnly ? 'Localidade' : 'Regional'}
+              {isMaster && <ChevronDown size={10} strokeWidth={4} />}
+            </span>
+            <h1 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight truncate max-w-[180px]">
+              {isLocalOnly ? (userData?.comum || "Vila Rui Barbosa") : (userData?.activeRegionalName || userData?.regional || "Selecionar Regional")}
+            </h1>
+          </div>
         </div>
 
         <button onClick={() => setIsProfileOpen(true)} className="w-10 h-10 bg-slate-950 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all border-2 border-white ring-1 ring-slate-100">
-          <span className="font-black italic text-xs uppercase">{userData?.name?.charAt(0)}</span>
+          <span className="font-black italic text-xs uppercase">{userData?.name?.charAt(0) || 'U'}</span>
         </button>
       </div>
 
@@ -113,7 +142,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
               <div className="p-8 bg-slate-950 text-white rounded-bl-[3rem] shadow-xl relative">
                 <div className="flex justify-between items-start mb-6">
                   <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center text-2xl font-black italic border border-white/10 text-amber-500 shadow-inner">
-                    {userData?.name?.charAt(0)}
+                    {userData?.name?.charAt(0) || 'U'}
                   </div>
                   <button onClick={() => setIsProfileOpen(false)} className="p-2 bg-white/5 rounded-xl text-white/40"><X size={20}/></button>
                 </div>
@@ -135,7 +164,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
                   <ChevronRight size={14} className="text-slate-300"/>
                 </button>
 
-                {podeGerenciarInfraRoot && (
+                {isMaster && (
                   <button onClick={() => setIsRegionalManagerOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-slate-200 flex justify-between items-center active:scale-95 shadow-sm">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Building size={16}/></div>
@@ -161,7 +190,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL: SELETOR DE CONTEXTO REGIONAL (ROOT ONLY) */}
+      {/* MODAL: SELETOR DE CONTEXTO REGIONAL (MASTER ONLY) */}
       <AnimatePresence>
         {isRegionalSelectorOpen && (
           <div className="fixed inset-0 z-[600] flex items-start justify-center p-4 pt-20">
@@ -203,7 +232,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
                   <input className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-950 text-xs border border-transparent outline-none uppercase italic" value={tempName} onChange={e => setTempName(e.target.value)} />
                 </div>
                 
-                {podeVerFlagsDeHierarquia && (
+                {isMaster && (
                   <>
                     <div className="space-y-1">
                       <p className="text-[8px] font-black text-slate-400 uppercase italic ml-1">Cargo</p>
@@ -212,7 +241,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
                       </select>
                     </div>
                     <div className="space-y-2 pt-2 border-t border-slate-50">
-                      <p className="text-[8px] font-black text-blue-600 uppercase italic ml-1 tracking-widest"> डीएनए Hierarquia</p>
+                      <p className="text-[8px] font-black text-blue-600 uppercase italic ml-1 tracking-widest">Controle de Hierarquia</p>
                       <JurisdictionItem label="Master Root" active={userData?.isMaster} icon={<Shield size={16}/>} onClick={() => toggleFlag('isMaster', userData?.isMaster)} canEdit={true} isAmber />
                       <div className="grid grid-cols-1 gap-2 pt-1">
                         <JurisdictionItem label="Regional" active={userData?.escopoRegional} icon={<Globe size={16}/>} onClick={() => toggleFlag('escopoRegional', userData?.escopoRegional)} canEdit={true} />
@@ -231,7 +260,7 @@ const Header = ({ userData, onChurchChange, onRegionalChange }) => {
 
       {/* MODAL: GESTÃO DE REGIONAIS (SÓ MASTER VÊ) */}
       <AnimatePresence>
-        {isRegionalManagerOpen && podeGerenciarInfraRoot && (
+        {isRegionalManagerOpen && isMaster && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 text-left">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsRegionalManagerOpen(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white rounded-[3.5rem] p-8 shadow-2xl flex flex-col max-h-[85vh]">

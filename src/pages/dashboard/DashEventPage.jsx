@@ -5,7 +5,8 @@ import {
   Share2, Activity, PieChart, 
   CheckCircle2, Info, ShieldCheck, Users, FileText
 } from 'lucide-react';
-import { pdfEventService } from '../services/pdfEventService';
+// CORREÇÃO DE CAMINHO: Subindo dois níveis para acessar a pasta services
+import { pdfEventService } from '../../services/pdfEventService';
 
 const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   // NOTA: No seu log, ataData é o conteúdo do campo 'ata' do documento do evento.
@@ -48,7 +49,7 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
     totals.orquestra = totals.musicos + totals.organistas;
     totals.geral = totals.orquestra + totals.irmandade;
 
-    // 2. REGRAS DE MINISTÉRIO E VISITAS (Lendo exatamente do seu Log)
+    // 2. REGRAS DE MINISTÉRIO E VISITAS
     const CARGOS_ESTATISTICOS = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Examinadoras'];
     
     // A. VISITANTES (Vem da lista 'visitantes' dentro da ata)
@@ -61,7 +62,6 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
           if (cargo === 'Encarregado Local') totals.encLocal++;
           if (cargo.includes('Examinadora')) totals.examinadoras++;
         } else {
-          // Se não é encarregado/examinadora, é Ministério conforme sua regra
           totals.ministerio++;
         }
       });
@@ -82,7 +82,7 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
       });
     }
 
-    // 3. CONTAGEM DE HINOS (Lendo a estrutura 'partes' do seu Log)
+    // 3. CONTAGEM DE HINOS
     if (ataData?.partes && Array.isArray(ataData.partes)) {
       let hTotal = 0;
       ataData.partes.forEach(p => {
@@ -99,8 +99,8 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
 
   const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
 
-  // TRAVA DE SEGURANÇA: Cidade para cima (Regional, Master ou Cidade)
-  const canExport = userData?.escopoRegional || userData?.isMaster || userData?.escopoCidade;
+  // TRAVA DE SEGURANÇA CORRIGIDA: Liberado para Local/GEM se for admin (Secretário)
+  const canExport = userData?.isMaster || userData?.escopoRegional || userData?.escopoCidade || (userData?.escopoLocal && isAdmin);
 
   const handleShareRelatorio = async () => {
     const bairro = userData?.comum || "Localidade";
@@ -116,7 +116,7 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   };
 
   const handleExportPDF = () => {
-    if (!canExport) return toast.error("Acesso restrito ao Ministério");
+    if (!canExport) return toast.error("Acesso restrito");
     try {
       pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts);
       toast.success("PDF Gerado com sucesso!");
@@ -139,8 +139,8 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
             </h3>
           </div>
           
-          {/* TRAVA DE SEGURANÇA NO BOTÃO: APENAS ADMIN E NÍVEL CIDADE+ */}
-          {isAdmin && canExport && (
+          {/* BOTÕES LIBERADOS PARA SECRETÁRIO/ADMIN (NÍVEL LOCAL/GEM INCLUSO) */}
+          {canExport && (
             <div className="flex gap-2">
               <button onClick={handleExportPDF} className="bg-white/10 p-3 rounded-xl text-blue-400 active:scale-90 transition-all border border-white/5">
                 <FileText size={20} />
@@ -223,7 +223,7 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   );
 };
 
-// Componentes internos preservados
+// COMPONENTES AUXILIARES PRESERVADOS
 const StatCard = ({ title, value, color, icon }) => (
   <div className="bg-white p-4 rounded-[1.8rem] border border-slate-100 shadow-sm flex flex-col items-center">
     <div className="flex items-center gap-1.5 mb-1.5">

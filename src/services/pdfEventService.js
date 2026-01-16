@@ -8,19 +8,19 @@ export const pdfEventService = {
     const margin = 10;
 
     // 1. DEFINIÇÃO DE IDENTIDADE (Prioriza o nome gravado no evento após o 'save')
-    const nomeComum = (ataData?.comumNome || userData?.comum || "PONTE SÃO JOÃO").toUpperCase();
+    const nomeComum = (ataData?.comumNome || userData?.comum || "LOCALIDADE").toUpperCase();
     const nomeCidade = (userData?.cidade || "JUNDIAÍ").toUpperCase();
     const regional = (userData?.activeRegionalName || "JUNDIAÍ").toUpperCase();
     
-    // 2. TRATAMENTO DE DATAS (Data do ensaio rHdOZybAQjfTMGez6JNA -> 2026-01-17)
-    const dataRef = ataData?.date || "2026-01-17"; 
+    // 2. TRATAMENTO DE DATAS
+    const dataRef = ataData?.date || new Date().toISOString().split('T')[0]; 
     const [ano, mes, dia] = dataRef.split('-');
     const dataFormatada = `${dia}/${mes}/${ano}`;
     const dataISO = `${ano}-${mes}-${dia}`;
 
     // --- 3. CABEÇALHO ---
     try {
-      // AJUSTE DEFINITIVO DO LOGO: Dimensões de 18mm x 28mm para manter a proporção vertical oficial sem achatar
+      // Mantendo proporção vertical oficial sem achatar
       doc.addImage('/assets/Logo_oficial_CCB.png', 'PNG', margin, 8, 48, 26);
     } catch (e) { console.warn("Logo não encontrada"); }
 
@@ -37,7 +37,7 @@ export const pdfEventService = {
     doc.text(`DATA: ${dataFormatada}`, pageWidth - margin, 38, { align: "right" });
     doc.line(margin, 39, pageWidth - margin, 39);
 
-    // --- 4. COLUNA ESQUERDA: INSTRUMENTOS E ORGANISTAS ---
+    // --- 4. COLUNA ESQUERDA: INSTRUMENTOS E ORGANISTAS (Sincronizado com Banco Saneado) ---
     const instrumentOrder = [
       { n: '01', name: 'VIOLINO', key: 'violino' },
       { n: '02', name: 'VIOLA', key: 'viola' },
@@ -46,14 +46,14 @@ export const pdfEventService = {
       { n: '05', name: 'OBOÉ', key: 'oboe' },
       { n: '06', name: 'FAGOTE', key: 'fagote' },
       { n: '07', name: 'CLARINETE', key: 'clarinete' },
-      { n: '08', name: 'CLARONE ALTO', key: 'claronealto' },
-      { n: '09', name: 'CLARONE BAIXO', key: 'claronebaixo' },
-      { n: '11', name: 'SAX SOPRANO', key: 'saxsoprano' },
-      { n: '12', name: 'SAX ALTO', key: 'saxalto' },
-      { n: '13', name: 'SAX TENOR', key: 'saxtenor' },
-      { n: '14', name: 'SAX BARÍTONO', key: 'saxbaritono' },
+      { n: '08', name: 'CLARONE ALTO', key: 'clarone_alto' },
+      { n: '09', name: 'CLARONE BAIXO', key: 'clarone_baixo' },
+      { n: '11', name: 'SAX SOPRANO', key: 'sax_soprano' },
+      { n: '12', name: 'SAX ALTO', key: 'sax_alto' },
+      { n: '13', name: 'SAX TENOR', key: 'sax_tenor' },
+      { n: '14', name: 'SAX BARÍTONO', key: 'sax_baritono' },
       { n: '16', name: 'TROMPETE', key: 'trompete' },
-      { n: '17', name: 'FLUGELHORN', key: 'flugel' },
+      { n: '17', name: 'FLUGELHORN', key: 'flugelhorn' },
       { n: '18', name: 'TROMPA', key: 'trompa' },
       { n: '19', name: 'TROMBONE', key: 'trombone' },
       { n: '20', name: 'EUFÔNIO', key: 'eufonio' },
@@ -79,12 +79,15 @@ export const pdfEventService = {
     });
 
     // Tabela Organistas logo abaixo
+    const orgTotal = Number(stats.organistas) || 0;
+    const orgComum = Number(counts?.orgao?.comum) || (orgTotal - (Number(stats.orgVisitas) || 0));
+    
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 5,
       margin: { right: pageWidth / 2 + 2 },
       head: [['Nº', 'ORGANISTAS', 'COMUM', 'VISITAS', 'TOTAL']],
       body: [
-        ['27', 'ORGANISTAS', Number(stats.organistas) - (Number(stats.orgVisitas) || 0), Number(stats.orgVisitas) || 0, Number(stats.organistas) || 0],
+        ['27', 'ORGANISTAS', orgComum, Math.max(0, orgTotal - orgComum), orgTotal],
         ['28', 'EXAMINADORAS', '-', '-', Number(stats.examinadoras) || 0]
       ],
       theme: 'grid',
@@ -121,7 +124,7 @@ export const pdfEventService = {
     ]);
 
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 8,
+      startY: doc.lastAutoTable.finalY + 2,
       margin: { left: rightColX },
       head: [['PARTE', 'CONDUTOR', 'HINOS']],
       body: andamentoRows,
@@ -136,9 +139,9 @@ export const pdfEventService = {
       margin: { left: rightColX },
       head: [['NAIPE', 'QTD / %', 'REF. MOO']],
       body: [
-        ['CORDAS', `${stats.cordas} (${((stats.cordas / stats.musicos) * 100 || 0).toFixed(0)}%)`, '50%'],
-        ['MADEIRAS*', `${stats.madeiras + stats.sax} (${(((stats.madeiras + stats.sax) / stats.musicos) * 100 || 0).toFixed(0)}%)`, '25%'],
-        ['METAIS', `${stats.metais} (${((stats.metais / stats.musicos) * 100 || 0).toFixed(0)}%)`, '25%']
+        ['CORDAS', `${stats.cordas} (${((stats.cordas / Math.max(1, stats.musicos)) * 100).toFixed(0)}%)`, '50%'],
+        ['MADEIRAS*', `${stats.madeiras + stats.sax} (${(((stats.madeiras + stats.sax) / Math.max(1, stats.musicos)) * 100).toFixed(0)}%)`, '25%'],
+        ['METAIS', `${stats.metais} (${((stats.metais / Math.max(1, stats.musicos)) * 100).toFixed(0)}%)`, '25%']
       ],
       theme: 'grid',
       styles: { fontSize: 7, font: "times" },
@@ -147,6 +150,7 @@ export const pdfEventService = {
 
     // --- 6. TOTAIS E MINISTÉRIO ---
     const finalY = Math.max(colEsquerdaY, doc.lastAutoTable.finalY) + 12;
+    doc.setFont("times", "bold");
     doc.setFontSize(9);
     doc.text(`TOTAL ORQUESTRA (MÚSICOS + ORGANISTAS): ${Number(stats.musicos) + Number(stats.organistas)}`, margin, finalY);
     doc.text(`TOTAL GERAL (COM IRMANDADE): ${Number(stats.geral)}`, margin, finalY + 5);
@@ -166,6 +170,7 @@ export const pdfEventService = {
 
     // --- 7. RODAPÉ ---
     doc.setFontSize(7);
+    doc.setFont("times", "normal");
     doc.text(`Secretaria de Musica Regional ${regional} - Relatório Gerado por: ${userData?.name?.toUpperCase() || "SISTEMA"}`, pageWidth / 2, 285, { align: "center" });
 
     // EXTRAÇÃO: aaaa-mm-dd - Ata [comum] - Ensaio Local

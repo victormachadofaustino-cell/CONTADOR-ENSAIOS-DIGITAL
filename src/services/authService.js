@@ -3,7 +3,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, sendEmailVerification 
-} from '../firebase';
+} from '../config/firebase';
 
 /**
  * Serviço de Autenticação e Gestão de Usuários

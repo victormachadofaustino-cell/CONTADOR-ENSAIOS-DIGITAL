@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { db, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, query, where } from '../../firebase';
+// CORREÇÃO: Certificando que as coleções comuns e config_cidades sejam lidas corretamente
+import { db, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, query, where } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { Building2, MapPin, Clock, ChevronDown, Plus, Trash2, Globe, Home, X, Check, Shield, Calendar, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ModuleChurch = ({ isMaster, userData }) => {
+  // AJUSTE DE REGRAS DE VISIBILIDADE
+  const isComissao = isMaster || (userData?.escopoRegional && userData?.membroComissao);
   const hasRegionalScope = userData?.escopoRegional === true || isMaster;
-  const hasCityScope = userData?.escopoCidade === true;
+  const hasCityScope = userData?.escopoCidade === true || userData?.role === 'Encarregado Regional';
+  const isLocalOnly = !hasRegionalScope && !hasCityScope && userData?.escopoLocal === true;
 
-  // CAPTURA DO ID ALFANUMÉRICO DA REGIONAL (Cérebro de Isolamento)
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
 
   const [cidades, setCidades] = useState([]);
@@ -22,34 +25,44 @@ const ModuleChurch = ({ isMaster, userData }) => {
   const diasSemana = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
   const cargosOrdem = ['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM', 'Encarregado Regional', 'Examinadora', 'Encarregado Local'];
 
-  // 1. Monitorar Cidades FILTRADAS POR REGIONAL (Isolamento total)
+  // 1. Monitorar Cidades com Trava Hierárquica
   useEffect(() => {
     if (!activeRegionalId) return;
     const q = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
-    return onSnapshot(q, (s) => setCidades(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, [activeRegionalId]);
+    return onSnapshot(q, (s) => {
+      const list = s.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // CORREÇÃO: Se não for Comissão, filtra para ver apenas a própria cidade
+      const filtrada = isComissao ? list : list.filter(c => c.id === userData?.cidadeId);
+      
+      setCidades(filtrada);
+      // Abre automaticamente se houver apenas uma cidade (caso do Regional não-comissão)
+      if (!isComissao && filtrada.length > 0) setOpenCityId(filtrada[0].id);
+    });
+  }, [activeRegionalId, isComissao, userData]);
 
-  // 2. Monitorar Comuns FILTRADAS POR REGIONAL
+  // 2. Monitorar Comuns
   useEffect(() => {
     if (!activeRegionalId) return;
-    const q = query(collection(db, 'config_comum'), where('regionalId', '==', activeRegionalId));
+    const q = query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId));
     return onSnapshot(q, (s) => {
-      setComuns(s.docs.map(d => ({
+      const list = s.docs.map(d => ({
         id: d.id,
         ...d.data(),
-        comum: d.data().comum || d.data().nome || d.data().bairro || "SEM NOME"
-      })));
+        comum: d.data().comum || d.data().nome || "SEM NOME"
+      }));
+      // Filtra comuns se o usuário for apenas local
+      const filtrada = isLocalOnly ? list.filter(c => c.id === userData?.comumId) : list;
+      setComuns(filtrada);
     });
-  }, [activeRegionalId]);
+  }, [activeRegionalId, isLocalOnly, userData]);
 
   const handleCreateCity = async () => {
     if (!newCityName.trim()) return toast.error("Preencha o nome da cidade");
-    const cityId = newCityName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
     try {
       await addDoc(collection(db, 'config_cidades'), { 
-        id: cityId, 
         nome: newCityName.toUpperCase(), 
-        regionalId: activeRegionalId // Vincula ao ID alfanumérico Master
+        regionalId: activeRegionalId 
       });
       setNewCityName('');
       toast.success("Cidade Criada!");
@@ -59,10 +72,10 @@ const ModuleChurch = ({ isMaster, userData }) => {
   const handleCreateChurch = async (cityId) => {
     if (!newChurchName.trim()) return toast.error("Preencha o nome da comum");
     try {
-      await addDoc(collection(db, 'config_comum'), { 
+      await addDoc(collection(db, 'comuns'), { 
         comum: newChurchName.toUpperCase(), 
         cidadeId: cityId,
-        regionalId: activeRegionalId, // Vincula ao ID alfanumérico Master
+        regionalId: activeRegionalId,
         diasSelecao: [],
         horaCulto: "19:30",
         ensaioLocal: "",
@@ -76,7 +89,8 @@ const ModuleChurch = ({ isMaster, userData }) => {
 
   return (
     <div className="space-y-4 text-left">
-      {hasRegionalScope && (
+      {/* Somente Comissão/Master cria cidades */}
+      {isComissao && (
         <div className="bg-slate-950 p-5 rounded-[2.2rem] shadow-xl space-y-3 mb-6">
           <p className="text-[7px] font-black text-blue-400 uppercase tracking-[0.2em] italic ml-1">Jurisdição Municipal</p>
           <div className="flex gap-2 items-center">
@@ -89,7 +103,11 @@ const ModuleChurch = ({ isMaster, userData }) => {
       <div className="space-y-3">
         {cidades.map(city => (
           <div key={city.id} className="bg-white rounded-[2.2rem] border border-slate-100 shadow-sm overflow-hidden">
-            <button onClick={() => setOpenCityId(openCityId === city.id ? null : city.id)} className="w-full p-5 flex justify-between items-center active:bg-slate-50 transition-colors">
+            <button 
+              disabled={!isComissao} // Regional não-comissão não precisa fechar a única cidade dele
+              onClick={() => setOpenCityId(openCityId === city.id ? null : city.id)} 
+              className="w-full p-5 flex justify-between items-center active:bg-slate-50 transition-colors"
+            >
               <div className="flex items-center gap-4 text-left leading-none">
                 <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl shadow-inner"><Globe size={16}/></div>
                 <div>
@@ -97,12 +115,13 @@ const ModuleChurch = ({ isMaster, userData }) => {
                    <span className="font-[900] text-slate-950 uppercase italic text-xs tracking-tight">{city.nome}</span>
                 </div>
               </div>
-              <ChevronDown size={16} className={`text-slate-300 transition-transform ${openCityId === city.id ? 'rotate-180' : ''}`}/>
+              {isComissao && <ChevronDown size={16} className={`text-slate-300 transition-transform ${openCityId === city.id ? 'rotate-180' : ''}`}/>}
             </button>
 
             <AnimatePresence>
               {openCityId === city.id && (
                 <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="px-5 pb-6 space-y-3 bg-slate-50/50 overflow-hidden">
+                  {/* Regional pode criar comum na sua cidade */}
                   {(hasRegionalScope || hasCityScope) && (
                     <div className="flex gap-2 items-center pt-3">
                       <input placeholder="NOVA COMUM..." className="flex-1 bg-white p-3 rounded-2xl font-bold text-slate-950 text-[11px] border border-slate-200 outline-none uppercase italic shadow-sm" value={newChurchName} onChange={e => setNewChurchName(e.target.value)} />
@@ -114,10 +133,12 @@ const ModuleChurch = ({ isMaster, userData }) => {
                     {comuns.filter(c => c.cidadeId === city.id).map(church => (
                       <button key={church.id} onClick={() => setSelectedChurch(church)} className="w-full p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between active:scale-[0.98] transition-all">
                         <div className="flex items-center gap-3">
-                           <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400"><Home size={12}/></div>
-                           <span className="font-black text-slate-950 uppercase italic text-[9px] tracking-widest">{church.comum}</span>
+                            <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400"><Home size={12}/></div>
+                            <span className="font-black text-slate-950 uppercase italic text-[9px] tracking-widest">{church.comum}</span>
                         </div>
-                        <ChevronRight size={12} className="text-slate-300"/>
+                        <div className="text-slate-300">
+                          <ChevronDown size={12} className="-rotate-90"/>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -130,14 +151,20 @@ const ModuleChurch = ({ isMaster, userData }) => {
 
       <AnimatePresence>
         {selectedChurch && (
-          <ChurchModal church={selectedChurch} onClose={() => setSelectedChurch(null)} cargosOrdem={cargosOrdem} diasSemana={diasSemana} />
+          <ChurchModal 
+            church={selectedChurch} 
+            onClose={() => setSelectedChurch(null)} 
+            cargosOrdem={cargosOrdem} 
+            diasSemana={diasSemana} 
+            isLocalOnly={isLocalOnly}
+          />
         )}
       </AnimatePresence>
     </div>
   );
 };
 
-const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
+const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana, isLocalOnly }) => {
   const [ministerio, setMinisterio] = useState([]);
   const [isMinListOpen, setIsMinListOpen] = useState(false);
   const [newMin, setNewMin] = useState({ nome: '', cargo: '' });
@@ -145,7 +172,7 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
   const [localData, setLocalData] = useState(church);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'config_comum', church.id, 'ministerio_lista'), (s) => {
+    return onSnapshot(collection(db, 'comuns', church.id, 'ministerio_lista'), (s) => {
       const lista = s.docs.map(d => ({ id: d.id, ...d.data() }));
       lista.sort((a, b) => (cargosOrdem.indexOf(a.cargo) || 99) - (cargosOrdem.indexOf(b.cargo) || 99));
       setMinisterio(lista);
@@ -159,7 +186,7 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
       setLocalData(prev => ({ ...prev, [field]: value }));
     }
     try {
-      const docRef = doc(db, 'config_comum', church.id);
+      const docRef = doc(db, 'comuns', church.id);
       if (isAddress) { await updateDoc(docRef, { [`endereco.${field}`]: value }); } 
       else { await updateDoc(docRef, { [field]: value }); }
     } catch (e) { console.error(e); }
@@ -169,13 +196,13 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
     const current = localData.diasSelecao || [];
     const updated = current.includes(idx) ? current.filter(i => i !== idx) : [...current, idx];
     setLocalData(prev => ({ ...prev, diasSelecao: updated }));
-    await updateDoc(doc(db, 'config_comum', church.id), { diasSelecao: updated });
+    await updateDoc(doc(db, 'comuns', church.id), { diasSelecao: updated });
   };
 
   return (
     <div className="fixed inset-0 z-[500] flex items-end justify-center p-4">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" />
-      <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="relative w-full max-w-md bg-white rounded-[2.5rem] p-7 pb-10 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-left border-t border-white/20">
+      <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="relative w-full max-w-md bg-white rounded-[2.5rem] p-7 pb-10 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-left">
         
         <div className="w-10 h-1 bg-slate-100 rounded-full mx-auto mb-6 shrink-0" />
 
@@ -246,7 +273,7 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
                       </select>
                       <button onClick={async () => {
                         if(!newMin.nome || !newMin.cargo) return toast.error("Preencha tudo");
-                        await addDoc(collection(db, 'config_comum', church.id, 'ministerio_lista'), newMin);
+                        await addDoc(collection(db, 'comuns', church.id, 'ministerio_lista'), newMin);
                         setNewMin({nome: '', cargo: ''});
                         toast.success("Adicionado");
                       }} className="bg-white text-slate-950 w-12 h-12 rounded-2xl flex items-center justify-center active:scale-90 transition-all shrink-0"><Plus size={20}/></button>
@@ -260,7 +287,7 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
                           <p className="text-[10px] font-black text-white uppercase italic">{m.nome}</p>
                           <p className="text-[7px] font-bold text-white/30 uppercase mt-1">{m.cargo}</p>
                         </div>
-                        <button onClick={async () => { await deleteDoc(doc(db, 'config_comum', church.id, 'ministerio_lista', m.id)); toast.success("Removido"); }} className="p-1.5 text-white/20 hover:text-red-400 transition-colors">✕</button>
+                        <button onClick={async () => { await deleteDoc(doc(db, 'comuns', church.id, 'ministerio_lista', m.id)); toast.success("Removido"); }} className="p-1.5 text-white/20 hover:text-red-400 transition-colors">✕</button>
                       </div>
                     ))}
                   </div>
@@ -269,13 +296,15 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
             </AnimatePresence>
           </div>
 
-          <button onClick={() => setIsConfirmingDelete(true)} className="w-full py-4 px-6 bg-red-50 border border-red-100 rounded-2xl flex items-center justify-center gap-3 active:scale-95 transition-all shadow-sm group">
-            <div className="p-2 bg-red-100 text-red-600 rounded-xl group-active:animate-bounce"><Trash2 size={16}/></div>
-            <div className="text-left leading-none">
-              <p className="text-[9px] font-black text-red-600 uppercase italic">Excluir Comum</p>
-              <p className="text-[7px] font-bold text-red-400 uppercase tracking-widest mt-0.5 italic">Remover permanentemente</p>
-            </div>
-          </button>
+          {!isLocalOnly && (
+            <button onClick={() => setIsConfirmingDelete(true)} className="w-full py-4 px-6 bg-red-50 border border-red-100 rounded-2xl flex items-center justify-center gap-3 active:scale-95 transition-all shadow-sm group">
+              <div className="p-2 bg-red-100 text-red-600 rounded-xl group-active:animate-bounce"><Trash2 size={16}/></div>
+              <div className="text-left leading-none">
+                <p className="text-[9px] font-black text-red-600 uppercase italic">Excluir Comum</p>
+                <p className="text-[7px] font-bold text-red-400 uppercase tracking-widest mt-0.5 italic">Remover permanentemente</p>
+              </div>
+            </button>
+          )}
         </div>
       </motion.div>
 
@@ -292,7 +321,7 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
                 <p className="text-[9px] font-bold text-slate-400 uppercase leading-relaxed">Você está prestes a apagar todos os dados desta comum. Esta ação não tem volta.</p>
               </div>
               <div className="space-y-2 pt-2">
-                <button onClick={async () => { await deleteDoc(doc(db, 'config_comum', church.id)); setIsConfirmingDelete(false); onClose(); toast.success("Localidade Removida"); }} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase italic tracking-widest active:scale-95 shadow-lg shadow-red-200">Sim, Excluir Agora</button>
+                <button onClick={async () => { await deleteDoc(doc(db, 'comuns', church.id)); setIsConfirmingDelete(false); onClose(); toast.success("Localidade Removida"); }} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase italic tracking-widest active:scale-95 shadow-lg shadow-red-200">Sim, Excluir Agora</button>
                 <button onClick={() => setIsConfirmingDelete(false)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black text-[10px] uppercase italic tracking-widest active:scale-95">Cancelar</button>
               </div>
             </motion.div>
@@ -302,11 +331,5 @@ const ChurchModal = ({ church, onClose, cargosOrdem, diasSemana }) => {
     </div>
   );
 };
-
-const ChevronRight = ({ size, className }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="m9 18 6-6-6-6" />
-  </svg>
-);
 
 export default ModuleChurch;
