@@ -1,9 +1,9 @@
-import { db, doc, setDoc, collection, addDoc, deleteDoc, query, orderBy, onSnapshot, getDocs } from '../config/firebase';
+import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
 import { deleteField, arrayUnion } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * Implementa Multitenancy e Auditoria de Dados
+ * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
  */
 export const eventService = {
 
@@ -19,7 +19,7 @@ export const eventService = {
     });
   },
 
-  // Cria um novo ensaio amarrado à Regional Ativa e injeta instrumentos da Configuração Local
+  // Cria um novo ensaio amarrado à Regional Ativa e injeta instrumentos via Herança (Nacional + Local)
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
     const { type, date, responsavel, regionalId, comumNome } = eventData;
@@ -27,32 +27,51 @@ export const eventService = {
     let initialCounts = {};
 
     try {
-      // BUSCA EXCLUSIVAMENTE NA CONFIGURAÇÃO DA SUA COMUM
-      const configRef = collection(db, 'comuns', comumId, 'instrumentos_config');
-      const configSnap = await getDocs(configRef);
+      // 1. BUSCA PADRÃO NACIONAL (Base Saneada de 22 instrumentos)
+      const nationalRef = collection(db, 'config_instrumentos_nacional');
+      const nationalSnap = await getDocs(nationalRef);
+      const instrumentosNacionais = nationalSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      if (!configSnap.empty) {
-        // Se houver configuração nos Ajustes, prepara os instrumentos
-        const instrumentosBase = configSnap.docs.map(d => d.data());
-        
-        instrumentosBase.forEach(inst => {
-          if (inst.id) {
-            initialCounts[inst.id] = {
-              total: 0,
-              comum: 0,
-              enc: 0,
-              irmas: 0,
-              name: inst.name || inst.id.toUpperCase(),
-              section: inst.section || 'GERAL',
-              evalType: inst.evalType || 'Sem'
-            };
-          }
-        });
-      } 
-      // Fallback Nacional removido para respeitar o isolamento local
+      // 2. BUSCA CONFIGURAÇÃO LOCAL DA COMUM
+      const localRef = collection(db, 'comuns', comumId, 'instrumentos_config');
+      const localSnap = await getDocs(localRef);
+      const instrumentosLocais = localSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // 3. APLICA HERANÇA: Nacional como base, Local sobrescreve
+      instrumentosNacionais.forEach(instBase => {
+        // Verifica se existe uma sobrescrita local para este instrumento
+        const override = instrumentosLocais.find(l => l.id === instBase.id);
+        const finalInst = override ? { ...instBase, ...override } : instBase;
+
+        initialCounts[finalInst.id] = {
+          total: 0,
+          comum: 0,
+          enc: 0,
+          irmas: 0,
+          name: finalInst.name || finalInst.id.toUpperCase(),
+          section: finalInst.section?.toUpperCase() || 'GERAL',
+          evalType: finalInst.evalType || 'Sem'
+        };
+      });
+
+      // 4. INCLUI INSTRUMENTOS EXCLUSIVOS DA COMUM (que não existem no nacional)
+      instrumentosLocais.forEach(instLocal => {
+        if (!initialCounts[instLocal.id]) {
+          initialCounts[instLocal.id] = {
+            total: 0,
+            comum: 0,
+            enc: 0,
+            irmas: 0,
+            name: instLocal.name.toUpperCase(),
+            section: instLocal.section?.toUpperCase() || 'GERAL',
+            evalType: instLocal.evalType || 'Sem'
+          };
+        }
+      });
       
     } catch (err) {
-      console.error("Erro ao carregar base de instrumentos para o novo evento:", err);
+      console.error("Erro ao processar herança de instrumentos para o novo evento:", err);
+      // Mantém initialCounts vazio para permitir criação básica em caso de erro crítico de rede
     }
     
     return await addDoc(collection(db, 'comuns', comumId, 'events'), {
@@ -62,7 +81,7 @@ export const eventService = {
       comumNome: comumNome || '',
       regionalId, 
       ata: { status: 'open' },
-      counts: initialCounts, // Injeta vazio se não houver Ajustes configurados
+      counts: initialCounts,
       createdAt: Date.now()
     });
   },

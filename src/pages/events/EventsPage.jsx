@@ -5,7 +5,6 @@ import { eventService } from '../../services/eventService';
 
 // CORREÇÃO DE CAMINHO: AtaPage está na mesma pasta (/events)
 import AtaPage from './AtaPage'; 
-// DashEventPage removido pois causava erro de build (arquivo inexistente)
 
 import toast from 'react-hot-toast';
 import { 
@@ -41,22 +40,24 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   useEffect(() => {
     if (!activeRegionalId) return;
     
-    if (isBasico) {
-      setCidades([{ id: userData?.cidadeId, nome: userData?.cidadeNome || 'SUA CIDADE' }]);
-      setSelectedCityId(userData?.cidadeId);
-      return;
-    }
-
+    // Busca a lista completa de cidades da regional no banco para obter os nomes reais
     const q = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
     const unsub = onSnapshot(q, (s) => {
       const list = s.docs.map(d => ({ id: d.id, nome: d.data().nome }));
       
-      // REGRA: Somente Comissão vê todas as cidades. Regional Enc vê apenas a sua cidade.
-      const listaFiltrada = isComissao ? list : list.filter(c => c.id === userData?.cidadeId);
-      setCidades(listaFiltrada);
+      if (isBasico) {
+        // CORREÇÃO: Filtra para encontrar o objeto da cidade do usuário e pegar o nome real do BD
+        const minhaCidade = list.find(c => c.id === userData?.cidadeId);
+        setCidades([minhaCidade || { id: userData?.cidadeId, nome: userData?.cidadeNome || 'LOCALIDADE' }]);
+        setSelectedCityId(userData?.cidadeId);
+      } else {
+        // REGRA: Somente Comissão vê todas as cidades. Regional Enc vê apenas a sua cidade.
+        const listaFiltrada = isComissao ? list : list.filter(c => c.id === userData?.cidadeId);
+        setCidades(listaFiltrada);
 
-      if (!selectedCityId && userData?.cidadeId) {
-        setSelectedCityId(userData.cidadeId);
+        if (!selectedCityId && userData?.cidadeId) {
+          setSelectedCityId(userData.cidadeId);
+        }
       }
     });
     return () => unsub();
@@ -83,8 +84,6 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
         nome: d.data().comum || d.data().bairro || d.data().nome || "Sem Nome" 
       }));
       
-      // REGRA: Se for da Comissão ou Encarregado Regional (isRegionalEnc), vê todas as comuns daquela cidade selecionada.
-      // Se for apenas Local, vê apenas a sua própria comum.
       const listaFiltrada = (isComissao || isRegionalEnc || userData?.escopoCidade) ? list : list.filter(c => c.id === userData?.comumId);
       setComuns(listaFiltrada);
 
@@ -176,15 +175,14 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium">
+    <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium text-left">
       
       {/* SELETORES HIERÁRQUICOS */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
-        {/* Seletor de Cidade: Liberado apenas para Comissão */}
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isComissao || isBasico) ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${((!isComissao && !isRegionalEnc) || isBasico) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
           <select 
-            disabled={!isComissao || isBasico}
+            disabled={(!isComissao && !isRegionalEnc) || isBasico}
             value={selectedCityId} 
             onChange={(e) => { setSelectedCityId(e.target.value); setSelectedChurchId(''); }}
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
@@ -193,7 +191,6 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
           </select>
         </div>
 
-        {/* Seletor de Comum: Liberado para Comissão e Encarregado Regional */}
         <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!(isComissao || isRegionalEnc || userData?.escopoCidade) || isBasico) ? 'opacity-50 pointer-events-none' : ''}`}>
           <Home size={10} className="text-blue-600 shrink-0" />
           <select 
@@ -247,11 +244,8 @@ const EventsPage = ({ userData, isAdmin, onSelectEvent }) => {
                           </div>
                           <div className="text-left leading-none">
                             <p className={`text-[8px] font-black uppercase italic tracking-[0.2em] mb-1.5 ${isClosed ? 'text-slate-300' : 'text-amber-500'}`}>{e.type || 'Ensaio Local'}</p>
-                            <h4 className={`text-[13px] font-[900] uppercase italic tracking-tighter mb-2 ${isClosed ? 'text-slate-400' : 'text-slate-950'}`}>Resp: {e.responsavel}</h4>
-                            <div className="flex items-center gap-1.5">
-                               <Clock size={10} className="text-slate-400" />
-                               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{e.createdAt ? new Date(e.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
-                            </div>
+                            <h4 className={`text-[13px] font-[900] uppercase italic tracking-tighter ${isClosed ? 'text-slate-400' : 'text-slate-950'}`}>Resp: {e.responsavel}</h4>
+                            {/* REMOVIDO: Seção do Clock e Hora de Criação */}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">

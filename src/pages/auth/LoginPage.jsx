@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { authService } from '../../services/authService';
 import { db, collection, onSnapshot, query, orderBy, where } from '../../config/firebase'; 
 import toast from 'react-hot-toast';
-import { Mail, Lock, LogIn, ShieldCheck, Activity, User, Briefcase, MapPin, Globe } from 'lucide-react';
+import { Mail, Lock, LogIn, ShieldCheck, Activity, User, Briefcase, MapPin, Globe, Send, Clock, LogOut } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const LoginPage = ({ 
   authMode, setAuthMode, email, setEmail, pass, setPass, 
-  userName, setUserName, userRole, setUserRole, cargosDinamicos 
+  userName, setUserName, userRole, setUserRole, userData 
 }) => {
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false); // Controle do aviso de SPAM
   
   const [regionais, setRegionais] = useState([]);
   const [cidades, setCidades] = useState([]);
@@ -19,6 +21,7 @@ const LoginPage = ({
   const [selectedChurch, setSelectedChurch] = useState(null); 
   const [listaCargosLocal, setListaCargosLocal] = useState([]); 
 
+  // 1. CARGA DINÂMICA DE REGIONAIS
   useEffect(() => {
     if (authMode !== 'register') return;
     const unsub = onSnapshot(collection(db, 'config_regional'), 
@@ -31,6 +34,7 @@ const LoginPage = ({
     return () => unsub();
   }, [authMode]);
 
+  // 2. FILTRAGEM DINÂMICA DE CIDADES POR REGIONAL
   useEffect(() => {
     if (!selectedRegionalId) { setCidades([]); setSelectedCityId(''); return; }
     const q = query(collection(db, 'config_cidades'), where('regionalId', '==', selectedRegionalId));
@@ -43,6 +47,7 @@ const LoginPage = ({
     return () => unsub();
   }, [selectedRegionalId]);
 
+  // 3. FILTRAGEM DINÂMICA DE COMUNS POR CIDADE
   useEffect(() => {
     if (!selectedCityId) { setIgrejasDisponiveis([]); setSelectedChurch(null); return; }
     const q = query(collection(db, 'comuns'), where('cidadeId', '==', selectedCityId));
@@ -60,6 +65,7 @@ const LoginPage = ({
     return () => unsub();
   }, [selectedCityId]);
 
+  // 4. CARGA DE CARGOS DA BASE DE REFERÊNCIA SANEADA
   useEffect(() => {
     const q = query(collection(db, 'referencia_cargos'), orderBy('nome', 'asc'));
     const unsub = onSnapshot(q, (snapshot) => {
@@ -89,28 +95,77 @@ const LoginPage = ({
           comum: selectedChurch.nome, comumId: selectedChurch.id,
           cidadeId: selectedCityId, regionalId: selectedRegionalId
         });
-        toast.success("Solicitação enviada!");
-        setAuthMode('login');
+        
+        setEmailSent(true);
+        toast.success("Cadastro realizado!");
       }
     } catch (err) {
       toast.error(err.message === 'auth/invalid-credential' ? "E-mail ou senha incorretos" : err.message);
     } finally { setLoading(false); }
   };
 
+  // --- TELA DE BLOQUEIO DE SEGURANÇA (AGUARDANDO APROVAÇÃO) ---
+  if (userData && !userData.approved && userData.emailVerified) {
+    return (
+      <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[3rem] p-10 shadow-2xl border border-white max-w-sm w-full space-y-8 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-amber-500" />
+          
+          <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <Clock size={40} className="animate-pulse" />
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950">Aguardando Aprovação</h3>
+              <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest italic">Status: E-mail Validado</p>
+            </div>
+            
+            <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed">
+              Sua conta foi criada com sucesso. Agora, aguarde a liberação pela <span className="text-slate-950">Zeladoria Musical</span>.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col gap-2">
+            <p className="text-[10px] font-black text-slate-900 uppercase italic leading-tight">Próximo Passo:</p>
+            <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Contate seu Secretário Local ou Regional para aprovar seu perfil.</p>
+          </div>
+
+          <button 
+            onClick={() => authService.logout()}
+            className="flex items-center justify-center gap-2 mx-auto text-[10px] font-black text-red-500 uppercase tracking-widest hover:bg-red-50 px-6 py-3 rounded-2xl transition-all active:scale-95"
+          >
+            <LogOut size={14} /> Sair da Conta
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center overflow-hidden bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
       <div className="w-full max-w-md space-y-8 animate-premium relative z-10 overflow-y-auto no-scrollbar max-h-screen py-10 text-left">
-        <div className="space-y-4 mb-8 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="drop-shadow-2xl">
-              {/* CORREÇÃO DO FALLBACK DE IMAGEM */}
-              <img src="/assets/Logo_oficial_CCB.png" alt="Logo" className="w-48 h-48 object-contain"
-                onError={(e) => { e.target.src = "https://placehold.jp/24/0f172a/ffffff/150x150.png?text=CCB"; }} />
-            </div>
-          </div>
-          <div className="text-center space-y-1">
-            <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none">Contador de</h2>
-            <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaios Locais</h2>
+        
+        <AnimatePresence>
+          {emailSent && (
+            <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-blue-600 text-white p-6 rounded-[2.5rem] shadow-xl mb-4 relative overflow-hidden">
+              <div className="flex items-start gap-4">
+                <Send size={24} className="shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-black uppercase italic text-xs leading-none">Verifique seu e-mail</p>
+                  <p className="text-[9px] font-bold uppercase opacity-80 leading-tight">Enviamos um link de validação. Olhe sua caixa de entrada e também o <b>SPAM / Lixo Eletrônico</b>.</p>
+                </div>
+              </div>
+              <button onClick={() => { setEmailSent(false); setAuthMode('login'); }} className="mt-4 w-full bg-white/20 hover:bg-white/30 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest transition-all">Ir para Login</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Cabeçalho de Títulos centralizados (Logo removido) */}
+        <div className="space-y-4 mb-12 text-center">
+          <div className="text-center space-y-2 pt-4">
+            <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">Contador de</h2>
+            <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaios Musicais</h2>
           </div>
         </div>
 
@@ -183,7 +238,7 @@ const LoginPage = ({
             </button>
           </form>
 
-          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
+          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setEmailSent(false); }}>
             {authMode === 'login' ? 'Não tem conta? Solicite Acesso' : 'Já possui conta? Faça Login'}
           </button>
         </div>
