@@ -80,7 +80,14 @@ const ModuleOrchestra = ({ comumId, instrumentsData, isMaster, userData }) => {
   const handleSave = async () => {
     if (!formData.name.trim()) return toast.error("Insira um nome");
     
-    const idSaneado = formData.id || formData.name.toLowerCase().replace(/\s+/g, '');
+    // CORREÇÃO: Lógica profissional de ID para evitar duplicidades e IDs aleatórios
+    const idSaneado = formData.id || formData.name
+      .toLowerCase()
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Remove acentos (ex: Órgão -> orgao)
+      .replace(/\s+/g, '_'); // Substitui espaços por underscore (ex: Sax Alto -> sax_alto)
+
     const ref = doc(db, 'comuns', comumId, 'instrumentos_config', idSaneado);
 
     try {

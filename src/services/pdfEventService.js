@@ -6,174 +6,186 @@ export const pdfEventService = {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.width;
     const margin = 10;
+    const rightColX = pageWidth / 2 + 2;
 
-    // 1. DEFINIÇÃO DE IDENTIDADE (Prioriza o nome gravado no evento após o 'save')
-    const nomeComum = (ataData?.comumNome || userData?.comum || "LOCALIDADE").toUpperCase();
-    const nomeCidade = (userData?.cidade || "JUNDIAÍ").toUpperCase();
-    const regional = (userData?.activeRegionalName || "JUNDIAÍ").toUpperCase();
+    // --- FUNÇÕES AUXILIARES ---
+    const toTitleCase = (str) => {
+      if (!str || str === "CIDADE") return ""; 
+      return str.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    };
+
+    const translateDay = (dayNum) => {
+      const days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+      return days[dayNum] || "";
+    };
+
+    // 1. TRATAMENTO DE IDENTIDADE E DATAS (CORREÇÃO DO REFERENCE ERROR)
+    const comumNome = (ataData?.comumNome || userData?.comum || "Localidade").toUpperCase();
     
-    // 2. TRATAMENTO DE DATAS
-    const dataRef = ataData?.date || new Date().toISOString().split('T')[0]; 
-    const [ano, mes, dia] = dataRef.split('-');
-    const dataFormatada = `${dia}/${mes}/${ano}`;
-    const dataISO = `${ano}-${mes}-${dia}`;
+    let cidadeRaw = userData?.cidade || "Jundiaí";
+    if (cidadeRaw === "N6xKnEAxY3Ku2FOez55K") cidadeRaw = "JUNDIAÍ";
+    const cidadeNome = toTitleCase(cidadeRaw);
 
-    // --- 3. CABEÇALHO ---
-    try {
-      // Mantendo proporção vertical oficial sem achatar
-      doc.addImage('/assets/Logo_oficial_CCB.png', 'PNG', margin, 8, 48, 26);
-    } catch (e) { console.warn("Logo não encontrada"); }
+    const regionalRaw = userData?.activeRegionalName || userData?.regional || "Regional";
+    const regionalNome = toTitleCase(regionalRaw);
+    
+    const rawDate = ataData?.date || new Date().toISOString().split('T')[0];
+    const dateParts = rawDate.split('-');
+    
+    // Declaração explícita para evitar ReferenceError no doc.save
+    const fAno = dateParts[0];
+    const fMes = dateParts[1];
+    const fDia = dateParts[2];
+    const dataFormatada = `${fDia}/${fMes}/${fAno}`;
 
+    // --- 2. CABEÇALHO OFICIAL ---
     doc.setFont("times", "bold");
     doc.setFontSize(14);
     doc.text("CONGREGAÇÃO CRISTÃ NO BRASIL", pageWidth / 2, 15, { align: "center" });
-    
     doc.setFontSize(11);
-    doc.text(`Ensaio Local ${nomeComum} - ${nomeCidade}`, pageWidth / 2, 22, { align: "center" });
-    doc.text(`REGIONAL ${regional}`, pageWidth / 2, 28, { align: "center" });
-
-    // Data no lado direito conforme solicitado
+    doc.text("Relatório do Serviço de Ensaio Local", pageWidth / 2, 20, { align: "center" });
     doc.setFontSize(10);
+    doc.text(`${comumNome}${cidadeNome ? ' - ' + cidadeNome : ''}`, pageWidth / 2, 25, { align: "center" });
+    doc.text(`${regionalNome}`, pageWidth / 2, 30, { align: "center" });
+
+    doc.setFontSize(9);
     doc.text(`DATA: ${dataFormatada}`, pageWidth - margin, 38, { align: "right" });
     doc.line(margin, 39, pageWidth - margin, 39);
 
-    // --- 4. COLUNA ESQUERDA: INSTRUMENTOS E ORGANISTAS (Sincronizado com Banco Saneado) ---
-    const instrumentOrder = [
-      { n: '01', name: 'VIOLINO', key: 'violino' },
-      { n: '02', name: 'VIOLA', key: 'viola' },
-      { n: '03', name: 'VIOLONCELO', key: 'violoncelo' },
-      { n: '04', name: 'FLAUTA', key: 'flauta' },
-      { n: '05', name: 'OBOÉ', key: 'oboe' },
-      { n: '06', name: 'FAGOTE', key: 'fagote' },
-      { n: '07', name: 'CLARINETE', key: 'clarinete' },
-      { n: '08', name: 'CLARONE ALTO', key: 'clarone_alto' },
-      { n: '09', name: 'CLARONE BAIXO', key: 'clarone_baixo' },
-      { n: '11', name: 'SAX SOPRANO', key: 'sax_soprano' },
-      { n: '12', name: 'SAX ALTO', key: 'sax_alto' },
-      { n: '13', name: 'SAX TENOR', key: 'sax_tenor' },
-      { n: '14', name: 'SAX BARÍTONO', key: 'sax_baritono' },
-      { n: '16', name: 'TROMPETE', key: 'trompete' },
-      { n: '17', name: 'FLUGELHORN', key: 'flugelhorn' },
-      { n: '18', name: 'TROMPA', key: 'trompa' },
-      { n: '19', name: 'TROMBONE', key: 'trombone' },
-      { n: '20', name: 'EUFÔNIO', key: 'eufonio' },
-      { n: '21', name: 'TUBA', key: 'tuba' },
-      { n: '22', name: 'ACORDEON', key: 'acordeon' }
+    // --- 3. LÓGICA DINÂMICA DE INSTRUMENTOS (CAPTURA TROMBONITO E EXTRAS) ---
+    const officialKeys = [
+      'violino','viola','violoncelo','flauta','oboe','corne_ingles','fagote','clarinete',
+      'clarone_alto','clarone_baixo','sax_soprano','sax_alto','sax_tenor','sax_baritono',
+      'trompete','flugelhorn','trompa','trombone','eufonio','tuba','acordeon'
     ];
 
-    const instRows = instrumentOrder.map(inst => {
-      const d = counts?.[inst.key] || { total: 0, comum: 0 };
-      const total = Number(d.total) || 0;
-      const comum = Number(d.comum) || 0;
-      return [inst.n, inst.name, comum, Math.max(0, total - comum), total];
+    // Detecta instrumentos que estão no 'counts' mas não são da lista fixa
+    const extraKeys = Object.keys(counts || {}).filter(key => 
+      !officialKeys.includes(key) && !key.startsWith('meta_') && key !== 'orgao' && key !== 'irmandade'
+    );
+
+    const fullInstOrder = [...officialKeys, ...extraKeys];
+
+    const orqBody = fullInstOrder.map((key, idx) => {
+      const d = counts?.[key] || { total: 0, comum: 0 };
+      const label = d.name || key.replace(/_/g, ' ').toUpperCase();
+      return [(idx + 1).toString().padStart(2, '0'), label, d.comum || 0, Math.max(0, (d.total || 0) - (d.comum || 0)), d.total || 0];
     });
 
     autoTable(doc, {
-      startY: 42,
-      margin: { right: pageWidth / 2 + 2 },
-      head: [['Nº', 'INSTRUMENTOS', 'COMUM', 'VISITAS', 'TOTAL']],
-      body: instRows,
-      theme: 'grid',
-      styles: { fontSize: 6.5, cellPadding: 1, font: "times", textColor: 0 },
-      headStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold' }
+      startY: 42, margin: { right: pageWidth / 2 + 2 },
+      head: [['Nº', 'INSTRUMENTOS', 'COM.', 'VIS.', 'TOT.']],
+      body: orqBody,
+      theme: 'grid', styles: { fontSize: 6.5, cellPadding: 0.8, font: "times", halign: 'center' },
+      headStyles: { fillColor: [40, 40, 40], textColor: 255, halign: 'left' },
+      columnStyles: { 1: { halign: 'left', fontStyle: 'bold' }, 4: { fillColor: [240, 240, 240] } }
     });
 
-    // Tabela Organistas logo abaixo
-    const orgTotal = Number(stats.organistas) || 0;
-    const orgComum = Number(counts?.orgao?.comum) || (orgTotal - (Number(stats.orgVisitas) || 0));
-    
+    // B. Tabela Organistas
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 5,
-      margin: { right: pageWidth / 2 + 2 },
-      head: [['Nº', 'ORGANISTAS', 'COMUM', 'VISITAS', 'TOTAL']],
-      body: [
-        ['27', 'ORGANISTAS', orgComum, Math.max(0, orgTotal - orgComum), orgTotal],
-        ['28', 'EXAMINADORAS', '-', '-', Number(stats.examinadoras) || 0]
-      ],
-      theme: 'grid',
-      styles: { fontSize: 6.5, font: "times", textColor: 0 },
-      headStyles: { fillColor: [245, 245, 245], textColor: 0 }
+      startY: doc.lastAutoTable.finalY + 4, margin: { right: pageWidth / 2 + 2 },
+      head: [['Nº', 'ORGANISTAS', 'COM.', 'VIS.', 'TOT.']],
+      body: [['27', 'ORGANISTAS', Number(counts?.orgao?.comum) || 0, Math.max(0, stats.organistas - (counts?.orgao?.comum || 0)), stats.organistas]],
+      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center' },
+      headStyles: { fillColor: [60, 60, 60], textColor: 255, halign: 'left' },
+      columnStyles: { 1: { halign: 'left', fontStyle: 'bold' }, 4: { fillColor: [240, 240, 240] } }
     });
 
-    const colEsquerdaY = doc.lastAutoTable.finalY;
-
-    // --- 5. COLUNA DIREITA: ATENDIMENTO E ANDAMENTO ---
-    const rightColX = pageWidth / 2 + 5;
-
-    // Atendimento
-    doc.setFontSize(9);
-    doc.text("ATENDIMENTO", rightColX, 45);
+    // C. Tabela Coral
     autoTable(doc, {
-      startY: 47,
-      margin: { left: rightColX },
-      body: [
-        ['NOME:', (ataData?.atendimentoNome || "---").toUpperCase()],
-        ['MINISTÉRIO:', (ataData?.atendimentoMin || "---").toUpperCase()]
-      ],
-      theme: 'plain',
-      styles: { fontSize: 7, font: "times", cellPadding: 1 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 20 } }
+      startY: doc.lastAutoTable.finalY + 4, margin: { right: pageWidth / 2 + 2 },
+      head: [['Nº', 'CORAL', 'IRMÃOS', 'IRMÃS', 'TOT.']],
+      body: [['23', 'IRMANDADE', stats.irmaos, stats.irmas, stats.irmandade]],
+      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center' },
+      headStyles: { fillColor: [80, 80, 80], textColor: 255, halign: 'left' },
+      columnStyles: { 1: { halign: 'left', fontStyle: 'bold' }, 4: { fillColor: [240, 240, 240] } }
     });
 
-    // Andamento do Ensaio
-    doc.text("ANDAMENTO DO ENSAIO", rightColX, doc.lastAutoTable.finalY + 6);
-    const andamentoRows = (ataData?.partes || []).map((p, i) => [
-      `Parte ${i + 1}`,
-      (p.nome || "---").toUpperCase(),
-      (p.hinos?.filter(h => h).join("-") || "---")
-    ]);
-
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 2,
-      margin: { left: rightColX },
-      head: [['PARTE', 'CONDUTOR', 'HINOS']],
-      body: andamentoRows,
-      theme: 'grid',
-      styles: { fontSize: 7, font: "times" },
-      headStyles: { fillColor: [245, 245, 245], textColor: 0 }
-    });
-
-    // Equilíbrio Naipes
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 6,
-      margin: { left: rightColX },
-      head: [['NAIPE', 'QTD / %', 'REF. MOO']],
-      body: [
-        ['CORDAS', `${stats.cordas} (${((stats.cordas / Math.max(1, stats.musicos)) * 100).toFixed(0)}%)`, '50%'],
-        ['MADEIRAS*', `${stats.madeiras + stats.sax} (${(((stats.madeiras + stats.sax) / Math.max(1, stats.musicos)) * 100).toFixed(0)}%)`, '25%'],
-        ['METAIS', `${stats.metais} (${((stats.metais / Math.max(1, stats.musicos)) * 100).toFixed(0)}%)`, '25%']
-      ],
-      theme: 'grid',
-      styles: { fontSize: 7, font: "times" },
-      headStyles: { fillColor: [245, 245, 245], textColor: 0 }
-    });
-
-    // --- 6. TOTAIS E MINISTÉRIO ---
-    const finalY = Math.max(colEsquerdaY, doc.lastAutoTable.finalY) + 12;
+    const finalTableY = doc.lastAutoTable.finalY + 6;
+    doc.setFontSize(8); doc.setFont("times", "normal");
+    doc.text(`MÚSICOS: ${stats.musicos} | ORGANISTAS: ${stats.organistas} | CORAL: ${stats.irmandade}`, margin, finalTableY);
     doc.setFont("times", "bold");
-    doc.setFontSize(9);
-    doc.text(`TOTAL ORQUESTRA (MÚSICOS + ORGANISTAS): ${Number(stats.musicos) + Number(stats.organistas)}`, margin, finalY);
-    doc.text(`TOTAL GERAL (COM IRMANDADE): ${Number(stats.geral)}`, margin, finalY + 5);
+    doc.text(`TOTAL GERAL DE PRESENTES: ${stats.geral}`, margin, finalTableY + 4);
 
-    const minRows = [];
-    (ataData?.presencaLocalFull || []).forEach(p => minRows.push([p.role?.toUpperCase(), p.nome?.toUpperCase(), 'LOCAL', nomeCidade, dataFormatada]));
-    (ataData?.visitantes || []).forEach(v => minRows.push([(v.min || "").toUpperCase(), (v.nome || "").toUpperCase(), (v.comum || "").toUpperCase(), (v.cidadeUf || "").toUpperCase(), `${v.dataEnsaio || ""} ${v.hora || ""}`.toUpperCase()]));
+    // --- 4. COLUNA DIREITA ---
+    doc.setFont("times", "bold"); doc.setFontSize(9);
+    doc.text("ATENDIMENTO", rightColX, 45);
+    doc.setFont("times", "normal"); doc.setFontSize(8);
+    doc.text(`NOME: ${ataData?.atendimentoNome || "---"}`, rightColX, 50);
+    doc.text(`MINISTÉRIO: ${ataData?.atendimentoMin || "---"}`, rightColX, 54);
 
+    doc.setFont("times", "bold");
+    doc.text("ANDAMENTO DO ENSAIO", rightColX, 62);
+    const partesBody = (ataData?.partes || []).map(p => [
+      p.label, p.nome || "---", p.hinos?.filter(h => h).join("-") || "---", p.hinos?.filter(h => h).length || 0
+    ]);
     autoTable(doc, {
-      startY: finalY + 10,
-      head: [['MINISTÉRIO', 'NOME', 'COMUM', 'CIDADE/UF', 'ENSAIO E HORA']],
-      body: minRows,
-      theme: 'grid',
-      styles: { fontSize: 6, font: "times" },
-      headStyles: { fillColor: [245, 245, 245], textColor: 0 }
+      startY: 64, margin: { left: rightColX },
+      head: [['PARTE', 'CONDUTOR', 'HINOS', 'TOT.']],
+      body: partesBody,
+      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center' },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0, halign: 'left' },
+      columnStyles: { 1: { halign: 'right' }, 3: { fillColor: [245, 245, 245], fontStyle: 'bold' } }
     });
 
-    // --- 7. RODAPÉ ---
-    doc.setFontSize(7);
-    doc.setFont("times", "normal");
-    doc.text(`Secretaria de Musica Regional ${regional} - Relatório Gerado por: ${userData?.name?.toUpperCase() || "SISTEMA"}`, pageWidth / 2, 285, { align: "center" });
+    // Equilíbrio MOO
+    const mooY = doc.lastAutoTable.finalY + 8;
+    doc.setFont("times", "bold"); doc.setFontSize(9);
+    doc.text("ESTATÍSTICA REF. MOO", rightColX, mooY);
+    const totalM = Math.max(1, stats.musicos);
+    const mooNaipes = [
+      { label: 'Cordas', val: stats.cordas, ref: 50, color: [217, 119, 6] },
+      { label: 'Madeiras*', val: stats.madeiras + stats.saxofones, ref: 25, color: [5, 150, 105] },
+      { label: 'Metais', val: stats.metais, ref: 25, color: [220, 38, 38] }
+    ];
+    mooNaipes.forEach((n, i) => {
+      const rowY = mooY + 6 + (i * 12);
+      const percReal = (n.val / totalM) * 100;
+      doc.setFontSize(7); doc.text(`${n.label.toUpperCase()} [${n.val}/${totalM}]`, rightColX, rowY);
+      doc.text(`${percReal.toFixed(0)}% / Meta ${n.ref}%`, pageWidth - margin, rowY, { align: 'right' });
+      doc.setFillColor(245, 245, 245); doc.rect(rightColX, rowY + 2, 85, 3, 'F');
+      doc.setFillColor(n.color[0], n.color[1], n.color[2]);
+      doc.rect(rightColX, rowY + 2, Math.min(85, (percReal / 100) * 85), 3, 'F');
+      doc.setDrawColor(200, 200, 200); doc.line(rightColX + (n.ref / 100 * 85), rowY + 1, rightColX + (n.ref / 100 * 85), rowY + 6);
+    });
 
-    // EXTRAÇÃO: aaaa-mm-dd - Ata [comum] - Ensaio Local
-    doc.save(`${dataISO} - Ata ${nomeComum} - Ensaio Local.pdf`);
+    // --- 5. TABELA MINISTERIAL (CORREÇÃO BAIRRO/COMUM) ---
+    const pesos = { 'Encarregado Regional': 1, 'Encarregado Local': 2, 'Examinadora': 3, 'Ancião': 4, 'Diácono': 5, 'Cooperador do Ofício': 6, 'Cooperador RJM': 7 };
+    const minRows = [];
+    
+    ataData?.presencaLocalFull?.forEach(p => {
+      minRows.push({ cargo: p.role, nome: (p.nome || "---").toUpperCase(), comum: comumNome, cidade: cidadeNome.toUpperCase(), data: "-", hora: "-", peso: pesos[p.role] || 99 });
+    });
+
+    ataData?.visitantes?.forEach(v => {
+      minRows.push({ cargo: v.min, nome: (v.nome || "---").toUpperCase(), comum: (v.bairro || v.comum || "Outra").toUpperCase(), cidade: (v.cidadeUf || "").toUpperCase(), data: v.dataEnsaio || "", hora: v.hora || "", peso: pesos[v.min] || 99 });
+    });
+    
+    minRows.sort((a, b) => a.peso - b.peso || a.nome.localeCompare(b.nome));
+
+    autoTable(doc, {
+      startY: Math.max(finalTableY + 15, doc.lastAutoTable.finalY + 10, mooY + 45),
+      head: [['MINISTÉRIO', 'NOME', 'COMUM/BAIRRO', 'CIDADE/UF', 'DATA ENS.', 'HORA']],
+      body: minRows.map(r => [r.cargo, r.nome, r.comum, r.cidade, r.data, r.hora]),
+      theme: 'grid', styles: { fontSize: 6, font: "times", cellPadding: 1 },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' }
+    });
+
+    // --- 6. LOCALIDADE E RODAPÉ ---
+    const footerY = 278;
+    const agendaDias = userData?.diasSelecao ? userData.diasSelecao.map(d => translateDay(d)).join(' e ') : "---";
+    const rua = userData?.endereco?.rua || "";
+    const num = userData?.endereco?.numero || "";
+    const cep = userData?.endereco?.cep || "";
+    const enderecoFull = `${rua}${rua && num ? ', ' : ''}${num}${cep ? ' - ' + cep : ''}`;
+    
+    const infoIgreja = `${comumNome} - ${enderecoFull} - Culto: ${agendaDias} às ${userData?.horaCulto || '---'} - Ensaio Local: ${userData?.ensaioLocal || '---'} às ${userData?.horaEnsaio || '---'}`;
+    
+    doc.setFontSize(7); doc.setFont("times", "bold");
+    doc.text(infoIgreja, pageWidth / 2, footerY, { align: "center" });
+    doc.setFont("times", "normal");
+    doc.text(`Secretaria de Música ${regionalNome}`, pageWidth / 2, footerY + 5, { align: "center" });
+
+    doc.save(`${fAno}-${fMes}-${fDia} - Ata ${comumNome} - Ensaio Local.pdf`);
   }
 };
