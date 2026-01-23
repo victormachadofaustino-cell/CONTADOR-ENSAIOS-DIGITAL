@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+serviceAccount.json
+contexto_projeto.txt
+extracao_profunda_banco.json
