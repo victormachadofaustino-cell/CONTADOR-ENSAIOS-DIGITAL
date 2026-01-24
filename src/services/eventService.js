@@ -4,6 +4,7 @@ import { deleteField, arrayUnion } from "firebase/firestore";
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
  * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
+ * Saneado para performance em escala nacional (166 comuns)
  */
 export const eventService = {
 
@@ -12,6 +13,7 @@ export const eventService = {
     if (!comumId) return; 
     const q = query(collection(db, 'comuns', comumId, 'events'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
+      if (snapshot.metadata.hasPendingWrites) return; // Otimização: ignora ecos locais
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       callback(events);
     }, (error) => {
@@ -21,12 +23,12 @@ export const eventService = {
 
   /**
    * Cria um novo ensaio amarrado à Regional Ativa
-   * LÓGICA BLUEPRINT: Agora ele captura um SNAPSHOT da configuração local da igreja.
-   * Não há mais loops complexos de comparação com o "Nacional" no momento da criação.
+   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local da igreja.
+   * DIRETRIZ: Se não houver configuração, interrompe para forçar a criação manual.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
-    const { type, date, responsavel, regionalId, comumNome } = eventData;
+    const { type, date, responsavel, regionalId, comumNome, cidadeId } = eventData;
     
     let initialCounts = {};
 
@@ -35,44 +37,46 @@ export const eventService = {
       const localRef = collection(db, 'comuns', comumId, 'instrumentos_config');
       const localSnap = await getDocs(localRef);
       
-      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL
-      if (!localSnap.empty) {
-        localSnap.docs.forEach(docInst => {
-          const inst = docInst.data();
-          const id = docInst.id;
-
-          initialCounts[id] = {
-            total: 0,
-            comum: 0,
-            enc: 0,
-            irmaos: 0, // Suporte para o Card de Coral (Irmandade)
-            irmas: 0,  // Suporte para o Card de Coral (Irmandade)
-            name: inst.name || id.toUpperCase(),
-            section: inst.section?.toUpperCase() || 'GERAL',
-            evalType: inst.evalType || 'Sem'
-          };
-        });
-      } else {
-        // Fallback de Segurança: Se a igreja estiver "vazia", cria um objeto de contagem vazio
-        console.warn("Aviso: Criando evento para comum sem instrumentos configurados.");
-        initialCounts = {};
+      // 2. VALIDAÇÃO DE GOVERNANÇA: Bloqueia criação se a orquestra local não existir
+      if (localSnap.empty) {
+        console.warn("Bloqueio de conformidade: Comum sem instrumentos configurados.");
+        throw new Error("CONFIG_REQUIRED"); 
       }
+
+      // 3. MONTAGEM DO MAPA DE CONTAGEM INICIAL (SNAPSHOT IMUTÁVEL)
+      localSnap.docs.forEach(docInst => {
+        const inst = docInst.data();
+        const id = docInst.id;
+
+        initialCounts[id] = {
+          total: 0,
+          comum: 0,
+          enc: 0,
+          irmaos: 0, 
+          irmas: 0,  
+          name: inst.name || id.toUpperCase(),
+          section: inst.section?.toUpperCase() || 'GERAL',
+          evalType: inst.evalType || 'Sem'
+        };
+      });
       
     } catch (err) {
-      console.error("Erro ao capturar snapshot de instrumentos para o novo evento:", err);
-      // Mantém a criação do evento mesmo se a captura de instrumentos falhar (Resiliência)
+      if (err.message === "CONFIG_REQUIRED") throw err;
+      console.error("Erro ao capturar instrumentos para o novo evento:", err);
+      throw new Error("Falha ao acessar configuração da localidade.");
     }
     
-    // 3. PERSISTÊNCIA DO EVENTO (Multitenancy Hierárquico)
+    // 4. PERSISTÊNCIA DO EVENTO (Multitenancy Hierárquico)
     return await addDoc(collection(db, 'comuns', comumId, 'events'), {
       type: type || 'Ensaio Local',
       date,
       responsavel: responsavel || 'Pendente',
       comumNome: comumNome || '',
-      comumId: comumId, // Garante que o ID da comum esteja dentro do evento para referências cruzadas (Master)
+      comumId: comumId, // Garante integridade para buscas Master
+      cidadeId: cidadeId || '',
       regionalId, 
       ata: { status: 'open' },
-      counts: initialCounts, // Snapshot gravado: imutável para este ensaio específico
+      counts: initialCounts, 
       createdAt: Date.now()
     });
   },
@@ -85,11 +89,11 @@ export const eventService = {
 
   /**
    * Atualiza a contagem de um instrumento e grava log de auditoria
-   * Suporta campos dinâmicos (total, irmas, comum, enc)
+   * Implementado controle de tamanho de histórico para evitar latência.
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
     if (!comumId || !eventId || !instId) {
-      console.warn("Tentativa de atualização com IDs incompletos:", { comumId, eventId, instId });
+      console.warn("Tentativa de atualização com IDs incompletos.");
       return; 
     }
 
@@ -97,7 +101,7 @@ export const eventService = {
     const val = Math.max(0, parseInt(value) || 0);
     const timestamp = Date.now();
     
-    // LOG DE AUDITORIA: Registra QUEM alterou O QUÊ e QUANDO (Padrão Enterprise)
+    // LOG DE AUDITORIA: Registra QUEM alterou O QUÊ e QUANDO
     const logEntry = {
       user: userData?.name || 'Sistema',
       field: field,
@@ -105,30 +109,37 @@ export const eventService = {
       time: timestamp
     };
 
-    const baseUpdate = {
-      lastEditBy: userData?.name || 'Sistema',
-      timestamp: timestamp,
-      section: section || 'Outros',
-      history: arrayUnion(logEntry) // Adiciona ao histórico sem sobrescrever o array anterior
-    };
-
-    if (customName) baseUpdate.name = customName; // Para instrumentos "Ad-hoc" criados na hora
-
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Atualização atômica para não destruir outros campos do documento
-      await setDoc(eventRef, { 
-        counts: { 
-          [instId]: { 
-            ...baseUpdate,
-            [fieldToUpdate]: val 
-          } 
+      // Busca estado atual para limitar histórico (Performance Fix)
+      const snap = await getDoc(eventRef);
+      const currentInstData = snap.data()?.counts?.[instId] || {};
+      let history = currentInstData.history || [];
+      
+      // Mantém apenas as últimas 10 alterações para não estourar o limite do documento
+      history.push(logEntry);
+      if (history.length > 10) history = history.slice(-10);
+
+      const baseUpdate = {
+        lastEditBy: userData?.name || 'Sistema',
+        timestamp: timestamp,
+        section: section || currentInstData.section || 'Outros',
+        history: history 
+      };
+
+      if (customName) baseUpdate.name = customName;
+
+      await updateDoc(eventRef, { 
+        [`counts.${instId}`]: { 
+          ...currentInstData,
+          ...baseUpdate,
+          [fieldToUpdate]: val 
         } 
-      }, { merge: true });
+      });
     } catch (e) {
       console.error("Erro ao atualizar contagem no Firestore:", e);
-      throw new Error("Falha na sincronização com o servidor.");
+      throw new Error("Falha na sincronização.");
     }
   },
 
@@ -136,9 +147,9 @@ export const eventService = {
   removeExtraInstrument: async (comumId, eventId, instId) => {
     if (!comumId || !eventId || !instId) return;
     const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
-    return await setDoc(eventRef, { 
-      counts: { [instId]: deleteField() } // Remove a chave do mapa sem afetar a configuração da igreja
-    }, { merge: true });
+    return await updateDoc(eventRef, { 
+      [`counts.${instId}`]: deleteField() 
+    });
   },
 
   /**
@@ -151,7 +162,6 @@ export const eventService = {
     let todosHinos = [];
     (ataData.partes || []).forEach(p => {
       if (p.hinos) {
-        // Filtra campos vazios para gerar uma lista limpa no banco
         todosHinos = [...todosHinos, ...p.hinos.filter(h => h && h.trim() !== '')];
       }
     });
@@ -164,7 +174,7 @@ export const eventService = {
     };
 
     try {
-      await setDoc(eventRef, { ata: finalAta }, { merge: true });
+      await updateDoc(eventRef, { ata: finalAta });
     } catch (e) {
       console.error("Erro ao salvar Ata no Firestore:", e);
       throw new Error("Erro ao salvar os dados da Ata.");

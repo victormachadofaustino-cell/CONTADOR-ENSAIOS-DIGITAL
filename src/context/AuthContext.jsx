@@ -45,15 +45,21 @@ export const AuthProvider = ({ children }) => {
               isAdmin: isCidadePower || ['Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretario da Música'].includes(data.role) || data.escopoLocal === true // Pode criar ensaios
             };
 
+            // TRAVA DE SEGURANÇA MULTITENANCY: 
+            // Se não for Master ou Comissão, o activeRegionalId DEVE ser o regionalId do perfil para evitar acesso cruzado
+            const validRegionalId = (isMasterPower || isComissaoPower) ? (activeRegionalId || data.regionalId) : data.regionalId;
+            const validCityId = (isMasterPower || isComissaoPower || data.escopoCidade) ? (activeCityId || data.cidadeId) : data.cidadeId;
+            const validComumId = (isMasterPower || isComissaoPower || data.escopoCidade || data.escopoLocal) ? (activeComumId || data.comumId) : data.comumId;
+
             // Injeta os IDs ativos no userData para que todo o app seja reativo à mudança do Header
             // CORREÇÃO MESTRA: Vinculamos os IDs de navegação ao objeto userData para forçar o re-render de componentes dependentes
             setUserData({ 
               ...data, 
               uid: currentUser.uid, 
               ...permissions,
-              activeRegionalId: activeRegionalId || data.regionalId, 
-              activeCityId: activeCityId || data.cidadeId,
-              activeComumId: activeComumId || data.comumId
+              activeRegionalId: validRegionalId, 
+              activeCityId: validCityId,
+              activeComumId: validComumId
             });
           }
           setLoading(false);
@@ -82,6 +88,9 @@ export const AuthProvider = ({ children }) => {
     if (type === 'city') {
       setActiveCityId(id);
       localStorage.setItem('activeCityId', id);
+      // Ao mudar de cidade, resetamos a comum ativa para forçar nova seleção
+      setActiveComumId(null);
+      localStorage.removeItem('activeComumId');
     }
     if (type === 'comum') {
       setActiveComumId(id);

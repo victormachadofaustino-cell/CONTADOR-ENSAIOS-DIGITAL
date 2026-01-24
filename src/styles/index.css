@@ -104,6 +104,23 @@ nav.floating-nav {
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1) !important;
 }
 
+/* --- CLASSES DE STATUS E GOVERNANÇA (ADICIONADAS) --- */
+.badge-status {
+  @apply text-[6px] font-black uppercase px-2 py-0.5 rounded-md border tracking-widest;
+}
+
+.badge-pending {
+  @apply bg-red-50 text-red-500 border-red-100 animate-pulse;
+}
+
+.badge-approved {
+  @apply bg-emerald-50 text-emerald-600 border-emerald-100;
+}
+
+.modal-alert {
+  @apply bg-white rounded-[3rem] p-10 shadow-2xl border border-slate-100 relative overflow-hidden;
+}
+
 /* --- CONFIGURAÇÕES DE INPUTS --- */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {

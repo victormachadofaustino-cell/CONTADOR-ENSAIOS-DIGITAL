@@ -46,17 +46,19 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     let isMounted = true;
 
     const loadData = async () => {
-      // CORREÇÃO MESTRA: O ID da comum agora vem direto do GPS global que o App.jsx atualizou no clique.
-      // Isso elimina a necessidade de buscar na lista allEvents e quebra o loop de sincronização.
-      const targetComumId = userData?.activeComumId || userData?.comumId;
+      // CORREÇÃO MESTRA: Determinamos o ID da comum REAL deste evento para evitar o erro de caminho
+      // Se o evento estiver na lista 'allEvents', usamos o ID dele. Caso contrário, usamos o GPS Global.
+      const eventInfo = allEvents?.find(ev => ev.id === currentEventId);
+      const targetComumId = eventInfo?.comumId || userData?.activeComumId || userData?.comumId;
 
       if (targetComumId && isMounted) {
         setEventComumId(targetComumId);
         try {
+          // Busca a Matriz Nacional para garantir que nunca falte instrumento na tela
           const snapNacional = await getDocs(collection(db, 'config_instrumentos_nacional'));
           if (isMounted) setInstrumentsNacionais(snapNacional.docs.map(d => ({ id: d.id, ...d.data() })));
           
-          // Carrega configuração de instrumentos da igreja ativa no GPS
+          // Carrega configuração de instrumentos específica da igreja ativa
           const unsubInst = onSnapshot(collection(db, 'comuns', targetComumId, 'instrumentos_config'), 
             (snapshot) => { 
               if (isMounted) {
@@ -66,28 +68,26 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             }
           );
 
-          // Carrega o evento específico e desliga o Loading assim que os dados chegarem
+          // Carrega o evento específico no endereço dinâmico (Multitenancy)
           const unsubEvent = onSnapshot(doc(db, 'comuns', targetComumId, 'events', currentEventId), (s) => {
             if (s.exists() && isMounted) {
               const data = s.data();
-              // Prioriza os dados reais salvos no documento do evento
               setAtaData(data.ata || { 
                 status: 'open', 
                 comumNome: data.comumNome || userData?.activeComumName || userData?.comum 
               });
               setEventDateRaw(data.date || '');
               setLoading(false);
-            } 
-            // CORREÇÃO DE TOLERÂNCIA: Removido o setLoading(false) imediato em caso de !exists
-            // Isso evita o erro "Evento não localizado" enquanto as Rules Master estão processando.
+            } else if (isMounted) {
+              // PROTEÇÃO DE LOOP: Se o evento não existe nesta rota, encerra para evitar crash de rede
+              console.warn("Documento de evento não localizado no caminho selecionado:", targetComumId);
+              toast.error("Evento indisponível nesta jurisdição.");
+              setLoading(false);
+              onBack(); // Retorna ao lobby
+            }
           }, (err) => {
              console.error("Erro Snapshot Counter:", err);
-             // Se houver erro de permissão (comum na troca de contexto Master), mantém o loading em vez de travar
-             if (err.code === 'permission-denied' && isMounted) {
-               console.log("Aguardando validação de regras Master...");
-             } else if (isMounted) {
-               setLoading(false);
-             }
+             if (isMounted) setLoading(false);
           });
 
           return () => { unsubInst(); unsubEvent(); };
@@ -100,7 +100,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
     loadData();
     return () => { isMounted = false; };
-  }, [currentEventId, userData?.activeComumId]);
+  }, [currentEventId, userData?.activeComumId, userData?.comumId, allEvents, onBack]);
 
   // --- LÓGICA DE TRADUÇÃO E COMPATIBILIDADE (O ESCUDO DE DADOS) ---
   const allInstruments = useMemo(() => {
@@ -117,7 +117,8 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       'corne_ingles': 'corneingles', 'corneinglês': 'corneingles', 'flugel': 'flugelhorn'
     };
 
-    const base = instrumentsNacionais.map(instBase => {
+    const baseMatriz = instrumentsNacionais.length > 0 ? instrumentsNacionais : [];
+    const base = baseMatriz.map(instBase => {
       const override = instrumentsConfig.find(local => local.id === instBase.id);
       return override ? { ...instBase, ...override } : instBase;
     });
@@ -131,11 +132,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         evalType: localCounts[key].evalType || 'Sem'
       }));
 
-    return [...base, ...extras].sort((a, b) => {
+    const result = [...base, ...extras].sort((a, b) => {
       const idxA = ordemOficial.indexOf(a.id);
       const idxB = ordemOficial.indexOf(b.id);
       return (idxA > -1 ? idxA : 99) - (idxB > -1 ? idxB : 99);
     });
+
+    return result.length > 0 ? result : base;
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
 
   const sections = useMemo(() => {
@@ -206,15 +209,15 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   const isEditingEnabled = (sec) => isMaster || isComissao || isCidade || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando Jurisdição...</div>;
 
   return (
     <div className="flex flex-col h-screen bg-[#F1F5F9] overflow-hidden text-left relative font-sans animate-premium">
       <header className="bg-white pt-6 pb-8 px-6 rounded-b-[3rem] shadow-sm border-b border-slate-200 z-50">
         <div className="flex justify-between items-center max-w-md mx-auto w-full">
           <button onClick={onBack} className="bg-slate-100 p-3 rounded-2xl text-slate-400 active:scale-90 transition-transform"><ChevronLeft size={20} strokeWidth={3} /></button>
-          <div className="text-center px-4">
-            <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1 italic leading-none">
+          <div className="text-center px-4 overflow-hidden">
+            <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1 italic leading-none truncate">
               {ataData?.comumNome || userData?.activeComumName || userData?.comum || "Localidade"}
             </p>
             <h2 className="text-xl font-[900] text-slate-950 italic uppercase tracking-tighter">

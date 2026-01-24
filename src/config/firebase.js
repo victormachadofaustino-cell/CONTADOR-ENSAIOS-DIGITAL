@@ -7,7 +7,8 @@ import {
   writeBatch,
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  collectionGroup // ADICIONADO: Necessário para consultas escaláveis no Dashboard
 } from "firebase/firestore";
 import { 
   getAuth, signInWithEmailAndPassword, 
@@ -43,6 +44,7 @@ export {
   query, orderBy, where,
   getDocs,
   writeBatch,
+  collectionGroup, // ADICIONADO: Exportação para uso no DashPage
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   onAuthStateChanged, signOut, sendEmailVerification 
 };

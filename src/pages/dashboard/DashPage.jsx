@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
-import { db, collection, onSnapshot, query, where } from '../../config/firebase';
+import { db, collection, onSnapshot, query, where, collectionGroup } from '../../config/firebase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell, LabelList
@@ -30,7 +30,7 @@ const DashPage = ({ userData }) => {
 
   // --- LÓGICA DE JURISDIÇÃO EXPANDIDA ---
   const isMaster = userData?.isMaster;
-  const isRegional = userData?.isRegional || userData?.escopoRegional || userData?.role === 'Encarregado Regional';
+  const isComissao = userData?.isComissao;
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
   
   const permitidasIds = useMemo(() => {
@@ -39,20 +39,26 @@ const DashPage = ({ userData }) => {
     return [...new Set(lista.filter(id => id))];
   }, [userData]);
 
-  // Estados de Filtro Geográfico
-  const [selectedCityId, setSelectedCityId] = useState('all');
-  const [activeComumId, setActiveComumId] = useState('consolidated');
+  // Estados de Filtro Geográfico baseados no Contexto (GPS)
+  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || 'all');
+  const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || 'consolidated');
   
   const [listaCidades, setListaCidades] = useState([]);
   const [listaIgrejas, setListaIgrejas] = useState([]);
+
+  // Sincroniza filtros locais quando o Header mudar o GPS
+  useEffect(() => {
+    if (userData?.activeCityId) setSelectedCityId(userData.activeCityId);
+    if (userData?.activeComumId) setActiveComumId(userData.activeComumId);
+  }, [userData?.activeCityId, userData?.activeComumId]);
 
   // 1. Carregar Cidades e Comuns com Trava de Adjacência Real
   useEffect(() => {
     if (!activeRegionalId) return;
 
-    const qIgr = isMaster 
+    const qIgr = (isMaster || isComissao)
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
-      : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 10)));
+      : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 30)));
     
     const unsubIgr = onSnapshot(qIgr, (sIgs) => {
       const igs = sIgs.docs.map(d => ({ id: d.id, nome: d.data().comum, cidadeId: d.data().cidadeId }));
@@ -62,57 +68,54 @@ const DashPage = ({ userData }) => {
       onSnapshot(qCid, (sCids) => {
         const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
         
-        if (isMaster) {
+        if (isMaster || isComissao) {
           setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
         } else {
           const idsCidadesPermitidas = [...new Set(igs.map(i => i.cidadeId))];
           const filtradas = todasCidades.filter(c => idsCidadesPermitidas.includes(c.id));
           setListaCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
-          
-          if (filtradas.length === 1 && selectedCityId === 'all') {
-            setSelectedCityId(filtradas[0].id);
-          }
         }
       });
     });
 
     return () => unsubIgr();
-  }, [activeRegionalId, isMaster, permitidasIds]);
+  }, [activeRegionalId, isMaster, isComissao, permitidasIds]);
 
-  // 2. BUSCA DE EVENTOS (Motor Multi-query Consolidado)
+  // 2. BUSCA DE EVENTOS (OTIMIZADO: Collection Group Query para Escala)
   useEffect(() => {
+    if (!activeRegionalId) return;
     setLoading(true);
-    let unsubscribes = [];
-    setEvents([]); 
 
-    const fetchEvents = (id) => {
-      return onSnapshot(collection(db, 'comuns', id, 'events'), (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, comumId: id, ...d.data() }));
-        setEvents(prev => {
-          const filtered = prev.filter(e => e.comumId !== id);
-          return [...filtered, ...data];
-        });
-        setLoading(false);
-      });
-    };
+    const qEvents = query(
+      collectionGroup(db, 'events'), 
+      where('regionalId', '==', activeRegionalId)
+    );
 
-    let alvos = [];
-    if (activeComumId !== 'consolidated') {
-      alvos = [activeComumId];
-    } else if (selectedCityId !== 'all') {
-      alvos = listaIgrejas.filter(i => i.cidadeId === selectedCityId).map(i => i.id);
-    } else {
-      alvos = isMaster ? listaIgrejas.map(i => i.id) : permitidasIds;
-    }
+    const unsubEvents = onSnapshot(qEvents, (snap) => {
+      let data = snap.docs.map(d => ({ 
+        id: d.id, 
+        comumId: d.ref.parent.parent?.id, 
+        ...d.data() 
+      }));
 
-    if (alvos.length > 0) {
-      unsubscribes = alvos.map(id => fetchEvents(id));
-    } else {
+      if (activeComumId !== 'consolidated') {
+        data = data.filter(e => e.comumId === activeComumId);
+      } else if (selectedCityId !== 'all') {
+        const igrejasDaCidade = listaIgrejas.filter(i => i.cidadeId === selectedCityId).map(i => i.id);
+        data = data.filter(e => igrejasDaCidade.includes(e.comumId));
+      } else if (!isMaster && !isComissao) {
+        data = data.filter(e => permitidasIds.includes(e.comumId));
+      }
+
+      setEvents(data);
       setLoading(false);
-    }
+    }, (err) => {
+      console.error("Erro no motor do Dashboard:", err);
+      setLoading(false);
+    });
 
-    return () => unsubscribes.forEach(fn => fn());
-  }, [activeComumId, selectedCityId, listaIgrejas, isMaster, permitidasIds]);
+    return () => unsubEvents();
+  }, [activeRegionalId, activeComumId, selectedCityId, listaIgrejas, isMaster, isComissao, permitidasIds]);
 
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -214,12 +217,8 @@ const DashPage = ({ userData }) => {
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans pb-32 overflow-x-hidden text-left">
       
-      {/* HUB DE FILTROS UNIFICADO (Navigation Hub) */}
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm space-y-3 rounded-b-[2.2rem]">
-        
-        {/* SELETORES GEOGRÁFICOS PAREADOS (ESTILO EVENTOS - CABENDO NA TELA) */}
         <div className="flex items-center gap-2 px-1">
-          {/* SELETOR DE CIDADE */}
           <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${listaCidades.length <= 1 && !isMaster ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
@@ -232,7 +231,6 @@ const DashPage = ({ userData }) => {
             </select>
           </div>
 
-          {/* SELETOR DE COMUM */}
           <div className="flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2 rounded-2xl shadow-xl border border-white/10 overflow-hidden">
             <Building2 size={10} className="text-blue-400 shrink-0" />
             <select 
@@ -251,7 +249,6 @@ const DashPage = ({ userData }) => {
           </div>
         </div>
 
-        {/* FILTROS DE PERÍODO PAREADOS */}
         <div className="flex items-center gap-2 px-1">
           <div className="flex-1">
             <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full bg-blue-600 text-white font-black text-[9px] uppercase px-4 py-2.5 rounded-2xl outline-none italic shadow-md appearance-none cursor-pointer">
@@ -283,8 +280,6 @@ const DashPage = ({ userData }) => {
       </div>
 
       <div className="p-4 space-y-6 max-w-md mx-auto w-full">
-        
-        {/* BIG NUMBERS */}
         <div className="space-y-3">
           <BigNumberGroup label="Músicos" total={tM} avg={(tM/totalMeses).toFixed(1)} icon={<Music size={14}/>} color="blue" />
           <BigNumberGroup label="Organistas" total={tO} avg={(tO/totalMeses).toFixed(1)} icon={<PieChart size={14}/>} color="violet" />
@@ -293,7 +288,6 @@ const DashPage = ({ userData }) => {
           <BigNumberGroup label="Hinos" total={tH} avg={(tH/totalMeses).toFixed(1)} icon={<CheckCircle2 size={14}/>} color="amber" />
         </div>
 
-        {/* CARROSSEL GRÁFICOS */}
         <CarouselBox title={presencaSlide === 0 ? "Frequência Total" : "Equilíbrio Orquestral (Qtd)"} onPrev={() => handlePrev(presencaSlide, setPresencaSlide, 2)} onNext={() => handleNext(presencaSlide, setPresencaSlide, 2)}>
             <BarChart data={chartArray}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -410,14 +404,18 @@ const CarouselBox = ({ title, children, onPrev, onNext, dark }) => (
   <motion.section 
     drag="x" dragConstraints={{ left: 0, right: 0 }} 
     onDragEnd={(e, { offset }) => offset.x < -50 ? onNext() : offset.x > 50 ? onPrev() : null} 
-    className={`p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden w-full ${dark ? 'bg-slate-50' : 'bg-white'}`}
+    className={`p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden w-full h-[320px] ${dark ? 'bg-slate-50' : 'bg-white'}`}
   >
     <div className="flex justify-between items-center mb-6 px-1">
         <button onClick={onPrev} className="p-1.5 bg-slate-50 rounded-lg text-slate-300 active:text-blue-600 transition-colors"><ChevronLeft size={14} /></button>
         <h3 className="text-[10px] font-black text-slate-950 uppercase italic tracking-widest leading-none">{title}</h3>
         <button onClick={onNext} className="p-1.5 bg-slate-50 rounded-lg text-slate-300 active:text-blue-600 transition-colors"><ChevronRight size={14} /></button>
     </div>
-    <div className="h-64 w-full"><ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer></div>
+    <div className="h-56 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        {children}
+      </ResponsiveContainer>
+    </div>
   </motion.section>
 );
 

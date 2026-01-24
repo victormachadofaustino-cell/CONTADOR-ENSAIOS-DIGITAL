@@ -8,13 +8,14 @@ import AtaPage from './AtaPage';
 
 import toast from 'react-hot-toast';
 import { 
-  Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home 
+  Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home, AlertTriangle, Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const EventsPage = ({ userData, onSelectEvent }) => {
+const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
   const [events, setEvents] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [showConfigError, setShowConfigError] = useState(false); // Modal de erro de conformidade
   const [newEventDate, setNewEventDate] = useState(new Date().toISOString().split('T')[0]);
   const [newEventType, setNewEventType] = useState('Ensaio Local');
   const [responsavel, setResponsavel] = useState(userData?.name || '');
@@ -24,7 +25,7 @@ const EventsPage = ({ userData, onSelectEvent }) => {
   const [cidades, setCidades] = useState([]);
   const [comuns, setComuns] = useState([]);
   
-  // REGRA DE OURO: Inicializa com os dados do perfil do usuário, mas permite alteração pelo contexto ativo
+  // REGRA DE OURO: Inicializa com os dados do perfil do usuário, mas permite alteração pelo contexto ativo (GPS Global)
   const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || '');
   const [selectedChurchId, setSelectedChurchId] = useState(userData?.activeComumId || userData?.comumId || '');
 
@@ -34,16 +35,14 @@ const EventsPage = ({ userData, onSelectEvent }) => {
   const isRegional = isComissao || (userData?.escopoRegional === true);
   const isLocal = isRegional || (userData?.escopoLocal === true);
   
-  // CORREÇÃO MESTRA: Define se o botão de criação deve aparecer. 
-  // Master e Comissão podem criar em QUALQUER comum selecionada. 
-  // Local/Regional só criam se a comum selecionada estiver nos acessos permitidos deles.
+  // DEFINE PERMISSÃO: Baseado na jurisdição ativa para escala infinita
   const temPermissaoCriarAqui = useMemo(() => {
     if (isMaster || isComissao) return true;
     const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return permitidasIds.includes(selectedChurchId);
   }, [isMaster, isComissao, selectedChurchId, userData]);
 
-  // Lista de IDs permitidos para este usuário (Sua comum + Flegadas em acessos)
+  // Lista de IDs permitidos para este usuário
   const permitidasIds = useMemo(() => {
     const lista = [userData?.comumId];
     if (userData?.acessosPermitidos) lista.push(...userData.acessosPermitidos);
@@ -52,51 +51,55 @@ const EventsPage = ({ userData, onSelectEvent }) => {
 
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
 
-  // 1. SINCRONIZAÇÃO DE CASCATA: REGIONAL -> CIDADE (Respeitando a Escada)
+  // Sincroniza estados locais se as props mudarem via Header (GPS Global)
+  useEffect(() => {
+    if (userData?.activeCityId) setSelectedCityId(userData.activeCityId);
+    if (userData?.activeComumId) setSelectedChurchId(userData.activeComumId);
+  }, [userData?.activeCityId, userData?.activeComumId]);
+
+  // 1. SINCRONIZAÇÃO DE CASCATA: REGIONAL -> CIDADE (Escalabilidade de Dados)
   useEffect(() => {
     if (!activeRegionalId) return;
+    let isMounted = true;
     
-    // Busca comuns baseadas no poder da atribuição
     const qIgr = isComissao 
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
       : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 10)));
 
     const unsubIgr = onSnapshot(qIgr, (sIgs) => {
+      if (!isMounted) return;
       const igsData = sIgs.docs.map(d => ({ id: d.id, cidadeId: d.data().cidadeId }));
       const cidadesComAcesso = [...new Set(igsData.map(i => i.cidadeId))];
 
       const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
       const unsubCid = onSnapshot(qCid, (sCids) => {
+        if (!isMounted) return;
         const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
         
         if (isComissao) {
           setCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
         } else {
-          // Filtra cidades baseada estritamente nas igrejas que o Regional/Local pode ver
           const filtradas = todasCidades.filter(c => cidadesComAcesso.includes(c.id));
           setCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
-          
-          if (!selectedCityId && (userData?.activeCityId || userData?.cidadeId)) {
-            setSelectedCityId(userData?.activeCityId || userData?.cidadeId);
-          }
         }
       });
       return () => unsubCid();
     });
 
-    return () => unsubIgr();
-  }, [activeRegionalId, isComissao, permitidasIds, userData, selectedCityId]); 
+    return () => { isMounted = false; unsubIgr(); };
+  }, [activeRegionalId, isComissao, permitidasIds]); 
 
   // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM
   useEffect(() => {
     if (!selectedCityId) {
       setComuns([]);
-      setSelectedChurchId(''); 
       return;
     }
+    let isMounted = true;
 
     const q = query(collection(db, 'comuns'), where('cidadeId', '==', selectedCityId));
     const unsub = onSnapshot(q, (s) => {
+      if (!isMounted) return;
       const list = s.docs.map(d => ({ 
         id: d.id, 
         nome: d.data().comum || "Sem Nome" 
@@ -105,30 +108,32 @@ const EventsPage = ({ userData, onSelectEvent }) => {
       if (isComissao) {
         setComuns(list.sort((a, b) => a.nome.localeCompare(b.nome)));
       } else {
-        // Trava de Adjacência: Só exibe se estiver no array de permitidas do Regional/Local
         const filtradas = list.filter(c => permitidasIds.includes(c.id));
         setComuns(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
-        
-        if (selectedChurchId && !filtradas.some(f => f.id === selectedChurchId)) {
-           setSelectedChurchId(filtradas.length > 0 ? filtradas[0].id : '');
-        }
       }
     });
-    return () => unsub();
-  }, [selectedCityId, isComissao, permitidasIds, selectedChurchId]);
+    return () => { isMounted = false; unsub(); };
+  }, [selectedCityId, isComissao, permitidasIds]);
 
-  // 3. BUSCA DE ENSAIOS
+  // 3. BUSCA DE ENSAIOS (Motor de Sincronização Robusta)
   useEffect(() => {
     if (!selectedChurchId) {
       setEvents([]);
       return;
     }
+    let isMounted = true;
 
     const eventsRef = collection(db, 'comuns', selectedChurchId, 'events');
     const q = query(eventsRef, orderBy('date', 'desc'));
     
     const unsub = onSnapshot(q, (snapshot) => {
-      // CORREÇÃO: Garante que cada evento carregue o ID da igreja e o Nome correto da comum selecionada
+      if (!isMounted) return;
+      
+      if (snapshot.empty) {
+        setEvents([]);
+        return;
+      }
+
       const comumAtual = comuns.find(c => c.id === selectedChurchId);
       const evs = snapshot.docs.map(d => ({ 
         id: d.id, 
@@ -137,14 +142,15 @@ const EventsPage = ({ userData, onSelectEvent }) => {
         comum: comumAtual?.nome || d.data().comumNome || "Localidade"
       }));
       setEvents(evs);
+      
       const currentYear = new Date().getFullYear().toString();
       setOpenYears(prev => ({ [currentYear]: true, ...prev }));
     }, (error) => {
       console.error("Erro ao carregar eventos:", error);
-      setEvents([]);
+      if (isMounted) setEvents([]);
     });
 
-    return () => unsub();
+    return () => { isMounted = false; unsub(); };
   }, [selectedChurchId, comuns]);
 
   const groupedEvents = useMemo(() => {
@@ -172,18 +178,24 @@ const EventsPage = ({ userData, onSelectEvent }) => {
 
     try {
       await eventService.createEvent(selectedChurchId, {
-        type: newEventType,
+        type: 'Ensaio Local',
         date: newEventDate,
         responsavel: responsavel || 'Pendente',
         regionalId: activeRegionalId,
         comumNome: (comumSelecionada?.nome || "LOCALIDADE").toUpperCase(),
-        comumId: selectedChurchId 
+        comumId: selectedChurchId,
+        cidadeId: selectedCityId
       });
       setShowModal(false);
       toast.success("Ensaio criado!");
     } catch (error) { 
-      console.error("Erro na criação:", error);
-      toast.error("Erro ao criar."); 
+      if (error.message === "CONFIG_REQUIRED") {
+        setShowModal(false);
+        setShowConfigError(true);
+      } else {
+        console.error("Erro na criação:", error);
+        toast.error("Erro ao criar."); 
+      }
     }
   };
 
@@ -209,7 +221,7 @@ const EventsPage = ({ userData, onSelectEvent }) => {
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium text-left">
       
-      {/* SELETORES HIERÁRQUICOS */}
+      {/* SELETORES HIERÁRQUICOS (Garantia de Jurisdição) */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
         <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(cidades.length <= 1 && !isComissao) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
@@ -220,7 +232,7 @@ const EventsPage = ({ userData, onSelectEvent }) => {
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
           >
             {cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            {cidades.length === 0 && <option value="">Sem Cidades</option>}
+            {cidades.length === 0 && <option value="">Carregando Cidades...</option>}
           </select>
         </div>
 
@@ -233,12 +245,12 @@ const EventsPage = ({ userData, onSelectEvent }) => {
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
           >
             {comuns.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            {comuns.length === 0 && <option value="">Sem Comuns</option>}
+            {comuns.length === 0 && <option value="">Selecione a Comum</option>}
           </select>
         </div>
       </div>
 
-      {/* BOTÃO DE NOVO ENSAIO: Só aparece se houver ATRIBUIÇÃO flegada para esta localidade */}
+      {/* BOTÃO DE NOVO ENSAIO */}
       {temPermissaoCriarAqui && selectedChurchId && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
@@ -260,7 +272,7 @@ const EventsPage = ({ userData, onSelectEvent }) => {
                 <span className="text-3xl font-[900] italic text-slate-950 tracking-tighter">{year}</span>
                 <div className="h-[2px] flex-1 bg-slate-200 rounded-full opacity-50 group-hover:opacity-100 transition-opacity"></div>
                 <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-100">
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-500 ${openYears[year] ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={14} className={`text-slate-300 transition-transform duration-500 ${openYears[year] ? 'rotate-180' : ''}`} />
                 </div>
               </button>
 
@@ -309,10 +321,8 @@ const EventsPage = ({ userData, onSelectEvent }) => {
               <div className="space-y-5">
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Tipo de Evento</label>
-                  <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black uppercase outline-none" value={newEventType} onChange={e => setNewEventType(e.target.value)}>
+                  <select disabled className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black uppercase outline-none opacity-60" value="Ensaio Local">
                      <option value="Ensaio Local">Ensaio Local</option>
-                     <option value="Ensaio Regional">Ensaio Regional</option>
-                     <option value="Reunião">Reunião Musical</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -325,6 +335,32 @@ const EventsPage = ({ userData, onSelectEvent }) => {
                 </div>
               </div>
               <button onClick={handleCreate} className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-10 transition-all border border-white/10"><Send size={16}/> Confirmar Agenda</button>
+            </div>
+          </div>
+        )}
+
+        {showConfigError && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in zoom-in duration-200">
+            <div className="bg-white w-full max-w-[320px] rounded-[3rem] p-10 text-center shadow-2xl relative border border-slate-100">
+              <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner"><AlertTriangle size={40} /></div>
+              <h3 className="text-xl font-[900] text-slate-950 uppercase italic mb-4 tracking-tighter leading-none">Orquestra Ausente</h3>
+              <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed mb-10">Esta localidade ainda não possui uma orquestra configurada. É necessário definir os instrumentos antes de agendar ensaios.</p>
+              
+              <div className="space-y-3">
+                {isLocal ? (
+                  <button 
+                    onClick={() => { setShowConfigError(false); onNavigateToSettings(); }} 
+                    className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg flex items-center justify-center gap-3"
+                  >
+                    <Settings size={16} /> Configurar Agora
+                  </button>
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-[9px] font-black text-slate-400 uppercase italic">Contate seu Secretário Local</p>
+                  </div>
+                )}
+                <button onClick={() => setShowConfigError(false)} className="w-full py-3 text-slate-300 font-black uppercase text-[9px] tracking-widest">Entendido</button>
+              </div>
             </div>
           </div>
         )}

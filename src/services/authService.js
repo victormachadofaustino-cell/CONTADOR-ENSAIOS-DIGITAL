@@ -7,6 +7,7 @@ import {
 
 /**
  * Serviço de Autenticação e Gestão de Usuários
+ * Saneado para Escalabilidade Nacional (Removido Resquícios de Jundiaí)
  */
 export const authService = {
   
@@ -21,22 +22,27 @@ export const authService = {
   },
 
   // Registra um novo usuário vinculado a uma ComumId e sua Hierarquia
-  // Adicionado suporte para cidadeId e regionalId para escalabilidade
+  // Sistema agnóstico: exige IDs reais vindos do banco de dados
   register: async ({ email, password, name, role, comum, comumId, cidadeId, regionalId }) => {
+    // Validação de Governança: impede registros sem jurisdição definida
+    if (!cidadeId || !regionalId || !comumId) {
+      throw new Error("Falha de jurisdição: Dados geográficos obrigatórios ausentes.");
+    }
+
     // 1. Cria o usuário no Auth
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     
     // 2. Cria o perfil no Firestore (Lógica Multitenancy Hierárquica)
-    // O comumId define o acesso local, enquanto cidadeId e regionalId definem a visibilidade macro
+    // Registro 100% dinâmico baseado na seleção real do usuário
     await setDoc(doc(db, 'users', cred.user.uid), {
       email,
       name,
       role,
       comum,
-      comumId: comumId, // Removido ID fixo para garantir integridade multi-igreja
-      cidadeId: cidadeId || 'jundiai_central', // Vincula à cidade (Padrão Jundiaí se omitido)
-      regionalId: regionalId || 'regional_jundiai', // Vincula à regional administrativa
-      approved: false, // Inicia aguardando aprovação
+      comumId, 
+      cidadeId, 
+      regionalId,
+      approved: false, // Inicia aguardando aprovação da zeladoria local/regional
       disabled: false,
       isMaster: false,
       createdAt: Date.now()

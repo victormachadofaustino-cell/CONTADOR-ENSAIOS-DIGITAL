@@ -26,18 +26,18 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
   const [tempRole, setTempRole] = useState(userData?.role || '');
 
   const isMaster = userData?.isMaster === true;
-  const isLocalOnly = !isMaster && !userData?.escopoRegional && !userData?.escopoCidade && userData?.escopoLocal;
+  // Aprimorado: identifica se o usuário é estritamente local (sem poderes de navegação regional)
+  const isLocalOnly = !isMaster && !userData?.isComissao && !userData?.isCidade && !userData?.escopoRegional;
 
   // LÓGICA DE EXIBIÇÃO DINÂMICA: 
-  // Encontra o nome da regional ativa dentro da lista carregada, para atualizar o visual do Header
-  // CORREÇÃO: Prioriza o ID ativo do contexto para Master/Regional
-  const regionalAtivaNome = listaRegionais.find(r => r.id === (userData?.activeRegionalId || userData?.regionalId))?.nome || userData?.regional || "Selecionar...";
+  // Encontra o nome da regional ativa dentro da lista carregada para atualizar o visual do Header
+  const regionalAtivaNome = listaRegionais.find(r => r.id === userData?.activeRegionalId)?.nome || userData?.regional || "Navegar...";
 
   // BLOQUEIO DE SEGURANÇA: Monitor de Regionais (Sempre ativo para Master ver a lista)
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    // Mesmo que não seja master, carregamos a lista de regionais (apenas nomes) para o Header saber exibir o nome correto
+    // Carregamos a lista de regionais para o Header saber exibir o nome correto de qualquer regional ativa
     const unsub = onSnapshot(collection(db, 'config_regional'), 
       (s) => {
         setListaRegionais(s.docs.map(d => ({ id: d.id, nome: d.data().nome, ...d.data() })));
@@ -120,15 +120,15 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
           </div>
 
           <div 
-            onClick={() => isMaster && setIsRegionalSelectorOpen(true)}
-            className={`flex flex-col items-start leading-none text-left ${isMaster ? 'cursor-pointer active:scale-95 transition-all' : ''}`}
+            onClick={() => (isMaster || userData?.isComissao) && setIsRegionalSelectorOpen(true)}
+            className={`flex flex-col items-start leading-none text-left ${(isMaster || userData?.isComissao) ? 'cursor-pointer active:scale-95 transition-all' : ''}`}
           >
             <span className="text-[10px] font-black text-blue-600 uppercase italic tracking-tighter flex items-center gap-1 leading-none">
-              {isLocalOnly ? 'Localidade' : 'Regional'}
-              {isMaster && <ChevronDown size={10} strokeWidth={4} />}
+              {isLocalOnly ? 'Sua Localidade' : 'Regional'}
+              {(isMaster || userData?.isComissao) && <ChevronDown size={10} strokeWidth={4} />}
             </span>
             <h1 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight truncate max-w-[180px]">
-              {/* CORREÇÃO: Agora exibe o nome dinâmico da regional selecionada */}
+              {/* Prioridade: Se Local, mostra Comum. Se Gestor, mostra a Regional Ativa do GPS */}
               {isLocalOnly ? (userData?.comum || "Localidade") : regionalAtivaNome}
             </h1>
           </div>
@@ -143,7 +143,7 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
         {isProfileOpen && (
           <div className="fixed inset-0 z-[200]">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsProfileOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" />
-            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="absolute top-0 right-0 h-full w-[85%] max-w-sm bg-[#F1F5F9] shadow-2xl flex flex-col overflow-hidden text-left">
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="absolute top-0 right-0 h-full w-[85%] max-sm:w-full max-w-sm bg-[#F1F5F9] shadow-2xl flex flex-col overflow-hidden text-left">
               
               <div className="p-8 bg-slate-950 text-white rounded-bl-[3rem] shadow-xl relative">
                 <div className="flex justify-between items-start mb-6">
@@ -211,7 +211,7 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
                     key={reg.id}
                     onClick={() => {
                       setContext('regional', reg.id);
-                      onRegionalChange(reg.id, reg.nome); // Notifica a mudança de regional
+                      if (onRegionalChange) onRegionalChange(reg.id, reg.nome); 
                       setIsRegionalSelectorOpen(false);
                       toast.success(`Navegando para: ${reg.nome}`);
                     }}
@@ -250,7 +250,7 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
                       <p className="text-[8px] font-black text-blue-600 uppercase italic ml-1 tracking-widest leading-none">Controle de Hierarquia</p>
                       <JurisdictionItem label="Master Root" active={userData?.isMaster} icon={<Shield size={16}/>} onClick={() => toggleFlag('isMaster', userData?.isMaster)} canEdit={true} isAmber />
                       <div className="grid grid-cols-1 gap-2 pt-1">
-                        <JurisdictionItem label="Regional" active={userData?.escopoRegional} icon={<Globe size={16}/>} onClick={() => toggleFlag('escopoRegional', userData?.escopoRegional)} canEdit={true} />
+                        <JurisdictionItem label="Comissão" active={userData?.isComissao} icon={<Shield size={16}/>} onClick={() => toggleFlag('isComissao', userData?.isComissao)} canEdit={true} />
                         <JurisdictionItem label="Cidade" active={userData?.escopoCidade} icon={<Map size={16}/>} onClick={() => toggleFlag('escopoCidade', userData?.escopoCidade)} canEdit={true} />
                         <JurisdictionItem label="GEM / Local" active={userData?.escopoLocal} icon={<Home size={16}/>} onClick={() => toggleFlag('escopoLocal', userData?.escopoLocal)} canEdit={true} />
                       </div>

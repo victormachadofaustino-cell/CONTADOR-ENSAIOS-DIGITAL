@@ -21,7 +21,7 @@ const LoginPage = ({
   const [selectedChurch, setSelectedChurch] = useState(null); 
   const [listaCargosLocal, setListaCargosLocal] = useState([]); 
 
-  // 1. CARGA DINÂMICA DE REGIONAIS
+  // 1. CARGA DINÂMICA DE REGIONAIS (Escalabilidade Total)
   useEffect(() => {
     if (authMode !== 'register') return;
     const unsub = onSnapshot(collection(db, 'config_regional'), 
@@ -85,9 +85,12 @@ const LoginPage = ({
       if (authMode === 'login') {
         await authService.login(email, pass);
       } else {
+        // VALIDAÇÕES DE REGISTRO NEUTRO (Sem Jundiaí Fixo)
         if (!userName.trim()) throw new Error("Informe seu nome");
         if (pass.length < 6) throw new Error("Mínimo 6 caracteres na senha");
-        if (!selectedChurch) throw new Error("Selecione sua localidade");
+        if (!selectedRegionalId) throw new Error("Selecione sua Regional");
+        if (!selectedCityId) throw new Error("Selecione sua Cidade");
+        if (!selectedChurch) throw new Error("Selecione sua Localidade");
 
         await authService.register({
           email, password: pass, name: userName,
@@ -161,7 +164,7 @@ const LoginPage = ({
           )}
         </AnimatePresence>
 
-        {/* Cabeçalho de Títulos centralizados (Logo removido) */}
+        {/* Cabeçalho de Títulos centralizados */}
         <div className="space-y-4 mb-12 text-center">
           <div className="text-center space-y-2 pt-4">
             <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">Contador de</h2>
@@ -205,7 +208,7 @@ const LoginPage = ({
                   <div className="space-y-1.5 animate-in">
                     <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><ShieldCheck size={10} /> Localidade</label>
                     <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase" value={selectedChurch?.id || ''} onChange={e => setSelectedChurch(igrejasDisponiveis.find(i => i.id === e.target.value))} required>
-                      <option value="">Selecione a igreja...</option>
+                      <option value="">Selecione a Localidade...</option>
                       {igrejasDisponiveis.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
                     </select>
                   </div>
