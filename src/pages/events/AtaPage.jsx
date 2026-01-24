@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   UserPlus, Trash2, X, ChevronDown, Lock, ShieldCheck, 
-  MapPin, Plus, RotateCcw, Info, Music, User, Briefcase
+  MapPin, Plus, RotateCcw, Info, Music, User, Briefcase, Phone, Calendar, Clock
 } from 'lucide-react';
 
 const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
@@ -37,6 +37,7 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   const [editIndex, setEditIndex] = useState(null);
   const saveTimeoutRef = useRef(null);
 
+  // RESTAURAÇÃO: Campos contato, dataEnsaio e hora reincluídos no estado
   const [newVisita, setNewVisita] = useState({ 
     nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
   });
@@ -122,7 +123,6 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
       return handleChange({ ...ataData, partes: np }); 
     }
     
-    // Validação Litúrgica: Coros C1-C6 ou Hinos 1-480
     if (!/^C[1-6]$/.test(v) && !/^\d{1,3}$/.test(v)) return;
     if (/^\d{1,3}$/.test(v) && parseInt(v) > 480) v = '480';
     
@@ -195,7 +195,7 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
               <div key={pIdx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
                 <div className="flex justify-between items-center mb-6">
                   <h4 className="font-black italic uppercase text-[10px] tracking-widest text-blue-600">{parte.label}</h4>
-                  {!isInputDisabled && pIdx > 1 && <button onClick={() => handleRemoveParte(pIdx)} className="bg-red-50 text-red-500 p-2 rounded-xl active:scale-90 transition-transform"><Trash2 size={14}/></button>}
+                  {!isInputDisabled && pIdx > 1 && <button onClick={() => { const np = [...ataData.partes]; np.splice(pIdx, 1); handleChange({...ataData, partes: np}); }} className="bg-red-50 text-red-500 p-2 rounded-xl active:scale-90 transition-transform"><Trash2 size={14}/></button>}
                 </div>
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <Field label="Condutor" val={parte.nome} disabled={isInputDisabled} onChange={v => { const np = [...ataData.partes]; np[pIdx].nome = v; handleChange({...ataData, partes: np}); }} />
@@ -229,6 +229,13 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
                   <p className="text-sm font-[900] uppercase text-slate-950 italic leading-none">{v.nome}</p>
                   <p className="text-[10px] font-black text-blue-600 uppercase mt-1.5 italic leading-none">{v.min} • {v.inst || 'N/I'}</p>
                   <p className="text-[8px] font-bold text-slate-400 mt-2 flex items-center gap-1.5 uppercase leading-none"><MapPin size={10} className="text-slate-300"/> {v.bairro} ({v.cidadeUf})</p>
+                  {/* VISUALIZAÇÃO: Exibição dos campos restaurados na lista */}
+                  {(v.dataEnsaio || v.contato) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                       {v.contato && <span className="text-[7px] font-black bg-slate-100 px-2 py-0.5 rounded-md text-slate-500 flex items-center gap-1 uppercase"><Phone size={8}/> {v.contato}</span>}
+                       {v.dataEnsaio && <span className="text-[7px] font-black bg-blue-50 px-2 py-0.5 rounded-md text-blue-400 flex items-center gap-1 uppercase"><Calendar size={8}/> {v.dataEnsaio} {v.hora && `às ${v.hora}`}</span>}
+                    </div>
+                  )}
                 </div>
                 {!isInputDisabled && <button onClick={(e) => { e.stopPropagation(); setVisitaToDelete(v.id); }} className="p-3 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>}
               </div>
@@ -278,15 +285,23 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
               <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:text-slate-950"><X size={24}/></button>
               <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">Dados da Visita</h3>
               <div className="space-y-5">
-                <Field label="Nome Completo" val={newVisita.nome} onChange={v => setNewVisita({...newVisita, nome: v})} />
+                <Field label="Nome Completo" val={newVisita.nome} onChange={v => setNewVisita({...newVisita, nome: v})} icon={<User size={10}/>} />
                 <div className="grid grid-cols-2 gap-4">
                   <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} onChange={v => setNewVisita({...newVisita, min: v})} />
-                  <Field label="Instrumento" val={newVisita.inst} onChange={v => setNewVisita({...newVisita, inst: v})} />
+                  <Field label="Instrumento" val={newVisita.inst} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Bairro" val={newVisita.bairro} onChange={v => setNewVisita({...newVisita, bairro: v})} />
-                  <Field label="Cidade / UF" val={newVisita.cidadeUf} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} />
+                  <Field label="Bairro" val={newVisita.bairro} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
+                  <Field label="Cidade / UF" val={newVisita.cidadeUf} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} icon={<MapPin size={10}/>} />
                 </div>
+                
+                {/* RESTAURAÇÃO: Novos campos integrados ao modal */}
+                <Field label="Contato (Telefone/Cel)" val={newVisita.contato} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Escala (Ex: 3º Sábado)" val={newVisita.dataEnsaio} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} />
+                  <Field label="Horário Ensaio" val={newVisita.hora} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} />
+                </div>
+
                 <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">Salvar Registro</button>
               </div>
             </motion.div>
@@ -340,9 +355,9 @@ const Modal = ({ title, children, icon, confirmLabel, onConfirm, onCancel, dange
   </div>
 );
 
-const Field = ({ label, val, onChange, disabled }) => (
+const Field = ({ label, val, onChange, disabled, icon }) => (
   <div className="flex flex-col flex-1 text-slate-950">
-    <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5"><User size={10}/> {label}</label>
+    <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5">{icon || <User size={10}/>} {label}</label>
     <input type="text" disabled={disabled} className="bg-slate-50 p-4 rounded-2xl font-black text-xs outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all uppercase shadow-inner italic disabled:opacity-40" value={val || ''} onChange={e => onChange(e.target.value.toUpperCase())} />
   </div>
 );
@@ -350,10 +365,13 @@ const Field = ({ label, val, onChange, disabled }) => (
 const Select = ({ label, val, options, onChange, disabled }) => (
   <div className="flex flex-col flex-1 text-slate-950">
     <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5"><Briefcase size={10}/> {label}</label>
-    <select disabled={disabled} className="bg-slate-50 p-4 rounded-2xl font-black text-[10px] outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all shadow-inner disabled:opacity-40 appearance-none" value={val || ''} onChange={e => onChange(e.target.value)}>
-      <option value="">SELECIONAR</option>
-      {options.map((o, i) => <option key={i} value={o}>{o}</option>)}
-    </select>
+    <div className="relative">
+      <select disabled={disabled} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-[10px] outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all shadow-inner disabled:opacity-40 appearance-none pr-10" value={val || ''} onChange={e => onChange(e.target.value)}>
+        <option value="">SELECIONAR</option>
+        {options.map((o, i) => <option key={i} value={o}>{o}</option>)}
+      </select>
+      <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+    </div>
   </div>
 );
 

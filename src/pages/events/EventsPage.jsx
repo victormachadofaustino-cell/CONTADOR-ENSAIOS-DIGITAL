@@ -35,12 +35,16 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
   const isRegional = isComissao || (userData?.escopoRegional === true);
   const isLocal = isRegional || (userData?.escopoLocal === true);
   
+  // AJUSTE DE SEGURANÇA: Nível Básico (Organista/Músico) não pode criar ensaios, apenas visualizar e contar.
+  const isBasico = userData?.role === 'Músico' || userData?.role === 'Organista';
+
   // DEFINE PERMISSÃO: Baseado na jurisdição ativa para escala infinita
   const temPermissaoCriarAqui = useMemo(() => {
+    if (isBasico) return false; // Trava explícita para nível operacional
     if (isMaster || isComissao) return true;
     const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return permitidasIds.includes(selectedChurchId);
-  }, [isMaster, isComissao, selectedChurchId, userData]);
+  }, [isMaster, isComissao, isBasico, selectedChurchId, userData]);
 
   // Lista de IDs permitidos para este usuário
   const permitidasIds = useMemo(() => {
@@ -62,7 +66,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
     if (!activeRegionalId) return;
     let isMounted = true;
     
-    const qIgr = isComissao 
+    const qIgr = (isMaster || isComissao) 
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
       : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 10)));
 
@@ -76,7 +80,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
         if (!isMounted) return;
         const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
         
-        if (isComissao) {
+        if (isMaster || isComissao) {
           setCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
         } else {
           const filtradas = todasCidades.filter(c => cidadesComAcesso.includes(c.id));
@@ -87,7 +91,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
     });
 
     return () => { isMounted = false; unsubIgr(); };
-  }, [activeRegionalId, isComissao, permitidasIds]); 
+  }, [activeRegionalId, isMaster, isComissao, permitidasIds]); 
 
   // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM
   useEffect(() => {
@@ -105,15 +109,19 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
         nome: d.data().comum || "Sem Nome" 
       }));
       
-      if (isComissao) {
-        setComuns(list.sort((a, b) => a.nome.localeCompare(b.nome)));
-      } else {
-        const filtradas = list.filter(c => permitidasIds.includes(c.id));
-        setComuns(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
+      const filteredList = (isMaster || isComissao) 
+        ? list.sort((a, b) => a.nome.localeCompare(b.nome))
+        : list.filter(c => permitidasIds.includes(c.id)).sort((a, b) => a.nome.localeCompare(b.nome));
+      
+      setComuns(filteredList);
+
+      // CORREÇÃO: Força a seleção do ID da comum do usuário se ele estiver na lista carregada
+      if (userData?.comumId && filteredList.some(c => c.id === userData.comumId) && !selectedChurchId) {
+        setSelectedChurchId(userData.comumId);
       }
     });
     return () => { isMounted = false; unsub(); };
-  }, [selectedCityId, isComissao, permitidasIds]);
+  }, [selectedCityId, isMaster, isComissao, permitidasIds, userData?.comumId]);
 
   // 3. BUSCA DE ENSAIOS (Motor de Sincronização Robusta)
   useEffect(() => {
@@ -244,13 +252,16 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
             onChange={(e) => setSelectedChurchId(e.target.value)}
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
           >
+            {/* CORREÇÃO MESTRA: Fallback de Hidratação Imediata usando userData.comum */}
+            <option value="">
+              {comuns.length > 0 ? "SELECIONE A COMUM" : (userData?.comum?.toUpperCase() || "CARREGANDO...")}
+            </option>
             {comuns.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            {comuns.length === 0 && <option value="">Selecione a Comum</option>}
           </select>
         </div>
       </div>
 
-      {/* BOTÃO DE NOVO ENSAIO */}
+      {/* BOTÃO DE NOVO ENSAIO - Ajustado para respeitar a trava de nível Básico */}
       {temPermissaoCriarAqui && selectedChurchId && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">

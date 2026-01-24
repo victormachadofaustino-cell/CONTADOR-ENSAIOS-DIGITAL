@@ -33,6 +33,10 @@ const DashPage = ({ userData }) => {
   const isComissao = userData?.isComissao;
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
   
+  // AJUSTE DE SEGURANÇA: Identifica se o usuário é estritamente local (GEM/Local)
+  const isBasico = userData?.role === 'Músico' || userData?.role === 'Organista';
+  const isLocalOnly = !isMaster && !isComissao && (userData?.escopoLocal === true);
+
   const permitidasIds = useMemo(() => {
     const lista = [userData?.comumId];
     if (userData?.acessosPermitidos) lista.push(...userData.acessosPermitidos);
@@ -40,8 +44,8 @@ const DashPage = ({ userData }) => {
   }, [userData]);
 
   // Estados de Filtro Geográfico baseados no Contexto (GPS)
-  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || 'all');
-  const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || 'consolidated');
+  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || 'all');
+  const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || userData?.comumId || 'consolidated');
   
   const [listaCidades, setListaCidades] = useState([]);
   const [listaIgrejas, setListaIgrejas] = useState([]);
@@ -81,15 +85,22 @@ const DashPage = ({ userData }) => {
     return () => unsubIgr();
   }, [activeRegionalId, isMaster, isComissao, permitidasIds]);
 
-  // 2. BUSCA DE EVENTOS (OTIMIZADO: Collection Group Query para Escala)
+  // 2. BUSCA DE EVENTOS (MOTOR HÍBRIDO: Resolve erro de permissão para Local)
   useEffect(() => {
     if (!activeRegionalId) return;
     setLoading(true);
 
-    const qEvents = query(
-      collectionGroup(db, 'events'), 
-      where('regionalId', '==', activeRegionalId)
-    );
+    let qEvents;
+    // CORREÇÃO: Se for Local Only (GEM), aponta para a coleção direta da Comum dele.
+    // Isso evita o erro de permissão do collectionGroup e não exige índices para usuários locais.
+    if ((isLocalOnly || isBasico) && userData?.comumId) {
+      qEvents = query(collection(db, 'comuns', userData.comumId, 'events'));
+    } else {
+      qEvents = query(
+        collectionGroup(db, 'events'), 
+        where('regionalId', '==', activeRegionalId)
+      );
+    }
 
     const unsubEvents = onSnapshot(qEvents, (snap) => {
       let data = snap.docs.map(d => ({ 
@@ -98,13 +109,19 @@ const DashPage = ({ userData }) => {
         ...d.data() 
       }));
 
-      if (activeComumId !== 'consolidated') {
-        data = data.filter(e => e.comumId === activeComumId);
-      } else if (selectedCityId !== 'all') {
-        const igrejasDaCidade = listaIgrejas.filter(i => i.cidadeId === selectedCityId).map(i => i.id);
-        data = data.filter(e => igrejasDaCidade.includes(e.comumId));
-      } else if (!isMaster && !isComissao) {
-        data = data.filter(e => permitidasIds.includes(e.comumId));
+      // Filtros de interface
+      if (!isLocalOnly && !isBasico) {
+        if (activeComumId !== 'consolidated') {
+          data = data.filter(e => e.comumId === activeComumId);
+        } else if (selectedCityId !== 'all') {
+          const igrejasDaCidade = listaIgrejas.filter(i => i.cidadeId === selectedCityId).map(i => i.id);
+          data = data.filter(e => igrejasDaCidade.includes(e.comumId));
+        } else if (!isMaster && !isComissao) {
+          data = data.filter(e => permitidasIds.includes(e.comumId));
+        }
+      } else {
+        // Trava final de segurança para nível local
+        data = data.filter(e => e.comumId === (userData?.activeComumId || userData?.comumId));
       }
 
       setEvents(data);
@@ -115,7 +132,7 @@ const DashPage = ({ userData }) => {
     });
 
     return () => unsubEvents();
-  }, [activeRegionalId, activeComumId, selectedCityId, listaIgrejas, isMaster, isComissao, permitidasIds]);
+  }, [activeRegionalId, activeComumId, selectedCityId, listaIgrejas, isMaster, isComissao, permitidasIds, isBasico, isLocalOnly, userData?.comumId, userData?.activeComumId]);
 
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -219,33 +236,48 @@ const DashPage = ({ userData }) => {
       
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm space-y-3 rounded-b-[2.2rem]">
         <div className="flex items-center gap-2 px-1">
-          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${listaCidades.length <= 1 && !isMaster ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${(isLocalOnly || isBasico) ? 'opacity-50 pointer-events-none' : (listaCidades.length <= 1 && !isMaster) ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
-              value={selectedCityId} 
+              disabled={isLocalOnly || isBasico}
+              value={isLocalOnly || isBasico ? userData?.cidadeId : selectedCityId} 
               onChange={(e) => { setSelectedCityId(e.target.value); setActiveComumId('consolidated'); }} 
               className="bg-transparent text-slate-950 font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
             >
-              <option value="all">Todas as Cidades</option>
-              {listaCidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              {/* HIDRATAÇÃO: Força o nome da cidade do usuário básico/local se estiver travado */}
+              {isLocalOnly || isBasico ? (
+                <option value={userData?.cidadeId}>{userData?.cidadeNome || "SUA CIDADE"}</option>
+              ) : (
+                <>
+                  <option value="all">Todas as Cidades</option>
+                  {listaCidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </>
+              )}
             </select>
           </div>
 
-          <div className="flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2 rounded-2xl shadow-xl border border-white/10 overflow-hidden">
+          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2 rounded-2xl shadow-xl border border-white/10 overflow-hidden ${(isLocalOnly || isBasico) ? 'opacity-80 pointer-events-none' : ''}`}>
             <Building2 size={10} className="text-blue-400 shrink-0" />
             <select 
-              value={activeComumId} 
+              disabled={isLocalOnly || isBasico}
+              value={isLocalOnly || isBasico ? userData?.comumId : activeComumId} 
               onChange={(e) => setActiveComumId(e.target.value)} 
               className="bg-transparent text-white font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
             >
-              <option value="consolidated" className="text-slate-900 bg-white">
-                {selectedCityId === 'all' ? 'Resumo Regional' : 'Consolidado'}
-              </option>
-              {listaIgrejas.filter(i => selectedCityId === 'all' || i.cidadeId === selectedCityId).map(ig => (
-                <option key={ig.id} value={ig.id} className="text-slate-900 bg-white">{ig.nome}</option>
-              ))}
+              {isLocalOnly || isBasico ? (
+                <option value={userData?.comumId} className="text-slate-900 bg-white">{userData?.comum || "SUA LOCALIDADE"}</option>
+              ) : (
+                <>
+                  <option value="consolidated" className="text-slate-900 bg-white">
+                    {selectedCityId === 'all' ? 'Resumo Regional' : 'Consolidado'}
+                  </option>
+                  {listaIgrejas.filter(i => selectedCityId === 'all' || i.cidadeId === selectedCityId).map(ig => (
+                    <option key={ig.id} value={ig.id} className="text-slate-900 bg-white">{ig.nome}</option>
+                  ))}
+                </>
+              )}
             </select>
-            <ChevronDown size={10} className="text-white/20 shrink-0" />
+            {!isLocalOnly && !isBasico && <ChevronDown size={10} className="text-white/20 shrink-0" />}
           </div>
         </div>
 
@@ -412,7 +444,8 @@ const CarouselBox = ({ title, children, onPrev, onNext, dark }) => (
         <button onClick={onNext} className="p-1.5 bg-slate-50 rounded-lg text-slate-300 active:text-blue-600 transition-colors"><ChevronRight size={14} /></button>
     </div>
     <div className="h-56 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      {/* PRESERVAÇÃO: Renderização segura para evitar erro de container sem dimensão */}
+      <ResponsiveContainer width="99%" height="99%">
         {children}
       </ResponsiveContainer>
     </div>

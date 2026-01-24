@@ -30,8 +30,8 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
   const isLocalOnly = !isMaster && !userData?.isComissao && !userData?.isCidade && !userData?.escopoRegional;
 
   // LÓGICA DE EXIBIÇÃO DINÂMICA: 
-  // Encontra o nome da regional ativa dentro da lista carregada para atualizar o visual do Header
-  const regionalAtivaNome = listaRegionais.find(r => r.id === userData?.activeRegionalId)?.nome || userData?.regional || "Navegar...";
+  // Hidratação imediata. Busca o nome na lista carregada, mas usa o dado do perfil (userData) como fallback instantâneo.
+  const regionalAtivaNome = listaRegionais.find(r => r.id === (userData?.activeRegionalId || userData?.regionalId))?.nome || userData?.regionalNome || userData?.regional || "Navegar...";
 
   // BLOQUEIO DE SEGURANÇA: Monitor de Regionais (Sempre ativo para Master ver a lista)
   useEffect(() => {
@@ -124,12 +124,12 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
             className={`flex flex-col items-start leading-none text-left ${(isMaster || userData?.isComissao) ? 'cursor-pointer active:scale-95 transition-all' : ''}`}
           >
             <span className="text-[10px] font-black text-blue-600 uppercase italic tracking-tighter flex items-center gap-1 leading-none">
-              {isLocalOnly ? 'Sua Localidade' : 'Regional'}
+              Regional
               {(isMaster || userData?.isComissao) && <ChevronDown size={10} strokeWidth={4} />}
             </span>
             <h1 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight truncate max-w-[180px]">
-              {/* Prioridade: Se Local, mostra Comum. Se Gestor, mostra a Regional Ativa do GPS */}
-              {isLocalOnly ? (userData?.comum || "Localidade") : regionalAtivaNome}
+              {/* CORREÇÃO: Removida redundância. Exibe apenas o nome da Regional para todos os níveis no Header principal */}
+              {regionalAtivaNome}
             </h1>
           </div>
         </div>

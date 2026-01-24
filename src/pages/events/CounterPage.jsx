@@ -124,17 +124,22 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     });
 
     const extras = Object.keys(localCounts)
-      .filter(key => !key.startsWith('meta_') && !ordemOficial.includes(key) && !aliases[key])
+      .filter(key => {
+        const saneKey = aliases[key] || key;
+        return !key.startsWith('meta_') && !ordemOficial.includes(saneKey);
+      })
       .map(key => ({
         id: key,
-        name: localCounts[key].name || key.toUpperCase(),
+        name: localCounts[key].name || key.toUpperCase().replace(/_/g, ' '),
         section: (localCounts[key].section || 'GERAL').toUpperCase(),
         evalType: localCounts[key].evalType || 'Sem'
       }));
 
     const result = [...base, ...extras].sort((a, b) => {
-      const idxA = ordemOficial.indexOf(a.id);
-      const idxB = ordemOficial.indexOf(b.id);
+      const saneA = aliases[a.id] || a.id;
+      const saneB = aliases[b.id] || b.id;
+      const idxA = ordemOficial.indexOf(saneA);
+      const idxB = ordemOficial.indexOf(saneB);
       return (idxA > -1 ? idxA : 99) - (idxB > -1 ? idxB : 99);
     });
 
@@ -183,10 +188,14 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   };
 
   const handleToggleGroup = (sec) => {
+    // CORREÇÃO: Se o ensaio está lacrado, abre o grupo diretamente para visualização
     if (isClosed) return setActiveGroup(activeGroup === sec ? null : sec);
+    
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
     const responsibleId = localCounts?.[metaKey]?.responsibleId;
     if (activeGroup === sec) { setActiveGroup(null); return; }
+    
+    // Se for Master, Comissão, Cidade ou o próprio dono, abre sem perguntar
     if (responsibleId === myUID || isMaster || isComissao || isCidade) setActiveGroup(sec);
     else setShowOwnershipModal(sec);
   };
