@@ -3,11 +3,11 @@ import {
   getFirestore, collection, doc, onSnapshot, 
   setDoc, updateDoc, deleteDoc, addDoc, getDoc,
   query, orderBy, where, 
-  getDocs,    // INCLUÍDO PARA A FÁBRICA
-  writeBatch,  // INCLUÍDO PARA A FÁBRICA
-  initializeFirestore, // NOVO: Para configuração de estabilidade
-  persistentLocalCache, // NOVO: Substitui enableIndexedDbPersistence
-  persistentMultipleTabManager // NOVO: Suporte para múltiplas abas
+  getDocs,
+  writeBatch,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
 } from "firebase/firestore";
 import { 
   getAuth, signInWithEmailAndPassword, 
@@ -26,30 +26,23 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-/**
- * CONFIGURAÇÃO ROBUSTA (Firestore v11+)
- * Resolve: ERR_QUIC_PROTOCOL_ERROR e Depreciação de Persistência
- * Mantém: Suporte para múltiplas abas abertas e conexão estável
- */
+// CONFIGURAÇÃO ROBUSTA: Resolve erros de conexão e gerencia múltiplas abas
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   }),
-  experimentalForceLongPolling: true, // Força conexão estável em dev local
+  experimentalForceLongPolling: true,
   useFetchStreams: false
 });
 
 const auth = getAuth(app);
 
-// Nota: A ativação da persistência offline agora é gerenciada internamente 
-// pelo localCache no initializeFirestore definido acima.
-
 export { 
   auth, db, collection, doc, onSnapshot, setDoc, 
   updateDoc, deleteDoc, addDoc, getDoc,
   query, orderBy, where,
-  getDocs,    // EXPORTADO PARA A FÁBRICA
-  writeBatch, // EXPORTADO PARA A FÁBRICA
+  getDocs,
+  writeBatch,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   onAuthStateChanged, signOut, sendEmailVerification 
 };

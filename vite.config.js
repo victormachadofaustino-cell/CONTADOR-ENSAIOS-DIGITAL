@@ -3,11 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // CORREÇÃO: Alterado de './' para '/' para garantir que o roteamento SPA 
-  // localize os assets em qualquer nível de profundidade de URL no deploy.
+  // Define caminho absoluto para garantir funcionamento do roteamento SPA
   base: '/', 
   server: {
-    host: '127.0.0.1', // Força o IPv4 para evitar o Connection Refused
+    host: '127.0.0.1', // Evita o Connection Refused em ambiente local
     port: 5174,
     strictPort: true,
   }
