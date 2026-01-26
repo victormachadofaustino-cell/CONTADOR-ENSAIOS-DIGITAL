@@ -8,6 +8,7 @@ import {
 /**
  * Serviço de Autenticação e Gestão de Usuários
  * Saneado para Escalabilidade Nacional (Removido Resquícios de Jundiaí)
+ * Atualizado para Matriz de Competências v2.1
  */
 export const authService = {
   
@@ -34,6 +35,7 @@ export const authService = {
     
     // 2. Cria o perfil no Firestore (Lógica Multitenancy Hierárquica)
     // Registro 100% dinâmico baseado na seleção real do usuário
+    // O nível de acesso inicia como 'basico' independente do cargo escolhido
     await setDoc(doc(db, 'users', cred.user.uid), {
       email,
       name,
@@ -42,10 +44,11 @@ export const authService = {
       comumId, 
       cidadeId, 
       regionalId,
+      accessLevel: 'basico', // Define nível inicial conforme Matriz de Competências
       approved: false, // Inicia aguardando aprovação da zeladoria local/regional
       disabled: false,
-      isMaster: false,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      dbVersion: "2.1-matriz"
     });
 
     await sendEmailVerification(cred.user);

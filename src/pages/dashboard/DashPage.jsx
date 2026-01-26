@@ -28,14 +28,18 @@ const DashPage = ({ userData }) => {
   const [listCityFilter, setListCityFilter] = useState('all');
   const [listMinFilter, setListMinFilter] = useState('all');
 
-  // --- LÓGICA DE JURISDIÇÃO EXPANDIDA ---
-  const isMaster = userData?.isMaster;
-  const isComissao = userData?.isComissao;
+  // --- LÓGICA DE JURISDIÇÃO v2.1 (MATRIZ DE COMPETÊNCIAS) ---
+  const level = userData?.accessLevel;
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
+
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
   
-  // AJUSTE DE SEGURANÇA: Identifica se o usuário é estritamente local (GEM/Local)
-  const isBasico = userData?.role === 'Músico' || userData?.role === 'Organista';
-  const isLocalOnly = !isMaster && !isComissao && (userData?.escopoLocal === true);
+  // Identifica se o usuário está travado na visão local (Básico ou GEM sem poder de navegação)
+  const isLocalViewOnly = isBasico || (isGemLocal && !isRegionalCidade);
 
   const permitidasIds = useMemo(() => {
     const lista = [userData?.comumId];
@@ -60,7 +64,7 @@ const DashPage = ({ userData }) => {
   useEffect(() => {
     if (!activeRegionalId) return;
 
-    const qIgr = (isMaster || isComissao)
+    const qIgr = (isComissao)
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
       : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 30)));
     
@@ -72,7 +76,7 @@ const DashPage = ({ userData }) => {
       onSnapshot(qCid, (sCids) => {
         const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
         
-        if (isMaster || isComissao) {
+        if (isComissao) {
           setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
         } else {
           const idsCidadesPermitidas = [...new Set(igs.map(i => i.cidadeId))];
@@ -83,17 +87,16 @@ const DashPage = ({ userData }) => {
     });
 
     return () => unsubIgr();
-  }, [activeRegionalId, isMaster, isComissao, permitidasIds]);
+  }, [activeRegionalId, isComissao, permitidasIds]);
 
-  // 2. BUSCA DE EVENTOS (MOTOR HÍBRIDO: Resolve erro de permissão para Local)
+  // 2. BUSCA DE EVENTOS (MOTOR HÍBRIDO v2.1)
   useEffect(() => {
     if (!activeRegionalId) return;
     setLoading(true);
 
     let qEvents;
-    // CORREÇÃO: Se for Local Only (GEM), aponta para a coleção direta da Comum dele.
-    // Isso evita o erro de permissão do collectionGroup e não exige índices para usuários locais.
-    if ((isLocalOnly || isBasico) && userData?.comumId) {
+    // CORREÇÃO: Usuários de nível Local/Básico consultam direto a coleção para evitar custos de collectionGroup e índices
+    if (isLocalViewOnly && userData?.comumId) {
       qEvents = query(collection(db, 'comuns', userData.comumId, 'events'));
     } else {
       qEvents = query(
@@ -109,18 +112,18 @@ const DashPage = ({ userData }) => {
         ...d.data() 
       }));
 
-      // Filtros de interface
-      if (!isLocalOnly && !isBasico) {
+      // Filtros de interface respeitando a Matriz
+      if (!isLocalViewOnly) {
         if (activeComumId !== 'consolidated') {
           data = data.filter(e => e.comumId === activeComumId);
         } else if (selectedCityId !== 'all') {
           const igrejasDaCidade = listaIgrejas.filter(i => i.cidadeId === selectedCityId).map(i => i.id);
           data = data.filter(e => igrejasDaCidade.includes(e.comumId));
-        } else if (!isMaster && !isComissao) {
+        } else if (!isComissao) {
           data = data.filter(e => permitidasIds.includes(e.comumId));
         }
       } else {
-        // Trava final de segurança para nível local
+        // Trava final de segurança para nível local/básico
         data = data.filter(e => e.comumId === (userData?.activeComumId || userData?.comumId));
       }
 
@@ -132,7 +135,7 @@ const DashPage = ({ userData }) => {
     });
 
     return () => unsubEvents();
-  }, [activeRegionalId, activeComumId, selectedCityId, listaIgrejas, isMaster, isComissao, permitidasIds, isBasico, isLocalOnly, userData?.comumId, userData?.activeComumId]);
+  }, [activeRegionalId, activeComumId, selectedCityId, listaIgrejas, isComissao, permitidasIds, isLocalViewOnly, userData?.comumId, userData?.activeComumId]);
 
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -236,16 +239,15 @@ const DashPage = ({ userData }) => {
       
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm space-y-3 rounded-b-[2.2rem]">
         <div className="flex items-center gap-2 px-1">
-          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${(isLocalOnly || isBasico) ? 'opacity-50 pointer-events-none' : (listaCidades.length <= 1 && !isMaster) ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${isLocalViewOnly ? 'opacity-50 pointer-events-none' : (listaCidades.length <= 1 && !isComissao) ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
-              disabled={isLocalOnly || isBasico}
-              value={isLocalOnly || isBasico ? userData?.cidadeId : selectedCityId} 
+              disabled={isLocalViewOnly}
+              value={isLocalViewOnly ? userData?.cidadeId : selectedCityId} 
               onChange={(e) => { setSelectedCityId(e.target.value); setActiveComumId('consolidated'); }} 
               className="bg-transparent text-slate-950 font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
             >
-              {/* HIDRATAÇÃO: Força o nome da cidade do usuário básico/local se estiver travado */}
-              {isLocalOnly || isBasico ? (
+              {isLocalViewOnly ? (
                 <option value={userData?.cidadeId}>{userData?.cidadeNome || "SUA CIDADE"}</option>
               ) : (
                 <>
@@ -256,15 +258,15 @@ const DashPage = ({ userData }) => {
             </select>
           </div>
 
-          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2 rounded-2xl shadow-xl border border-white/10 overflow-hidden ${(isLocalOnly || isBasico) ? 'opacity-80 pointer-events-none' : ''}`}>
+          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2 rounded-2xl shadow-xl border border-white/10 overflow-hidden ${isLocalViewOnly ? 'opacity-80 pointer-events-none' : ''}`}>
             <Building2 size={10} className="text-blue-400 shrink-0" />
             <select 
-              disabled={isLocalOnly || isBasico}
-              value={isLocalOnly || isBasico ? userData?.comumId : activeComumId} 
+              disabled={isLocalViewOnly}
+              value={isLocalViewOnly ? userData?.comumId : activeComumId} 
               onChange={(e) => setActiveComumId(e.target.value)} 
               className="bg-transparent text-white font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
             >
-              {isLocalOnly || isBasico ? (
+              {isLocalViewOnly ? (
                 <option value={userData?.comumId} className="text-slate-900 bg-white">{userData?.comum || "SUA LOCALIDADE"}</option>
               ) : (
                 <>
@@ -277,7 +279,7 @@ const DashPage = ({ userData }) => {
                 </>
               )}
             </select>
-            {!isLocalOnly && !isBasico && <ChevronDown size={10} className="text-white/20 shrink-0" />}
+            {!isLocalViewOnly && <ChevronDown size={10} className="text-white/20 shrink-0" />}
           </div>
         </div>
 
@@ -368,7 +370,7 @@ const DashPage = ({ userData }) => {
               <div className="flex gap-1">{[3, 5, 10, 15].map(n => <button key={n} onClick={() => setTopLimit(n)} className={`px-2 py-1 rounded-lg text-[8px] font-black ${topLimit === n ? 'bg-amber-500 text-slate-950' : 'bg-white/10 text-white/40'}`}>{n}</button>)}</div>
           </div>
           <div style={{ height: topLimit * 40 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={220}>
               <BarChart layout="vertical" data={topHinos.slice(0, topLimit)} margin={{ left: -25, right: 45 }}>
                 <XAxis type="number" hide />
                 <YAxis dataKey="num" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontStyle: 'italic', fontWeight: '900', fill: '#fff' }} width={45} />

@@ -31,19 +31,25 @@ const SettingsPage = () => {
   const [isNewChurchModalOpen, setIsNewChurchModalOpen] = useState(false);
   const [newChurchName, setNewChurchName] = useState('');
 
+  // --- NOVA LÓGICA DE COMPETÊNCIAS v2.1 (MATRIZ DE PODER) ---
+  const level = userData?.accessLevel;
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+
   // REATIVIDADE AO HEADER: Pega a Regional ativa do contexto
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId || null;
   const activeRegionalName = userData?.activeRegionalName || userData?.regional || "Regional";
-  const isMaster = userData?.isMaster;
-  const isComissao = userData?.isComissao; 
-  const isCidade = userData?.isCidade; 
-  const isLocal = !isCidade && userData?.escopoLocal;
 
   // Lista de IDs permitidos para o Regional (Sua comum + Adjacências)
-  const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])].filter(Boolean);
+  const permitidasIds = useMemo(() => {
+    const ids = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
+    return [...new Set(ids.filter(Boolean))];
+  }, [userData]);
   
-  // REGRA DE OURO: Prioriza a seleção ativa ou a comum de origem do usuário
-  const comumIdEfetivo = selectedComum?.id || userData?.comumId;
+  // REGRA DE OURO: Prioriza a seleção ativa ou o activeComumId injetado pelo AuthContext
+  const comumIdEfetivo = selectedComum?.id || userData?.activeComumId || userData?.comumId;
 
   const [sharedData, setSharedData] = useState({
     church: {},
@@ -56,15 +62,17 @@ const SettingsPage = () => {
 
   // 1. MONITOR GEOGRÁFICO REATIVO (Cargos, Cidades e Comuns)
   useEffect(() => {
-    if (!activeRegionalId) return;
+    if (!activeRegionalId || !userData) return;
     let isMounted = true;
     const unsubs = [];
 
-    // RESET DE NAVEGAÇÃO AO TROCAR REGIONAL NO HEADER
-    // Se a regional mudar, limpamos seleções locais para evitar conflito
-    setSelectedCity(null);
-    setSelectedComum(null);
-    setActiveMenu(null);
+    // Reset para Master/Comissão ao trocar Regional, mas mantém para Local
+    if (isRegionalCidade) {
+        setSelectedCity(null);
+        setSelectedComum(null);
+        setActiveMenu(null);
+    }
+    
     setLoading(true);
 
     try {
@@ -83,12 +91,11 @@ const SettingsPage = () => {
       const qComuns = query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId));
       unsubs.push(onSnapshot(qComuns, (s) => {
         if (!isMounted) return;
-        const listaComuns = s.docs.map(d => ({ id: d.id, ...d.data() }));
+        const listaComuns = s.docs.map(d => ({ id: d.id, ...d.data(), comum: d.data().comum || "Sem Nome" }));
         
-        // Filtra comuns da regional baseado na permissão se não for Master/Comissão
-        const comunsVisiveis = (isMaster || isComissao) 
+        const comunsVisiveis = (isComissao) 
           ? listaComuns 
-          : listaComuns.filter(c => permitidasIds.includes(c.id));
+          : listaComuns.filter(c => permitidasIds.includes(c.id) || c.cidadeId === userData?.cidadeId);
 
         setSharedData(prev => ({ ...prev, comunsDaRegional: comunsVisiveis }));
 
@@ -96,26 +103,24 @@ const SettingsPage = () => {
         const qCidades = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
         unsubs.push(onSnapshot(qCidades, (sCidades) => {
           if (!isMounted) return;
-          const todasCidades = sCidades.docs.map(d => ({ id: d.id, ...d.data() }));
+          const todasCidades = sCidades.docs.map(d => ({ id: d.id, nome: d.data().nome }));
           
           let filtradas = [];
-          if (isMaster || isComissao) {
+          if (isComissao) {
             filtradas = todasCidades.sort((a, b) => a.nome.localeCompare(b.nome));
           } else {
-            // Se for Cidade ou Local, vê apenas as cidades onde possui comuns atribuídas
             const cidadesIdsPermitidas = listaComuns
-              .filter(com => permitidasIds.includes(com.id))
+              .filter(com => permitidasIds.includes(com.id) || com.cidadeId === userData?.cidadeId)
               .map(com => com.cidadeId);
             filtradas = todasCidades.filter(cid => cidadesIdsPermitidas.includes(cid.id));
           }
           
           setSharedData(prev => ({ ...prev, cidades: filtradas }));
           
-          // Inicialização automática do contexto geográfico
-          if (filtradas.length > 0) {
+          // Inicialização geográfica inteligente
+          if (filtradas.length > 0 && !selectedCity) {
             const userCity = filtradas.find(c => c.id === userData?.activeCityId || c.id === userData?.cidadeId);
             if (userCity) setSelectedCity(userCity);
-            else if (!isMaster) setSelectedCity(filtradas[0]);
           }
           
           setLoading(false); 
@@ -128,7 +133,7 @@ const SettingsPage = () => {
     }
 
     return () => { isMounted = false; unsubs.forEach(unsub => unsub?.()); };
-  }, [activeRegionalId, isMaster, isComissao]); 
+  }, [activeRegionalId, userData?.uid]); 
 
   // 2. MONITOR DE INSTRUMENTOS REATIVO (Ajustado para a Comum Ativa)
   useEffect(() => {
@@ -141,7 +146,6 @@ const SettingsPage = () => {
     return () => { isMounted = false; unsub(); };
   }, [comumIdEfetivo]);
 
-  // FUNÇÃO MESTRA: Criação de Nova Comum com injeção de matriz
   const handleCreateChurch = async () => {
     if (!newChurchName.trim()) return toast.error("Informe o nome da localidade");
     if (!selectedCity) return toast.error("Selecione uma cidade primeiro");
@@ -154,13 +158,16 @@ const SettingsPage = () => {
       regionalNome: activeRegionalName
     });
 
-    if (suceeso) {
+    if (sucesso) {
       setNewChurchName('');
       setIsNewChurchModalOpen(false);
     }
   };
 
-  if (loading) return (
+  // Trava de segurança para evitar renderizar sem dados de usuário
+  if (!userData) return null;
+
+  if (loading && isRegionalCidade) return (
     <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       <div className="font-black italic text-slate-400 text-[10px] uppercase tracking-widest text-center">Sincronizando Jurisdição...</div>
@@ -170,11 +177,10 @@ const SettingsPage = () => {
   return (
     <div className="space-y-6 pb-40 px-4 pt-6 max-w-md mx-auto text-left font-sans">
       
-      {/* SELETORES HIERÁRQUICOS UNIFICADOS */}
-      {(isMaster || isComissao || isCidade) && (
+      {/* SELETORES HIERÁRQUICOS UNIFICADOS (v2.1) - Exclusivo para quem pode navegar */}
+      {isRegionalCidade && (
         <div className="flex items-center gap-2 px-1">
-          {/* SELETOR DE CIDADE */}
-          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${sharedData.cidades.length <= 1 && !isMaster ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${sharedData.cidades.length <= 1 && !isComissao ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
               className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
@@ -191,7 +197,6 @@ const SettingsPage = () => {
             </select>
           </div>
 
-          {/* SELETOR DE COMUM + BOTÃO ADICIONAR */}
           <div className="flex-[1.2] flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 relative">
             <Home size={10} className="text-blue-400 shrink-0" />
             <select 
@@ -210,7 +215,7 @@ const SettingsPage = () => {
             </select>
             
             <div className="absolute right-2 flex items-center gap-1">
-              {(isMaster || isComissao || isCidade) && selectedCity && (
+              {isRegionalCidade && selectedCity && (
                 <button 
                   onClick={() => setIsNewChurchModalOpen(true)}
                   className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors"
@@ -225,7 +230,7 @@ const SettingsPage = () => {
         </div>
       )}
 
-      {/* BLOCO 2: GESTÃO GLOBAL (Exclusivo Master / Comissão para Cidades) */}
+      {/* BLOCO 2: GESTÃO GLOBAL (Exclusivo Master) */}
       {isMaster && (
         <MenuCard id="global" active={activeMenu} setActive={setActiveMenu} icon={<LayoutGrid size={18}/>} module="Administração" title="Cidades, Cargos & Ministérios">
           <ModuleGlobal 
@@ -236,32 +241,35 @@ const SettingsPage = () => {
         </MenuCard>
       )}
 
-      {/* BLOCO 3: MÓDULOS DE MANUTENÇÃO */}
+      {/* BLOCO 3: MÓDULOS DE MANUTENÇÃO - Visíveis para GEM Local ou superior */}
       <div className="space-y-3">
         <div className="px-2 mb-2">
             <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none">Manutenção Ativa em:</p>
-            <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter">
-              {selectedComum?.comum || userData.comum}
+            <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter leading-none mt-1">
+              {selectedComum?.comum || userData.comum || "CARREGANDO..."}
             </h3>
         </div>
 
-        <MenuCard id="orchestra" active={activeMenu} setActive={setActiveMenu} icon={<Music size={18}/>} module="Configuração" title="Orquestra & Instrumentos">
-           <ModuleOrchestra comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />
-        </MenuCard>
-        
-        <MenuCard id="users" active={activeMenu} setActive={setActiveMenu} icon={<ShieldCheck size={18}/>} module="Segurança" title="Acesso & Portaria">
-           <ModuleAccess comumId={comumIdEfetivo} cargos={sharedData.cargos} />
-        </MenuCard>
-        
-        <MenuCard id="church" active={activeMenu} setActive={setActiveMenu} icon={<Home size={18}/>} module="Gestão" title="Dados Cadastrais">
-           <ModuleChurch 
-            localData={selectedComum || {id: userData.comumId, comum: userData.comum}} 
-            onUpdate={(updated) => setSelectedComum(updated)} 
-           />
-        </MenuCard>
+        {isGemLocal && (
+          <>
+            <MenuCard id="orchestra" active={activeMenu} setActive={setActiveMenu} icon={<Music size={18}/>} module="Configuração" title="Orquestra & Instrumentos">
+                <ModuleOrchestra comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />
+            </MenuCard>
+            
+            <MenuCard id="users" active={activeMenu} setActive={setActiveMenu} icon={<ShieldCheck size={18}/>} module="Segurança" title="Acesso & Portaria">
+                <ModuleAccess comumId={comumIdEfetivo} cargos={sharedData.cargos} />
+            </MenuCard>
+            
+            <MenuCard id="church" active={activeMenu} setActive={setActiveMenu} icon={<Home size={18}/>} module="Gestão" title="Dados Cadastrais">
+                <ModuleChurch 
+                  localData={selectedComum || {id: userData.comumId, comum: userData.comum}} 
+                  onUpdate={(updated) => setSelectedComum(updated)} 
+                />
+            </MenuCard>
+          </>
+        )}
       </div>
 
-      {/* MODAL: NOVA COMUM */}
       <AnimatePresence>
         {isNewChurchModalOpen && (
           <div className="fixed inset-0 z-[700] flex items-center justify-center p-6">
@@ -283,15 +291,6 @@ const SettingsPage = () => {
                     value={newChurchName}
                     onChange={e => setNewChurchName(e.target.value)}
                   />
-                </div>
-                
-                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-2">
-                  <p className="text-[8px] font-black text-blue-600 uppercase italic flex items-center gap-2">
-                    <ShieldCheck size={12} /> Configuração Automática
-                  </p>
-                  <p className="text-[7px] font-bold text-blue-400 uppercase leading-relaxed">
-                    Ao criar, o sistema injetará automaticamente a Matriz Nacional de Instrumentos e vinculará à Regional {activeRegionalName}.
-                  </p>
                 </div>
               </div>
 

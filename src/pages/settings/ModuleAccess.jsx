@@ -4,7 +4,7 @@ import { db, collection, onSnapshot, doc, updateDoc, query, where } from '../../
 import toast from 'react-hot-toast';
 import { 
   ShieldCheck, Globe, Map, Home, X, ChevronRight, 
-  User, ShieldAlert, Mail, Shield, Eye, ChevronDown
+  User, ShieldAlert, Mail, Shield, Eye, ChevronDown, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 // Importação do Cérebro de Autenticação para validar jurisdição
@@ -14,10 +14,12 @@ const ModuleAccess = ({ comumId, cargos }) => {
   const { userData, user, loading: authLoading } = useAuth();
   const userEmail = user?.email;
   
-  const isMaster = userData?.isMaster;
-  const isComissao = userData?.isComissao;
-  const isRegional = userData?.isRegional || userData?.escopoRegional;
-  const isLocal = userData?.escopoLocal || userData?.isLocal;
+  // NOVA LÓGICA DE NÍVEIS (v2.1)
+  const level = userData?.accessLevel;
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
 
   const [users, setUsers] = useState([]);
   const [comunsDaRegional, setComunsDaRegional] = useState([]);
@@ -26,7 +28,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
 
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
 
-  // 1. MONITOR DE USUÁRIOS COM QUERY ATÔMICA E FALLBACK
+  // 1. MONITOR DE USUÁRIOS COM QUERY ATÔMICA (Sincronizado com Security Rules)
   useEffect(() => {
     if (authLoading || !userData) return;
     
@@ -34,13 +36,15 @@ const ModuleAccess = ({ comumId, cargos }) => {
     const qBase = collection(db, 'users');
     let qUsers;
     
-    // LÓGICA DE JURISDIÇÃO PARA QUERY:
-    // Se for Local, a regra de segurança EXIGE que o filtro seja por comumId
-    if (isLocal && !isMaster && !isComissao) {
+    // CORREÇÃO DE QUERY: O filtro deve ser idêntico ao que a regra de segurança permite ler.
+    // Se for GEM Local puro, ele só pode pedir "onde comumId == minhaComumId"
+    if (isGemLocal && !isRegionalCidade) {
       qUsers = query(qBase, where('comumId', '==', userData.comumId));
-    } else if (comumId) {
-      qUsers = query(qBase, where('comumId', '==', comumId));
+    } else if (isRegionalCidade && !isComissao) {
+        // Regional de Cidade vê a cidade toda
+        qUsers = query(qBase, where('cidadeId', '==', userData.cidadeId));
     } else {
+      // Master e Comissão veem a Regional inteira
       qUsers = query(qBase, where('regionalId', '==', activeRegionalId));
     }
     
@@ -48,8 +52,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
       if (!isMounted) return;
       let allUsers = s.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // GARANTIA: Se o snapshot falhar ou não trouxer o próprio usuário (por delay), 
-      // injetamos o userData atual para garantir visibilidade mínima.
+      // Garante que o próprio usuário administrador esteja na lista para referência
       const jaNaLista = allUsers.some(u => u.email === userEmail);
       if (!jaNaLista && userData) {
         allUsers = [{ id: user?.uid, ...userData }, ...allUsers];
@@ -57,13 +60,13 @@ const ModuleAccess = ({ comumId, cargos }) => {
 
       setUsers(allUsers);
     }, (err) => {
-      console.warn("Snapshot restrito. Aplicando fallback de perfil próprio:", err.message);
+      console.warn("Snapshot restrito:", err.message);
+      // Fallback: se falhar, mostra apenas o próprio usuário
       if (isMounted) setUsers([{ id: user?.uid, ...userData }]);
     });
 
-    // Lista de comuns liberada apenas para gestão superior
     let unsubComuns = () => {};
-    if (isMaster || isRegional || isComissao) {
+    if (isRegionalCidade) {
       const qComuns = query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId));
       unsubComuns = onSnapshot(qComuns, (s) => {
         if (isMounted) setComunsDaRegional(s.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -71,17 +74,17 @@ const ModuleAccess = ({ comumId, cargos }) => {
     }
 
     return () => { isMounted = false; unsubUsers(); unsubComuns(); };
-  }, [authLoading, activeRegionalId, comumId, isMaster, isComissao, isRegional, isLocal, userData, userEmail]);
+  }, [authLoading, activeRegionalId, isMaster, isComissao, isRegionalCidade, isGemLocal, userData, userEmail]);
 
-  // 2. LÓGICA DE AGRUPAMENTO
   const usersGrouped = useMemo(() => {
     return users.reduce((acc, user) => {
-      const key = (comumId || isLocal) ? (user.comum || 'Minha Localidade') : (user.comum || 'Sem Localidade');
+      // Se estiver visualizando apenas uma comum, agrupa com nome amigável
+      const key = (isGemLocal && !isRegionalCidade) ? (user.comum || 'Minha Localidade') : (user.comum || 'Sem Localidade');
       if (!acc[key]) acc[key] = [];
       acc[key].push(user);
       return acc;
     }, {});
-  }, [users, comumId, isLocal]);
+  }, [users, isGemLocal, isRegionalCidade]);
 
   const sortedGroups = Object.keys(usersGrouped).sort();
 
@@ -90,21 +93,23 @@ const ModuleAccess = ({ comumId, cargos }) => {
   };
 
   const getNivelLabel = (u) => {
-    if (u.isMaster) return "Master / Admin";
-    if (u.isComissao) return "Comissão Regional";
-    if (u.escopoRegional || u.isRegional) return "Regional";
-    if (u.escopoLocal || u.isLocal) return "GEM / Local";
+    const l = u.accessLevel;
+    if (l === 'master') return "Master / Admin";
+    if (l === 'comissao') return "Comissão Regional";
+    if (l === 'regional_cidade') return "Cidade / Regional";
+    if (l === 'gem_local') return "GEM / Local";
     return "Básico";
   };
 
   const podeEditarEstePerfil = (u) => {
     if (isMaster) return true;
-    if (u.email === userEmail) return false; 
-    const permitidas = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
-    if (isLocal || isRegional) {
-      const eBasico = ['MÚSICO', 'ORGANISTAS', 'ORGANISTA', 'INSTRUTOR', 'CANDIDATO'].includes(u.role?.toUpperCase());
-      return eBasico && permitidas.includes(u.comumId);
-    }
+    if (u.email === userEmail) return false; // Ninguém edita a si mesmo (evita auto-promoção ou bloqueio)
+    
+    // Matriz de Competência: Um nível só pode editar quem está estritamente abaixo dele
+    if (isComissao && u.accessLevel !== 'master' && u.accessLevel !== 'comissao') return true;
+    if (isRegionalCidade && (u.accessLevel === 'gem_local' || u.accessLevel === 'basico')) return true;
+    if (isGemLocal && u.accessLevel === 'basico') return true;
+
     return false;
   };
 
@@ -112,7 +117,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
     try {
       await updateDoc(doc(db, 'users', userId), data);
       toast.success("Perfil atualizado");
-    } catch (e) { toast.error("Acesso Negado"); }
+    } catch (e) { toast.error("Erro ao atualizar no servidor"); }
   };
 
   if (authLoading) return <div className="p-10 text-center animate-pulse text-[10px] font-black uppercase text-slate-400">Carregando Jurisdição...</div>;
@@ -121,7 +126,8 @@ const ModuleAccess = ({ comumId, cargos }) => {
     <div className="space-y-4 text-left font-sans animate-in fade-in duration-500">
       <div className="space-y-3">
         {sortedGroups.map(groupName => {
-          const isForcedOpen = comumId || isLocal;
+          // Se for Local, a seção já nasce aberta e sem cabeçalho redundante
+          const isForcedOpen = (isGemLocal && !isRegionalCidade);
           const isOpen = isForcedOpen ? true : openSections[groupName];
           const groupUsers = usersGrouped[groupName];
 
@@ -183,12 +189,30 @@ const ModuleAccess = ({ comumId, cargos }) => {
               </div>
 
               <div className="space-y-6">
-                <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 flex items-center justify-between">
-                  <div className="leading-tight">
-                    <p className="text-[7px] font-black text-blue-400 uppercase mb-1 italic">Nível de Privilégio</p>
-                    <p className="text-xs font-black text-blue-900 uppercase italic flex items-center gap-2"><Shield size={12}/> {getNivelLabel(selectedUser)}</p>
-                  </div>
-                  <Eye size={18} className="text-blue-200" />
+                <div className="space-y-2">
+                   <p className="text-[8px] font-black text-slate-400 uppercase italic ml-1 leading-none">Definir Nível de Privilégio</p>
+                   <div className="grid grid-cols-1 gap-2">
+                      <LevelButton 
+                        label="Básico (Apenas Contagem)" 
+                        active={selectedUser.accessLevel === 'basico'} 
+                        onClick={() => handleUpdate(selectedUser.id, { accessLevel: 'basico' })}
+                        canEdit={podeEditarEstePerfil(selectedUser)}
+                      />
+                      <LevelButton 
+                        label="GEM / Local (Admin da Igreja)" 
+                        active={selectedUser.accessLevel === 'gem_local'} 
+                        onClick={() => handleUpdate(selectedUser.id, { accessLevel: 'gem_local' })}
+                        canEdit={isRegionalCidade && podeEditarEstePerfil(selectedUser)}
+                      />
+                      {isComissao && (
+                        <LevelButton 
+                          label="Cidade / Regional" 
+                          active={selectedUser.accessLevel === 'regional_cidade'} 
+                          onClick={() => handleUpdate(selectedUser.id, { accessLevel: 'regional_cidade' })}
+                          canEdit={isComissao}
+                        />
+                      )}
+                   </div>
                 </div>
 
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 leading-tight">
@@ -218,10 +242,18 @@ const ModuleAccess = ({ comumId, cargos }) => {
   );
 };
 
-const ScopeToggle = ({ label, active, onClick }) => (
-  <button onClick={onClick} className={`flex items-center justify-between w-full px-4 py-3 rounded-2xl border transition-all active:scale-95 ${active ? 'bg-amber-500 border-amber-600 text-slate-950 font-black' : 'bg-white/5 border-white/10 text-slate-500 font-bold'}`}>
+const LevelButton = ({ label, active, onClick, canEdit }) => (
+  <button 
+    disabled={!canEdit}
+    onClick={onClick} 
+    className={`flex items-center justify-between w-full px-4 py-3 rounded-2xl border transition-all active:scale-95 ${
+      active 
+      ? 'bg-blue-600 border-blue-700 text-white font-black shadow-lg shadow-blue-100' 
+      : 'bg-white border-slate-200 text-slate-400'
+    } ${!canEdit && 'opacity-40 cursor-not-allowed'}`}
+  >
     <span className="text-[9px] uppercase italic leading-none">{label}</span>
-    {active && <ShieldCheck size={14} />}
+    {active && <Check size={14} />}
   </button>
 );
 

@@ -28,7 +28,7 @@ function App() {
   const [direcao, setDirecao] = useState(0);
   const [events, setEvents] = useState([]);
 
-  // Inicialização robusta via localStorage para manter contexto Master/Regional
+  // Inicialização robusta via localStorage
   const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId') || null);
   const [activeComumName, setActiveComumName] = useState(localStorage.getItem('activeComumName') || '');
   const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId') || null);
@@ -41,24 +41,25 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [cargosDinamicos, setCargosDinamicos] = useState([]);
 
-  // --- PREMISSAS DE ACESSO REFINADAS ---
-  const isMaster = userData?.isMaster === true;
-  const isRegional = isMaster || userData?.escopoRegional === true || userData?.role === 'Encarregado Regional';
-  const isComissao = isMaster || (userData?.escopoRegional && userData?.isComissao);
-  const isCidade = isComissao || userData?.escopoCidade;
-  const isLocal = isCidade || userData?.escopoLocal;
-  const isBasico = userData?.role === 'Músico' || userData?.role === 'Organista';
+  // --- MATRIZ DE COMPETÊNCIAS v2.1 (CONEXÃO DIRETA COM ACCESSLEVEL) ---
+  const level = userData?.accessLevel;
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
   
-  const isAdmin = isMaster || CARGOS_ADMIN.includes(userData?.role) || userData?.escopoLocal === true;
+  // isAdmin aqui unifica quem pode operar funções administrativas básicas
+  const isAdmin = isGemLocal;
   
-  // O ID efetivo prioriza a navegação ativa (GPS) sobre o cadastro fixo
   const comumIdEfetivo = activeComumId || userData?.comumId;
 
-  // Trava de abas permitidas
+  // Trava de abas permitidas - CORRIGIDO PARA v2.1
   const ORDEM_TABS = useMemo(() => {
-    const temAcessoAjustes = isMaster || userData?.escopoRegional || userData?.escopoCidade || userData?.escopoLocal;
+    // Agora olha para isGemLocal, garantindo que o Victor MG veja a aba 'config'
+    const temAcessoAjustes = isGemLocal; 
     return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
-  }, [isMaster, userData]);
+  }, [isGemLocal]);
 
   // Monitor de segurança para redirecionamento de aba ilegal
   useEffect(() => {
@@ -85,8 +86,8 @@ function App() {
             const data = docSnap.data();
             setUserData({ ...data, uid: u.uid, id: u.uid });
 
-            // Inicialização de Contexto Inteligente (Agnóstico de Jundiaí)
-            const podeNavegar = data.isMaster || data.escopoRegional || data.escopoCidade || data.role === 'Encarregado Regional';
+            // Inicialização de Contexto Inteligente v2.1
+            const podeNavegar = data.accessLevel === 'master' || data.accessLevel === 'comissao' || data.accessLevel === 'regional_cidade';
             
             if (podeNavegar) {
               const savedComumId = localStorage.getItem('activeComumId');
@@ -110,14 +111,13 @@ function App() {
                 setActiveRegionalName(data.regionalNome || data.regional);
               }
             } else {
-              // Fallback dinâmico: Se não há navegação, trava no cadastro do usuário
               setActiveComumId(data.comumId);
               setActiveComumName(data.comum || "Localidade");
               setActiveRegionalId(data.regionalId);
               setActiveRegionalName(data.regionalNome || data.regional || "Regional");
             }
             
-            setView(data.approved || data.isMaster ? 'lobby' : 'waiting-approval');
+            setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
           } else { 
             setView('login'); 
           }
@@ -137,7 +137,6 @@ function App() {
   useEffect(() => {
     if (!comumIdEfetivo || !activeRegionalId) return;
     
-    // Query blindada para o Multitenancy Hierárquico
     const q = query(collection(db, 'comuns', comumIdEfetivo, 'events'), orderBy('date', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const todosEventos = snapshot.docs.map(d => ({ 
@@ -155,9 +154,6 @@ function App() {
       }
     }, (err) => {
       console.error("Erro ao carregar eventos:", err);
-      if (err.code === 'permission-denied') {
-        console.warn("Aguardando permissões...");
-      }
     });
     return () => unsub();
   }, [comumIdEfetivo, activeRegionalId, currentEventId]);
@@ -173,7 +169,7 @@ function App() {
         <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} />
       ) : view === 'lobby' ? (
         <>
-          <Header userData={{ ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional, isCidade }} 
+          <Header userData={{ ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 
             onChurchChange={(id, nome) => { 
               setActiveComumId(id); 
               setActiveComumName(nome); 
@@ -193,12 +189,11 @@ function App() {
                 <div className="max-w-md mx-auto">
                   {lobbyTab === 'ensaios' && (
                     <EventsPage 
-                      userData={{ ...userData, activeCityId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isMaster, isComissao, isCidade }} 
+                      userData={{ ...userData, activeCityId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isMaster, isComissao, isCidade: isRegionalCidade }} 
                       isAdmin={isAdmin} 
                       onSelectEvent={(id) => { 
-                        // CORREÇÃO MESTRA: Atomicidade na troca de contexto para evitar o erro do HAR
                         const eventObj = events.find(ev => ev.id === id);
-                        if (eventObj && (isMaster || isComissao || isCidade)) {
+                        if (eventObj && isRegionalCidade) {
                           setActiveComumId(eventObj.comumId);
                           setActiveComumName(eventObj.comum || "Localidade");
                           localStorage.setItem('activeComumId', eventObj.comumId);
@@ -210,7 +205,7 @@ function App() {
                     />
                   )}
                   {lobbyTab === 'dash' && <DashPage userData={{ ...userData, activeCityId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId }} />}
-                  {lobbyTab === 'config' && <SettingsPage userEmail={user?.email} isMaster={isMaster} userData={{ ...userData, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isComissao, comumId: comumIdEfetivo, isRegional, isCidade }} />}
+                  {lobbyTab === 'config' && <SettingsPage userData={{ ...userData, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isComissao, comumId: comumIdEfetivo, isRegional: isComissao, isCidade: isRegionalCidade, isGemLocal }} />}
                 </div>
               </motion.div>
             </AnimatePresence>
@@ -224,7 +219,7 @@ function App() {
           </nav>
         </>
       ) : (
-        <CounterPage currentEventId={currentEventId} counts={counts} onBack={() => setView('lobby')} isAdmin={isAdmin} isMaster={isMaster} userData={{ ...userData, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isBasico, isAdmin, isRegional, isComissao, isCidade }} allEvents={events} />
+        <CounterPage currentEventId={currentEventId} counts={counts} onBack={() => setView('lobby')} isAdmin={isAdmin} isMaster={isMaster} userData={{ ...userData, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isBasico, isAdmin, isRegional: isComissao, isComissao, isCidade: isRegionalCidade }} allEvents={events} />
       )}
     </div>
   );

@@ -25,23 +25,24 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
   const [cidades, setCidades] = useState([]);
   const [comuns, setComuns] = useState([]);
   
+  // --- LÓGICA DE COMPETÊNCIAS v2.1 (MATRIZ DE PODER) ---
+  const level = userData?.accessLevel;
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
+
   // REGRA DE OURO: Inicializa com os dados do perfil do usuário, mas permite alteração pelo contexto ativo (GPS Global)
   const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || '');
   const [selectedChurchId, setSelectedChurchId] = useState(userData?.activeComumId || userData?.comumId || '');
 
-  // --- LÓGICA DE ESCADA DE ATRIBUIÇÕES (HIERARQUIA DE CUIDADO) ---
-  const isMaster = userData?.isMaster === true;
-  const isComissao = isMaster || (userData?.isComissao === true);
-  const isRegional = isComissao || (userData?.escopoRegional === true);
-  const isLocal = isRegional || (userData?.escopoLocal === true);
-  
-  // AJUSTE DE SEGURANÇA: Nível Básico (Organista/Músico) não pode criar ensaios, apenas visualizar e contar.
-  const isBasico = userData?.role === 'Músico' || userData?.role === 'Organista';
-
-  // DEFINE PERMISSÃO: Baseado na jurisdição ativa para escala infinita
+  // DEFINE PERMISSÃO: Baseado na jurisdição ativa e no nível de acesso
   const temPermissaoCriarAqui = useMemo(() => {
-    if (isBasico) return false; // Trava explícita para nível operacional
-    if (isMaster || isComissao) return true;
+    if (isBasico) return false; // Nível operacional nunca cria eventos
+    if (isMaster || isComissao) return true; // Comissão navega livremente na Regional
+    
+    // Nível Regional/Cidade ou GEM/Local precisam estar na sua jurisdição permitida
     const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return permitidasIds.includes(selectedChurchId);
   }, [isMaster, isComissao, isBasico, selectedChurchId, userData]);
@@ -66,7 +67,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
     if (!activeRegionalId) return;
     let isMounted = true;
     
-    const qIgr = (isMaster || isComissao) 
+    const qIgr = (isComissao) 
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
       : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 10)));
 
@@ -80,7 +81,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
         if (!isMounted) return;
         const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
         
-        if (isMaster || isComissao) {
+        if (isComissao) {
           setCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
         } else {
           const filtradas = todasCidades.filter(c => cidadesComAcesso.includes(c.id));
@@ -91,7 +92,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
     });
 
     return () => { isMounted = false; unsubIgr(); };
-  }, [activeRegionalId, isMaster, isComissao, permitidasIds]); 
+  }, [activeRegionalId, isComissao, permitidasIds]); 
 
   // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM
   useEffect(() => {
@@ -109,19 +110,18 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
         nome: d.data().comum || "Sem Nome" 
       }));
       
-      const filteredList = (isMaster || isComissao) 
+      const filteredList = (isComissao) 
         ? list.sort((a, b) => a.nome.localeCompare(b.nome))
         : list.filter(c => permitidasIds.includes(c.id)).sort((a, b) => a.nome.localeCompare(b.nome));
       
       setComuns(filteredList);
 
-      // CORREÇÃO: Força a seleção do ID da comum do usuário se ele estiver na lista carregada
       if (userData?.comumId && filteredList.some(c => c.id === userData.comumId) && !selectedChurchId) {
         setSelectedChurchId(userData.comumId);
       }
     });
     return () => { isMounted = false; unsub(); };
-  }, [selectedCityId, isMaster, isComissao, permitidasIds, userData?.comumId]);
+  }, [selectedCityId, isComissao, permitidasIds, userData?.comumId]);
 
   // 3. BUSCA DE ENSAIOS (Motor de Sincronização Robusta)
   useEffect(() => {
@@ -229,7 +229,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium text-left">
       
-      {/* SELETORES HIERÁRQUICOS (Garantia de Jurisdição) */}
+      {/* SELETORES HIERÁRQUICOS (Garantia de Jurisdição v2.1) */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
         <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(cidades.length <= 1 && !isComissao) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
@@ -252,7 +252,6 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
             onChange={(e) => setSelectedChurchId(e.target.value)}
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
           >
-            {/* CORREÇÃO MESTRA: Fallback de Hidratação Imediata usando userData.comum */}
             <option value="">
               {comuns.length > 0 ? "SELECIONE A COMUM" : (userData?.comum?.toUpperCase() || "CARREGANDO...")}
             </option>
@@ -261,7 +260,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
         </div>
       </div>
 
-      {/* BOTÃO DE NOVO ENSAIO - Ajustado para respeitar a trava de nível Básico */}
+      {/* BOTÃO DE NOVO ENSAIO - Respeita trava de nível Básico e Jurisdição */}
       {temPermissaoCriarAqui && selectedChurchId && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
@@ -358,7 +357,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
               <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed mb-10">Esta localidade ainda não possui uma orquestra configurada. É necessário definir os instrumentos antes de agendar ensaios.</p>
               
               <div className="space-y-3">
-                {isLocal ? (
+                {isGemLocal ? (
                   <button 
                     onClick={() => { setShowConfigError(false); onNavigateToSettings(); }} 
                     className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg flex items-center justify-center gap-3"

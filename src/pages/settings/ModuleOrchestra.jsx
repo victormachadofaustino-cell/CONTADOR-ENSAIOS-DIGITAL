@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 // CORREÇÃO: Caminho do Firebase e uso de setDoc para IDs amigáveis
 import { db, collection, doc, setDoc, deleteDoc, writeBatch, getDocs } from '../../config/firebase';
 import toast from 'react-hot-toast';
@@ -8,21 +8,34 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 
 const ModuleOrchestra = ({ comumId, instrumentsData }) => {
-  // EXTRAÇÃO DE PODERES: O componente agora identifica sozinho o nível do usuário
+  // EXTRAÇÃO DE PODERES v2.1: O componente identifica o nível via accessLevel
   const { userData } = useAuth();
+  const level = userData?.accessLevel;
+  
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+
   const [showModal, setShowModal] = useState(null); // 'NAIPE' | 'INST' | 'EDIT'
   const [formData, setFormData] = useState({ name: '', section: '', evalType: 'Sem', id: '' });
 
-  // 1. DEFINIÇÃO DA HIERARQUIA VISUAL (Ordem que aparece nas listas)
+  // 1. DEFINIÇÃO DA HIERARQUIA VISUAL
   const ordemSessoes = ['IRMANDADE', 'ORGANISTAS', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS', 'GERAL'];
 
-  // CORREÇÃO DE RESILIÊNCIA: Força toUpperCase no mapeamento para evitar que "Madeiras" e "MADEIRAS" sejam tratados como grupos diferentes
-  const sectionsFound = [...new Set(instrumentsData.map(i => i.section?.toUpperCase()))]
-    .filter(Boolean)
-    .sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
+  // CORREÇÃO DE RESILIÊNCIA: Força toUpperCase no mapeamento
+  const sectionsFound = useMemo(() => {
+    return [...new Set(instrumentsData.map(i => i.section?.toUpperCase()))]
+      .filter(Boolean)
+      .sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
+  }, [instrumentsData]);
 
-  // REGRA DE OURO: Somente quem tem perfil de gestão (Local ou Superior) pode gerenciar instrumentos
-  const podeGerenciar = userData?.isLocal === true || userData?.isMaster === true;
+  // REGRA DE OURO v2.1: Somente perfil administrativo (Local ou Superior) pode gerenciar instrumentos
+  // Além do nível, valida se o usuário está operando em sua própria jurisdição
+  const podeGerenciar = useMemo(() => {
+    if (isComissao) return true;
+    return isGemLocal && userData?.comumId === comumId;
+  }, [isComissao, isGemLocal, userData, comumId]);
 
   /**
    * LÓGICA BLUEPRINT: Reset de Fábrica
@@ -30,6 +43,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
    */
   const handleInsertPattern = async () => {
     if (!comumId) return toast.error("Localidade não identificada");
+    if (!podeGerenciar) return toast.error("Sem privilégios de gestão");
     if (!confirm("Deseja aplicar o RESET DE FÁBRICA? Isso apagará a lista atual e instalará o Padrão CCB saneado diretamente do banco.")) return;
     
     const loadingToast = toast.loading("Sincronizando com a Matriz Nacional...");
@@ -37,25 +51,22 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
     const localRef = collection(db, 'comuns', comumId, 'instrumentos_config');
     
     try {
-      // 1. BUSCA A MATRIZ SANEADA NO BANCO (config_instrumentos_nacional)
       const nationalSnap = await getDocs(collection(db, 'config_instrumentos_nacional'));
       
       if (nationalSnap.empty) {
         toast.dismiss(loadingToast);
-        return toast.error("Matriz Nacional não encontrada no banco.");
+        return toast.error("Matriz Nacional não encontrada.");
       }
 
-      // 2. LIMPA A GAVETA LOCAL (Apaga instrumentos atuais para evitar duplicados como sax_alto vs saxalto)
       const localSnap = await getDocs(localRef);
       localSnap.docs.forEach(d => batch.delete(doc(db, 'comuns', comumId, 'instrumentos_config', d.id)));
 
-      // 3. INSTALA O NOVO PADRÃO (Snapshot fiel da Matriz)
       nationalSnap.docs.forEach(docInst => {
         const data = docInst.data();
-        const docRef = doc(localRef, docInst.id); // Usa o ID já saneado do banco (ex: saxalto)
+        const docRef = doc(localRef, docInst.id);
         batch.set(docRef, { 
           ...data,
-          id: docInst.id, // Garante que o ID interno coincida com o ID do documento
+          id: docInst.id,
           updatedAt: Date.now() 
         });
       });
@@ -64,14 +75,13 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
       toast.success("Padrão CCB Saneado Instalado!", { id: loadingToast });
     } catch (e) { 
       console.error("Erro no Reset:", e);
-      toast.error("Erro ao salvar padrão: Acesso Negado", { id: loadingToast }); 
+      toast.error("Erro ao salvar padrão.", { id: loadingToast }); 
     }
   };
 
   const handleSave = async () => {
     if (!formData.name.trim()) return toast.error("Insira um nome");
     
-    // Saneamento agressivo de ID para evitar caracteres especiais e espaços
     const idSaneado = formData.id || formData.name
       .toLowerCase()
       .trim()
@@ -95,7 +105,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
       toast.success("Salvo!");
       setShowModal(null);
       setFormData({ name: '', section: '', evalType: 'Sem', id: '' });
-    } catch (e) { toast.error("Erro ao processar: Acesso Negado"); }
+    } catch (e) { toast.error("Erro de permissão no servidor"); }
   };
 
   const handleAction = async (action, inst) => {
@@ -104,7 +114,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
       try {
         await deleteDoc(doc(db, 'comuns', comumId, 'instrumentos_config', inst.id));
         toast.success("Removido");
-      } catch (e) { toast.error("Erro ao excluir: Acesso Negado"); }
+      } catch (e) { toast.error("Erro ao excluir"); }
     } else if (action === 'EDIT') {
       setFormData({ ...inst });
       setShowModal('EDIT');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { db, doc, onSnapshot, collection, query, orderBy } from '../../config/firebase';
 import { eventService } from '../../services/eventService'; 
 import toast from 'react-hot-toast';
@@ -7,8 +7,20 @@ import {
   UserPlus, Trash2, X, ChevronDown, Lock, ShieldCheck, 
   MapPin, Plus, RotateCcw, Info, Music, User, Briefcase, Phone, Calendar, Clock
 } from 'lucide-react';
+// Importação do Cérebro de Autenticação para validar nível de acesso v2.1
+import { useAuth } from '../../context/AuthContext';
 
-const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
+const AtaPage = ({ eventId, comumId, allEvents }) => {
+  // EXTRAÇÃO DE COMPETÊNCIAS: O componente agora identifica o nível do usuário via Contexto
+  const { userData } = useAuth();
+  const level = userData?.accessLevel;
+  
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
+
   const [ataData, setAtaData] = useState({
     status: 'open',
     atendimentoNome: '', atendimentoMin: '',
@@ -33,19 +45,26 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   const [visitaToDelete, setVisitaToDelete] = useState(null);
   const [showVisitaModal, setShowVisitaModal] = useState(false);
   
-  const [openSection, setOpenSection] = useState(null); // Iniciam fechados por padrão
+  const [openSection, setOpenSection] = useState(null); 
   const [editIndex, setEditIndex] = useState(null);
   const saveTimeoutRef = useRef(null);
 
-  // RESTAURAÇÃO: Campos contato, dataEnsaio e hora reincluídos no estado
   const [newVisita, setNewVisita] = useState({ 
     nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
   });
 
-  const isRegional = userData?.role === 'Encarregado Regional' || userData?.escopoRegional === true;
-  const isResponsavelAta = eventMeta?.responsavel === userData?.name || isAdmin || isMaster || isRegional;
+  // NOVA LÓGICA DE AUTORIDADE: Básico nunca edita. GEM/Local ou superior editam se for sua jurisdição.
   const isClosed = ataData?.status === 'closed';
-  const isInputDisabled = isClosed || !isResponsavelAta;
+  
+  const temPermissaoEditar = useMemo(() => {
+    if (isBasico || isClosed) return false;
+    if (isMaster || isComissao) return true;
+    // Regional Cidade e GEM Local editam apenas em sua jurisdição
+    const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
+    return permitidasIds.includes(comumId);
+  }, [isBasico, isClosed, isMaster, isComissao, userData, comumId]);
+
+  const isInputDisabled = !temPermissaoEditar;
 
   const pesosMinisterio = {
     'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador RJM': 4,
@@ -131,13 +150,14 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   };
 
   const handleOpenVisitaModal = (v = null, idx = null) => {
-    if (isInputDisabled) return;
+    if (isInputDisabled && !isClosed) return; // Permite abrir para ver se estiver fechado, mas trava edição
     if (v) { setNewVisita(v); setEditIndex(idx); } 
     else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
     setShowVisitaModal(true);
   };
 
   const handleSaveVisita = () => {
+    if (isInputDisabled) return;
     if (!newVisita.nome) return toast.error("Informe o nome");
     let updated = [...(ataData.visitantes || [])];
     if (editIndex !== null) updated[editIndex] = newVisita;
@@ -158,16 +178,16 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   return (
     <div className="space-y-4 pb-40 px-2 font-sans text-left bg-gray-50 pt-4 animate-premium">
       
-      {/* INDICADOR DE AUTORIDADE */}
+      {/* INDICADOR DE AUTORIDADE v2.1 */}
       <div className="mx-2 mb-6 flex items-center justify-between bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
-        <div className={`absolute left-0 top-0 h-full w-1.5 ${isResponsavelAta ? 'bg-blue-600' : 'bg-slate-300'}`} />
+        <div className={`absolute left-0 top-0 h-full w-1.5 ${temPermissaoEditar ? 'bg-blue-600' : 'bg-slate-300'}`} />
         <div className="flex items-center gap-4">
-          <div className={`p-3 rounded-2xl ${isResponsavelAta ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
-            {isClosed ? <Lock size={20} /> : isResponsavelAta ? <ShieldCheck size={20} /> : <Info size={20} />}
+          <div className={`p-3 rounded-2xl ${temPermissaoEditar ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
+            {isClosed ? <Lock size={20} /> : temPermissaoEditar ? <ShieldCheck size={20} /> : <Info size={20} />}
           </div>
           <div className="leading-tight">
             <p className="text-[7px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1 italic">Autoridade de Edição</p>
-            <p className="text-xs font-[900] text-slate-950 uppercase italic leading-none">{isClosed ? 'Ata Lacrada' : isResponsavelAta ? 'Editor Regional' : 'Apenas Leitura'}</p>
+            <p className="text-xs font-[900] text-slate-950 uppercase italic leading-none">{isClosed ? 'Ata Lacrada' : temPermissaoEditar ? 'Editor Autorizado' : 'Apenas Leitura'}</p>
             <p className="text-[8px] font-bold text-blue-600 uppercase mt-1">Resp: {eventMeta?.responsavel || 'Não definido'}</p>
           </div>
         </div>
@@ -229,7 +249,6 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
                   <p className="text-sm font-[900] uppercase text-slate-950 italic leading-none">{v.nome}</p>
                   <p className="text-[10px] font-black text-blue-600 uppercase mt-1.5 italic leading-none">{v.min} • {v.inst || 'N/I'}</p>
                   <p className="text-[8px] font-bold text-slate-400 mt-2 flex items-center gap-1.5 uppercase leading-none"><MapPin size={10} className="text-slate-300"/> {v.bairro} ({v.cidadeUf})</p>
-                  {/* VISUALIZAÇÃO: Exibição dos campos restaurados na lista */}
                   {(v.dataEnsaio || v.contato) && (
                     <div className="mt-2 flex flex-wrap gap-2">
                        {v.contato && <span className="text-[7px] font-black bg-slate-100 px-2 py-0.5 rounded-md text-slate-500 flex items-center gap-1 uppercase"><Phone size={8}/> {v.contato}</span>}
@@ -260,9 +279,9 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
 
       <div className="pt-12 px-2 pb-10">
         {!isClosed ? (
-          isResponsavelAta && <button onClick={() => setShowConfirmLock(true)} className="w-full bg-slate-950 text-white py-7 rounded-[3rem] font-black uppercase italic tracking-[0.2em] shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all border border-white/10 text-xs"><Lock size={22} /> Lacrar Ensaio</button>
+          isGemLocal && <button onClick={() => setShowConfirmLock(true)} className="w-full bg-slate-950 text-white py-7 rounded-[3rem] font-black uppercase italic tracking-[0.2em] shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all border border-white/10 text-xs"><Lock size={22} /> Lacrar Ensaio</button>
         ) : (
-          isMaster && <button onClick={() => setShowConfirmReopen(true)} className="w-full bg-blue-50 text-blue-800 py-7 rounded-[3rem] font-black uppercase italic tracking-[0.1em] flex items-center justify-center gap-4 border-2 border-blue-100 active:scale-95 transition-all shadow-md text-xs"><RotateCcw size={22} /> Reabrir Ensaio</button>
+          isComissao && <button onClick={() => setShowConfirmReopen(true)} className="w-full bg-blue-50 text-blue-800 py-7 rounded-[3rem] font-black uppercase italic tracking-[0.1em] flex items-center justify-center gap-4 border-2 border-blue-100 active:scale-95 transition-all shadow-md text-xs"><RotateCcw size={22} /> Reabrir Ensaio</button>
         )}
       </div>
 
@@ -285,24 +304,21 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
               <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:text-slate-950"><X size={24}/></button>
               <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">Dados da Visita</h3>
               <div className="space-y-5">
-                <Field label="Nome Completo" val={newVisita.nome} onChange={v => setNewVisita({...newVisita, nome: v})} icon={<User size={10}/>} />
+                <Field label="Nome Completo" val={newVisita.nome} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, nome: v})} icon={<User size={10}/>} />
                 <div className="grid grid-cols-2 gap-4">
-                  <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} onChange={v => setNewVisita({...newVisita, min: v})} />
-                  <Field label="Instrumento" val={newVisita.inst} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
+                  <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, min: v})} />
+                  <Field label="Instrumento" val={newVisita.inst} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Bairro" val={newVisita.bairro} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
-                  <Field label="Cidade / UF" val={newVisita.cidadeUf} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} icon={<MapPin size={10}/>} />
+                  <Field label="Bairro" val={newVisita.bairro} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
+                  <Field label="Cidade / UF" val={newVisita.cidadeUf} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} icon={<MapPin size={10}/>} />
                 </div>
-                
-                {/* RESTAURAÇÃO: Novos campos integrados ao modal */}
-                <Field label="Contato (Telefone/Cel)" val={newVisita.contato} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
+                <Field label="Contato (Telefone/Cel)" val={newVisita.contato} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Escala (Ex: 3º Sábado)" val={newVisita.dataEnsaio} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} />
-                  <Field label="Horário Ensaio" val={newVisita.hora} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} />
+                  <Field label="Escala (Ex: 3º Sábado)" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} />
+                  <Field label="Horário Ensaio" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} />
                 </div>
-
-                <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">Salvar Registro</button>
+                {!isInputDisabled && <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">Salvar Registro</button>}
               </div>
             </motion.div>
           </div>
@@ -318,7 +334,6 @@ const AtaPage = ({ eventId, comumId, isMaster, isAdmin, userData }) => {
   );
 };
 
-// COMPONENTES AUXILIARES
 const Accordion = ({ title, icon, badge, children, isOpen, onClick }) => (
   <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mb-4">
     <button onClick={onClick} className="w-full p-7 flex justify-between items-center active:bg-slate-50 transition-all outline-none">

@@ -13,36 +13,38 @@ export const LOCALIDADE_PADRAO = "Selecionar Localidade...";
  * MATRIZ NACIONAL DE INSTRUMENTOS (Blueprint)
  * Utilizada para popular novas comuns com o padrão oficial da orquestra.
  * Saneado para cobrir todas as 166 comuns com precisão técnica.
+ * * ATENÇÃO: IDs foram saneados (removido _) para compatibilidade total com 
+ * o motor de busca e as regras de segurança v2.1.
  */
 export const DEFAULT_INSTRUMENTS = {
     'Orquestra': [
         // CORDAS
-        { id: 'vln', name: 'Violinos', section: 'Cordas' },
-        { id: 'vla', name: 'Violas', section: 'Cordas' },
-        { id: 'vcl', name: 'Violoncelos', section: 'Cordas' },
+        { id: 'violino', name: 'Violinos', section: 'Cordas' },
+        { id: 'viola', name: 'Violas', section: 'Cordas' },
+        { id: 'violoncelo', name: 'Violoncelos', section: 'Cordas' },
         
         // MADEIRAS
-        { id: 'flt', name: 'Flautas', section: 'Madeiras' },
-        { id: 'clt', name: 'Clarinetes', section: 'Madeiras' },
+        { id: 'flauta', name: 'Flautas', section: 'Madeiras' },
+        { id: 'clarinete', name: 'Clarinetes', section: 'Madeiras' },
         { id: 'oboe', name: 'Oboés', section: 'Madeiras' },
-        { id: 'fgt', name: 'Fagotes', section: 'Madeiras' },
+        { id: 'fagote', name: 'Fagotes', section: 'Madeiras' },
         
         // SAXOFONES
-        { id: 'sax_alto', name: 'Sax Alto', section: 'Saxofones' },
-        { id: 'sax_tenor', name: 'Sax Tenor', section: 'Saxofones' },
-        { id: 'sax_soprano', name: 'Sax Soprano', section: 'Saxofones' },
-        { id: 'sax_baritono', name: 'Sax Barítono', section: 'Saxofones' },
+        { id: 'saxalto', name: 'Sax Alto', section: 'Saxofones' },
+        { id: 'saxtenor', name: 'Sax Tenor', section: 'Saxofones' },
+        { id: 'saxsoprano', name: 'Sax Soprano', section: 'Saxofones' },
+        { id: 'saxbaritono', name: 'Sax Barítono', section: 'Saxofones' },
         
         // METAIS
-        { id: 'tpt', name: 'Trompetes', section: 'Metais' },
-        { id: 'tbn', name: 'Trombones', section: 'Metais' },
-        { id: 'trp', name: 'Trompas', section: 'Metais' },
-        { id: 'euf', name: 'Eufônios', section: 'Metais' },
-        { id: 'tub', name: 'Tubas', section: 'Metais' },
+        { id: 'trompete', name: 'Trompetes', section: 'Metais' },
+        { id: 'trombone', name: 'Trombones', section: 'Metais' },
+        { id: 'trompa', name: 'Trompas', section: 'Metais' },
+        { id: 'eufonio', name: 'Eufônios', section: 'Metais' },
+        { id: 'tuba', name: 'Tubas', section: 'Metais' },
         
         // TECLAS & OUTROS
-        { id: 'org', name: 'Organistas', section: 'Organistas' },
-        { id: 'acd', name: 'Acordeons', section: 'Teclas' }
+        { id: 'orgao', name: 'Organistas', section: 'Organistas' },
+        { id: 'acordeon', name: 'Acordeons', section: 'Teclas' }
     ]
 };
 

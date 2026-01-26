@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { MapPin, Clock, ChevronDown, Plus, Trash2, Home, X, Shield, Calendar, AlertTriangle, Save, Lock, Eye } from 'lucide-react';
@@ -7,10 +7,22 @@ import { useAuth } from '../../context/AuthContext';
 
 const ModuleChurch = ({ localData, onUpdate }) => {
   const { userData } = useAuth();
-  const isMaster = userData?.isMaster === true;
+  
+  // --- NOVA LÓGICA DE AUTORIDADE v2.1 (MATRIZ DE PODER) ---
+  const temPoderEdicao = useMemo(() => {
+    const level = userData?.accessLevel;
+    const isMaster = level === 'master';
+    const isComissao = isMaster || level === 'comissao';
+    const isRegionalCidade = isComissao || level === 'regional_cidade';
+    const isGemLocal = isRegionalCidade || level === 'gem_local';
 
-  // LÓGICA DE AUTORIDADE: Define se o usuário tem poder de zeladoria sobre esta comum específica
-  const temPoderEdicao = isMaster || (userData?.escopoLocal && userData?.comumId === localData?.id);
+    // O usuário precisa ter nível administrativo E estar na jurisdição correta
+    // Master e Comissão editam qualquer uma. Regional/Local editam se for a sua comumId.
+    if (isComissao) return true;
+    return isGemLocal && userData?.comumId === localData?.id;
+  }, [userData, localData]);
+
+  const isMaster = userData?.accessLevel === 'master';
 
   // ESTADO LOCAL: Armazena os dados temporariamente enquanto o usuário digita
   const [formData, setFormData] = useState(localData || {});
@@ -21,22 +33,18 @@ const ModuleChurch = ({ localData, onUpdate }) => {
   const diasSemana = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
   const cargosOrdem = ['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM', 'Encarregado Regional', 'Examinadora', 'Encarregado Local'];
 
-  // 1. MONITORAMENTO EM TEMPO REAL DOS DADOS CADASTRAIS (ESSENCIAL PARA VISIBILIDADE)
+  // 1. MONITORAMENTO EM TEMPO REAL DOS DADOS CADASTRAIS
   useEffect(() => {
     if (!localData?.id) return;
 
-    // Sincroniza inicialmente com o que veio da prop
     setFormData(localData);
 
-    // Cria um vínculo direto com o documento no banco para ler dados existentes e atualizações
     const unsubDoc = onSnapshot(doc(db, 'comuns', localData.id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // Sincroniza o formulário com os dados reais do banco
         setFormData(prev => ({
           ...prev,
           ...data,
-          // Garante que estruturas de objeto não fiquem undefined
           endereco: data.endereco || prev.endereco || {},
           diasSelecao: data.diasSelecao || prev.diasSelecao || []
         }));
@@ -79,7 +87,6 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     if (!localData?.id || !temPoderEdicao) return; 
     try {
       const docRef = doc(db, 'comuns', localData.id);
-      // Removemos campos que não devem ser sobrescritos por engano se estiverem vazios no estado local
       const updatePayload = {
         endereco: formData.endereco || {},
         horaCulto: formData.horaCulto || '',
@@ -93,7 +100,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
       toast.success("Dados sincronizados");
     } catch (e) {
       console.error("Erro ao salvar:", e);
-      toast.error("Falha ao sincronizar. Verifique permissões.");
+      toast.error("Falha ao sincronizar.");
     }
   };
 
@@ -119,7 +126,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 text-left pb-10">
       
-      {/* INDICADOR DE STATUS DE EDIÇÃO */}
+      {/* INDICADOR DE STATUS DE EDIÇÃO v2.1 */}
       <div className={`mx-1 p-4 rounded-2xl flex items-center gap-3 border ${temPoderEdicao ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
           {temPoderEdicao ? <Shield size={16} className="text-blue-600" /> : <Lock size={16} className="text-amber-600" />}
           <div className="leading-tight">
@@ -276,6 +283,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
                             if(confirm('Remover do Ministério Local?')) {
                                 try {
                                     await deleteDoc(doc(db, 'comuns', localData.id, 'ministerio_lista', m.id)); 
+                                    toast.success("Removido");
                                 } catch (err) { toast.error("Sem permissão."); }
                             }
                         }} className="p-2 text-white/10 hover:text-red-400 transition-colors"><Trash2 size={14}/></button>

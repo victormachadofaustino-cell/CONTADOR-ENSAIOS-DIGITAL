@@ -26,33 +26,27 @@ export const AuthProvider = ({ children }) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             
-            // --- CÉREBRO DE PERMISSÕES REATIVO (Briefing de Hierarquia) ---
-            // AJUSTE EFETIVO: Definimos constantes de poder para facilitar a manutenção
-            // Hierarquia: Master > Comissão (Regional) > Cidade (Regional/Micro) > Local > Básico
-            const isMasterPower = data.isMaster === true;
-            const isComissaoPower = isMasterPower || data.isComissao === true;
-            
-            // O nível "Regional" da CCB agora atua no escopo de Cidade/Micro-Região
-            const isCidadePower = isMasterPower || isComissaoPower || data.escopoRegional === true || data.role === 'Encarregado Regional' || data.escopoCidade === true;
+            // --- CÉREBRO DE PERMISSÕES REATIVO (Briefing de Hierarquia v2.1) ---
+            // AJUSTE EFETIVO: Unificamos a lógica no accessLevel vindo do banco saneado.
+            const level = data.accessLevel || 'basico';
 
             const permissions = {
-              isMaster: isMasterPower, // Poder total nacional/sistema
-              isComissao: isComissaoPower, // Gestão da Regional Inteira (Todas as Cidades)
-              isRegional: isCidadePower, // Antigo isRegional, agora focado no escopo de Cidade
-              isCidade: isCidadePower, // Novo nível: Gestão de todas as comuns de uma Cidade
-              // Se for Master, Comissão ou Regional de Cidade, possui poder Local automático
-              isLocal: isCidadePower || data.escopoLocal === true, 
-              isAdmin: isCidadePower || ['Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretario da Música'].includes(data.role) || data.escopoLocal === true // Pode criar ensaios
+              isMaster: level === 'master', 
+              isComissao: level === 'master' || level === 'comissao', 
+              isRegionalCidade: level === 'master' || level === 'comissao' || level === 'regional_cidade', 
+              isGemLocal: level === 'master' || level === 'comissao' || level === 'regional_cidade' || level === 'gem_local', 
+              isBasico: level === 'basico',
+              isAdmin: level !== 'basico' 
             };
 
-            // TRAVA DE SEGURANÇA MULTITENANCY: 
-            // Se não for Master ou Comissão, o activeRegionalId DEVE ser o regionalId do perfil para evitar acesso cruzado
-            const validRegionalId = (isMasterPower || isComissaoPower) ? (activeRegionalId || data.regionalId) : data.regionalId;
-            const validCityId = (isMasterPower || isComissaoPower || data.escopoCidade) ? (activeCityId || data.cidadeId) : data.cidadeId;
-            const validComumId = (isMasterPower || isComissaoPower || data.escopoCidade || data.escopoLocal) ? (activeComumId || data.comumId) : data.comumId;
+            // TRAVA DE SEGURANÇA MULTITENANCY (GPS CORRIGIDO)
+            // Somente quem é RegionalCidade ou superior pode navegar entre cidades/comuns.
+            // O nível GEM_LOCAL (Victor MG) deve ficar preso ao data.comumId do seu próprio perfil.
+            const validRegionalId = (permissions.isComissao) ? (activeRegionalId || data.regionalId) : data.regionalId;
+            const validCityId = (permissions.isRegionalCidade) ? (activeCityId || data.cidadeId) : data.cidadeId;
+            const validComumId = (permissions.isRegionalCidade) ? (activeComumId || data.comumId) : data.comumId;
 
-            // Injeta os IDs ativos no userData para que todo o app seja reativo à mudança do Header
-            // CORREÇÃO MESTRA: Vinculamos os IDs de navegação ao objeto userData para forçar o re-render de componentes dependentes
+            // Injeta os IDs ativos no userData para que todo o app seja reativo
             setUserData({ 
               ...data, 
               uid: currentUser.uid, 
@@ -72,14 +66,13 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => unsubAuth();
-  }, [activeRegionalId, activeCityId, activeComumId]); // Reage e recalcula permissões sempre que um ID de navegação mudar
+  }, [activeRegionalId, activeCityId, activeComumId]); 
 
   // FUNÇÕES DE COMANDO (Chamadas pelo Header para trocar o contexto)
   const setContext = (type, id) => {
     if (type === 'regional') {
       setActiveRegionalId(id);
       localStorage.setItem('activeRegionalId', id);
-      // Ao mudar regional, resetamos os níveis abaixo para evitar conflito de dados
       setActiveCityId(null);
       setActiveComumId(null);
       localStorage.removeItem('activeCityId');
@@ -88,7 +81,6 @@ export const AuthProvider = ({ children }) => {
     if (type === 'city') {
       setActiveCityId(id);
       localStorage.setItem('activeCityId', id);
-      // Ao mudar de cidade, resetamos a comum ativa para forçar nova seleção
       setActiveComumId(null);
       localStorage.removeItem('activeComumId');
     }
@@ -98,13 +90,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // O que este "Cérebro" vai exportar para o resto do app
   const value = {
     user,
     userData,
     loading,
     isAuthenticated: !!user,
-    setContext, // Permite que o Header mude a visão do Master/Regional
+    setContext, 
   };
 
   return (
@@ -114,7 +105,6 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Hook personalizado para facilitar o uso nos componentes (DX - Developer Experience)
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth deve be used within an AuthProvider');

@@ -1,4 +1,4 @@
-import { db, doc, collection, writeBatch, getDocs, query, where, setDoc } from '../config/firebase';
+import { db, doc, collection, writeBatch, getDocs, query, where, addDoc } from '../config/firebase';
 import { DEFAULT_INSTRUMENTS } from '../config/config';
 import toast from 'react-hot-toast';
 
@@ -17,17 +17,9 @@ export const churchService = {
     const loadingToast = toast.loading("Registrando cidade...");
 
     try {
-      // Gerar ID Saneado (Ex: "Várzea Paulista" -> "varzea_paulista")
-      const cidadeId = nome
-        .toLowerCase()
-        .trim()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\s+/g, '_');
-
-      const cityRef = doc(db, 'config_cidades', cidadeId);
-
-      await setDoc(cityRef, {
+      // CORREÇÃO: Usamos addDoc para garantir ID aleatório automático do Firebase
+      // Removida a geração de ID manual baseada no nome (slug)
+      await addDoc(collection(db, 'config_cidades'), {
         nome: nome.trim().toUpperCase(),
         regionalId,
         uf: uf.toUpperCase(),
@@ -57,21 +49,15 @@ export const churchService = {
     const loadingToast = toast.loading("Registrando localidade...");
 
     try {
+      // 1. Gerar uma referência de documento COM ID ALEATÓRIO antes de iniciar o batch
+      // Isso evita IDs baseados em nome (ex: jardim_do_lago) e garante o padrão v2.1
+      const newChurchRef = doc(collection(db, 'comuns')); 
+      const comumId = newChurchRef.id; 
+
       const batch = writeBatch(db);
       
-      // 1. Gerar ID Saneado (Ex: "Vila Rio Branco" -> "vila_rio_branco")
-      // Remove acentos e espaços para garantir compatibilidade de URL e Regras
-      const comumId = nome
-        .toLowerCase()
-        .trim()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\s+/g, '_');
-
-      const churchRef = doc(db, 'comuns', comumId);
-
       // 2. Definir dados da Igreja com denormalização para performance
-      batch.set(churchRef, {
+      batch.set(newChurchRef, {
         comum: nome.trim().toUpperCase(),
         cidadeId,
         regionalId,
@@ -83,10 +69,10 @@ export const churchService = {
       });
 
       // 3. Injetar Matriz Nacional de Instrumentos (O "Cérebro" do Blueprint)
-      // Garante que a igreja já nasça com a orquestra configurada no config.js
-      // Saneamento de ID de instrumento aplicado para evitar "sax_alto" vs "saxalto"
+      // Utiliza os IDs fixos do config.js para a subcoleção, mas dentro da Comum com ID aleatório
       DEFAULT_INSTRUMENTS.Orquestra.forEach(inst => {
-        const saneInstId = inst.id.replace(/_/g, ''); // Normaliza para o padrão do banco (ex: saxalto)
+        // Saneamento de ID interno de instrumento para consistência (ex: saxalto)
+        const saneInstId = inst.id.replace(/_/g, ''); 
         const instRef = doc(db, 'comuns', comumId, 'instrumentos_config', saneInstId);
         
         batch.set(instRef, {

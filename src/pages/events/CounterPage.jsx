@@ -9,18 +9,25 @@ import {
   ChevronDown, Minus, Plus, ShieldCheck, Eye, UserCheck, PlusCircle, X, Music
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-// Importação do Cérebro de Autenticação (GPS de Acessos)
+// Importação do Cérebro de Autenticação (GPS de Acessos v2.1)
 import { useAuth } from '../../context/AuthContext';
 
 let debounceTimers = {};
 
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
-  // EXTRAÇÃO DE PODERES: O componente agora identifica o nível do usuário via Contexto
+  // EXTRAÇÃO DE COMPETÊNCIAS: O componente identifica o nível do usuário via accessLevel
   const { userData } = useAuth();
-  const isMaster = userData?.isMaster;
-  const isComissao = userData?.isComissao;
-  const isCidade = userData?.isCidade;
-  const isAdmin = userData?.isAdmin || isMaster || isComissao || isCidade;
+  const level = userData?.accessLevel;
+  
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
+  
+  // isAdmin aqui define quem pode EDITAR abas administrativas (Ata)
+  // Básico pode visualizar Ata e Dash, mas não editar a Ata.
+  const canEditAta = isGemLocal; 
 
   const [activeTab, setActiveTab] = useState('contador');
   const [instrumentsNacionais, setInstrumentsNacionais] = useState([]);
@@ -46,19 +53,16 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     let isMounted = true;
 
     const loadData = async () => {
-      // CORREÇÃO MESTRA: Determinamos o ID da comum REAL deste evento para evitar o erro de caminho
-      // Se o evento estiver na lista 'allEvents', usamos o ID dele. Caso contrário, usamos o GPS Global.
+      // CORREÇÃO MESTRA: Determinamos o ID da comum REAL deste evento
       const eventInfo = allEvents?.find(ev => ev.id === currentEventId);
       const targetComumId = eventInfo?.comumId || userData?.activeComumId || userData?.comumId;
 
       if (targetComumId && isMounted) {
         setEventComumId(targetComumId);
         try {
-          // Busca a Matriz Nacional para garantir que nunca falte instrumento na tela
           const snapNacional = await getDocs(collection(db, 'config_instrumentos_nacional'));
           if (isMounted) setInstrumentsNacionais(snapNacional.docs.map(d => ({ id: d.id, ...d.data() })));
           
-          // Carrega configuração de instrumentos específica da igreja ativa
           const unsubInst = onSnapshot(collection(db, 'comuns', targetComumId, 'instrumentos_config'), 
             (snapshot) => { 
               if (isMounted) {
@@ -68,7 +72,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             }
           );
 
-          // Carrega o evento específico no endereço dinâmico (Multitenancy)
           const unsubEvent = onSnapshot(doc(db, 'comuns', targetComumId, 'events', currentEventId), (s) => {
             if (s.exists() && isMounted) {
               const data = s.data();
@@ -79,15 +82,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
               setEventDateRaw(data.date || '');
               setLoading(false);
             } else if (isMounted) {
-              // PROTEÇÃO DE LOOP: Se o evento não existe nesta rota, encerra para evitar crash de rede
-              console.warn("Documento de evento não localizado no caminho selecionado:", targetComumId);
               toast.error("Evento indisponível nesta jurisdição.");
               setLoading(false);
-              onBack(); // Retorna ao lobby
+              onBack(); 
             }
           }, (err) => {
-             console.error("Erro Snapshot Counter:", err);
-             if (isMounted) setLoading(false);
+              console.error("Erro Snapshot Counter:", err);
+              if (isMounted) setLoading(false);
           });
 
           return () => { unsubInst(); unsubEvent(); };
@@ -102,7 +103,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return () => { isMounted = false; };
   }, [currentEventId, userData?.activeComumId, userData?.comumId, allEvents, onBack]);
 
-  // --- LÓGICA DE TRADUÇÃO E COMPATIBILIDADE (O ESCUDO DE DADOS) ---
   const allInstruments = useMemo(() => {
     const ordemOficial = [
       'Coral', 'irmandade', 'orgao', 'violino', 'viola', 'violoncelo', 
@@ -188,16 +188,19 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   };
 
   const handleToggleGroup = (sec) => {
-    // CORREÇÃO: Se o ensaio está lacrado, abre o grupo diretamente para visualização
     if (isClosed) return setActiveGroup(activeGroup === sec ? null : sec);
     
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
     const responsibleId = localCounts?.[metaKey]?.responsibleId;
     if (activeGroup === sec) { setActiveGroup(null); return; }
     
-    // Se for Master, Comissão, Cidade ou o próprio dono, abre sem perguntar
-    if (responsibleId === myUID || isMaster || isComissao || isCidade) setActiveGroup(sec);
-    else setShowOwnershipModal(sec);
+    // REGRA CORRIGIDA: Somente o MASTER abre direto. Todos os outros (incluindo ADMs) 
+    // passam pelo modal de posse para garantir que o responsável seja registrado.
+    if (isMaster || responsibleId === myUID) {
+        setActiveGroup(sec);
+    } else {
+        setShowOwnershipModal(sec);
+    }
   };
 
   const setOwnership = async (sec, wantsToOwn) => {
@@ -216,7 +219,8 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     setShowOwnershipModal(null);
   };
 
-  const isEditingEnabled = (sec) => isMaster || isComissao || isCidade || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
+  // Edição habilitada se for Master ou se for o dono da seção logado
+  const isEditingEnabled = (sec) => isMaster || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando Jurisdição...</div>;
 
@@ -279,6 +283,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                           disabled={!isEditingEnabled(sec)} 
                          />
                       ))}
+                      {/* REGRA CORRIGIDA: Nível Básico também pode adicionar extras se tiver assumido a seção */}
                       {!isClosed && isEditingEnabled(sec) && sec !== 'IRMANDADE' && sec !== 'CORAL' && sec !== 'ORGANISTAS' && (
                         <button 
                           onClick={() => setShowExtraModal(sec)} 
@@ -294,8 +299,8 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
               </React.Fragment>
             );
           })}
-          {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={isAdmin} />}
-          {activeTab === 'dash' && <DashEventPage eventId={currentEventId} comumId={eventComumId} counts={localCounts} userData={userData} isAdmin={isAdmin} ataData={ataData} />}
+          {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={canEditAta} />}
+          {activeTab === 'dash' && <DashEventPage eventId={currentEventId} comumId={eventComumId} counts={localCounts} userData={userData} isAdmin={true} ataData={ataData} />}
         </div>
       </main>
 

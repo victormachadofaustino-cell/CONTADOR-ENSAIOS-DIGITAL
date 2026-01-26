@@ -6,9 +6,19 @@ import {
   CheckCircle2, Info, ShieldCheck, Users, FileText, Briefcase
 } from 'lucide-react';
 import { pdfEventService } from '../../services/pdfEventService';
+// Importação do Cérebro de Autenticação v2.1
+import { useAuth } from '../../context/AuthContext';
 
-const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
+const DashEventPage = ({ counts, ataData, isAdmin }) => {
+  // EXTRAÇÃO DE PODERES: Identifica o nível do usuário via accessLevel
+  const { userData } = useAuth();
+  const level = userData?.accessLevel;
   
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isGemLocal = isComissao || level === 'regional_cidade' || level === 'gem_local';
+  const isBasico = level === 'basico';
+
   const stats = useMemo(() => {
     const totals = {
       geral: 0, orquestra: 0, musicos: 0, organistas: 0, irmandade: 0, 
@@ -73,7 +83,9 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   }, [counts, ataData]);
 
   const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
-  const canExport = userData?.isMaster || userData?.escopoRegional || (userData?.escopoLocal && isAdmin);
+  
+  // REGRA CORRIGIDA: Apenas quem tem nível administrativo local ou superior exporta dados
+  const canExport = isGemLocal;
 
   // 1. MENSAGEM PARA ALIMENTAÇÃO (LANCHE)
   const handleShareLanche = async () => {
@@ -96,7 +108,7 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
   return (
     <div className="space-y-4 pb-44 px-4 pt-6 max-w-md mx-auto animate-premium bg-[#F1F5F9] text-left">
       
-      {/* CARD RESUMO ALIMENTAÇÃO */}
+      {/* CARD RESUMO ALIMENTAÇÃO (Agora respeita accessLevel) */}
       <div className="bg-slate-950 p-5 rounded-[2rem] shadow-2xl relative overflow-hidden border border-white/5">
         <div className="flex justify-between items-center relative z-10">
           <div>
@@ -105,9 +117,12 @@ const DashEventPage = ({ counts, ataData, userData, isAdmin }) => {
               {stats.geral} <span className="text-[10px] font-black text-slate-500 uppercase ml-1">Presentes</span>
             </h3>
           </div>
-          <button onClick={handleShareLanche} className="bg-white/10 p-2.5 rounded-xl text-emerald-500 active:scale-90 border border-white/5 shadow-inner">
-            <Share2 size={18} />
-          </button>
+          {/* REGRA CORRIGIDA: Esconde o botão de compartilhar lanche para nível básico */}
+          {!isBasico && (
+            <button onClick={handleShareLanche} className="bg-white/10 p-2.5 rounded-xl text-emerald-500 active:scale-90 border border-white/5 shadow-inner">
+                <Share2 size={18} />
+            </button>
+          )}
         </div>
         <div className="flex gap-6 mt-4 pt-4 border-t border-white/5 relative z-10">
           <div>

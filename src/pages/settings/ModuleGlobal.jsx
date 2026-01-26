@@ -3,8 +3,15 @@ import { db, collection, doc, addDoc, deleteDoc, updateDoc } from '../../config/
 import toast from 'react-hot-toast';
 import { Plus, Trash2, ShieldAlert, Award, Briefcase, Edit3, X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+// Importação do Cérebro de Autenticação para validação de nível Master
+import { useAuth } from '../../context/AuthContext';
 
 const ModuleGlobal = ({ cargos, ministerios }) => {
+  const { userData } = useAuth();
+  
+  // NOVA LÓGICA DE PODER v2.1: Módulo exclusivo para nível Master
+  const isMaster = userData?.accessLevel === 'master';
+
   const [newCargoInput, setNewCargoInput] = useState('');
   const [newMinisterioInput, setNewMinisterioInput] = useState('');
   
@@ -14,6 +21,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
   // Função unificada para adicionar à coleção referencia_cargos
   const addItemToList = async (tipo, val, set) => {
+    if (!isMaster) return toast.error("Ação restrita ao nível Master");
     if (!val.trim()) return toast.error("Digite um valor válido");
     try {
       await addDoc(collection(db, 'referencia_cargos'), { 
@@ -29,6 +37,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
   // Função para salvar edição
   const handleUpdate = async () => {
+    if (!isMaster) return toast.error("Ação restrita ao nível Master");
     if (!editValue.trim()) return toast.error("O nome não pode estar vazio");
     try {
       const docRef = doc(db, 'referencia_cargos', editingItem.id);
@@ -43,6 +52,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
   // Função para excluir
   const handleDelete = async (id) => {
+    if (!isMaster) return toast.error("Ação restrita ao nível Master");
     if (window.confirm('Remover da base oficial? Esta ação impactará filtros de todo o sistema.')) {
       try {
         await deleteDoc(doc(db, 'referencia_cargos', id));
@@ -52,6 +62,14 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
       }
     }
   };
+
+  // TRAVA DE SEGURANÇA: Se não for master, não renderiza a interface administrativa
+  if (!isMaster) return (
+    <div className="p-10 text-center space-y-4">
+        <ShieldAlert size={40} className="text-red-500 mx-auto opacity-20" />
+        <p className="text-[10px] font-black uppercase text-slate-400 italic">Acesso Restrito ao Administrador do Sistema</p>
+    </div>
+  );
 
   return (
     <div className="p-2 space-y-10 text-left animate-in fade-in duration-500">
@@ -198,7 +216,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
         <div className="text-left">
           <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest italic mb-1">Privilégio Administrativo</p>
           <p className="text-[8px] font-bold text-slate-400 uppercase leading-relaxed tracking-tighter">
-            Cargos e Ministérios editados aqui são globais. Qualquer mudança afetará instantaneamente os formulários de Ata e cadastros de todas as localidades da Regional.
+            Cargos e Ministérios editados aqui são globais. Qualquer mudança afetará instantaneamente os formulários de Ata e cadastros de todas as localidades do sistema.
           </p>
         </div>
       </div>
