@@ -32,41 +32,30 @@ const DashPage = ({ userData }) => {
   const level = userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
-  const isRegionalCidade = isComissao || level === 'regional_cidade';
-  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isRegionalCidade = level === 'regional_cidade'; 
+  const isGemLocal = level === 'gem_local';
   const isBasico = level === 'basico';
 
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
-  
-  // Identifica se o usuário está travado na visão local (Básico ou GEM sem poder de navegação)
-  const isLocalViewOnly = isBasico || (isGemLocal && !isRegionalCidade);
+  const isLocalViewOnly = isBasico || isGemLocal;
 
-  const permitidasIds = useMemo(() => {
-    const lista = [userData?.comumId];
-    if (userData?.acessosPermitidos) lista.push(...userData.acessosPermitidos);
-    return [...new Set(lista.filter(id => id))];
-  }, [userData]);
-
-  // Estados de Filtro Geográfico baseados no Contexto (GPS)
   const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || 'all');
   const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || userData?.comumId || 'consolidated');
   
   const [listaCidades, setListaCidades] = useState([]);
   const [listaIgrejas, setListaIgrejas] = useState([]);
 
-  // Sincroniza filtros locais quando o Header mudar o GPS
   useEffect(() => {
     if (userData?.activeCityId) setSelectedCityId(userData.activeCityId);
     if (userData?.activeComumId) setActiveComumId(userData.activeComumId);
   }, [userData?.activeCityId, userData?.activeComumId]);
 
-  // 1. Carregar Cidades e Comuns com Trava de Adjacência Real
   useEffect(() => {
     if (!activeRegionalId) return;
 
     const qIgr = (isComissao)
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
-      : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 30)));
+      : query(collection(db, 'comuns'), where('cidadeId', '==', userData?.cidadeId));
     
     const unsubIgr = onSnapshot(qIgr, (sIgs) => {
       const igs = sIgs.docs.map(d => ({ id: d.id, nome: d.data().comum, cidadeId: d.data().cidadeId }));
@@ -75,55 +64,48 @@ const DashPage = ({ userData }) => {
       const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
       onSnapshot(qCid, (sCids) => {
         const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-        
         if (isComissao) {
           setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
         } else {
-          const idsCidadesPermitidas = [...new Set(igs.map(i => i.cidadeId))];
-          const filtradas = todasCidades.filter(c => idsCidadesPermitidas.includes(c.id));
-          setListaCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
+          const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
+          setListaCidades(filtradas);
+          setSelectedCityId(userData?.cidadeId);
         }
       });
     });
-
     return () => unsubIgr();
-  }, [activeRegionalId, isComissao, permitidasIds]);
+  }, [activeRegionalId, isComissao, userData?.cidadeId]);
 
-  // 2. BUSCA DE EVENTOS (MOTOR HÍBRIDO v2.1)
+  // 2. BUSCA DE EVENTOS (MOTOR UNIFICADO v3.0 - COLEÇÃO GLOBAL)
   useEffect(() => {
     if (!activeRegionalId) return;
     setLoading(true);
 
-    let qEvents;
-    // CORREÇÃO: Usuários de nível Local/Básico consultam direto a coleção para evitar custos de collectionGroup e índices
-    if (isLocalViewOnly && userData?.comumId) {
-      qEvents = query(collection(db, 'comuns', userData.comumId, 'events'));
-    } else {
-      qEvents = query(
-        collectionGroup(db, 'events'), 
-        where('regionalId', '==', activeRegionalId)
-      );
-    }
+    // MUDANÇA CRÍTICA: DashPage agora escuta a events_global para enxergar novos ensaios [cite: 1825, 1832]
+    const qEvents = query(
+      collection(db, 'events_global'), 
+      where('regionalId', '==', activeRegionalId)
+    );
 
     const unsubEvents = onSnapshot(qEvents, (snap) => {
       let data = snap.docs.map(d => ({ 
         id: d.id, 
-        comumId: d.ref.parent.parent?.id, 
         ...d.data() 
       }));
 
-      // Filtros de interface respeitando a Matriz
-      if (!isLocalViewOnly) {
+      // Filtros de interface respeitando a Matriz de Competências [cite: 1153, 1163]
+      if (isComissao) {
         if (activeComumId !== 'consolidated') {
           data = data.filter(e => e.comumId === activeComumId);
         } else if (selectedCityId !== 'all') {
-          const igrejasDaCidade = listaIgrejas.filter(i => i.cidadeId === selectedCityId).map(i => i.id);
-          data = data.filter(e => igrejasDaCidade.includes(e.comumId));
-        } else if (!isComissao) {
-          data = data.filter(e => permitidasIds.includes(e.comumId));
+          data = data.filter(e => e.cidadeId === selectedCityId);
+        }
+      } else if (isRegionalCidade) {
+        data = data.filter(e => e.cidadeId === userData?.cidadeId);
+        if (activeComumId !== 'consolidated') {
+          data = data.filter(e => e.comumId === activeComumId);
         }
       } else {
-        // Trava final de segurança para nível local/básico
         data = data.filter(e => e.comumId === (userData?.activeComumId || userData?.comumId));
       }
 
@@ -133,13 +115,17 @@ const DashPage = ({ userData }) => {
       console.error("Erro no motor do Dashboard:", err);
       setLoading(false);
     });
-
     return () => unsubEvents();
-  }, [activeRegionalId, activeComumId, selectedCityId, listaIgrejas, isComissao, permitidasIds, isLocalViewOnly, userData?.comumId, userData?.activeComumId]);
+  }, [activeRegionalId, activeComumId, selectedCityId, isComissao, isRegionalCidade, isLocalViewOnly, userData]);
 
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
   const processedData = useMemo(() => {
+    const legacyMap = {
+      'vln': 'violino', 'vla': 'viola', 'vcl': 'violoncelo',
+      'flt': 'flauta', 'clt': 'clarinete', 'acd': 'acordeon', 'org': 'orgao'
+    };
+
     const filtered = events.filter(ev => {
       if (!ev.date) return false;
       const [y, m] = ev.date.split('-').map(Number);
@@ -172,18 +158,30 @@ const DashPage = ({ userData }) => {
         const com = Number(data.comum) || 0;
         const sec = (data.section || "").toUpperCase();
         const vis = Math.max(0, tot - com);
+        const saneId = legacyMap[id] || id.toLowerCase();
 
-        if (sec === 'ORGANISTAS' || id === 'orgao') { 
-          g.organistas += tot; tO += tot; 
-        } else if (sec === 'CORAL' || id === 'irmandade') { 
-          const soma = (Number(data.irmaos) || 0) + (Number(data.irmas) || 0);
+        // LÓGICA DE SOMA UNIFICADA (CORAL / ORQUESTRA / ORGANISTAS) [cite: 1113, 1174]
+        if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { 
+          const soma = (Number(data.irmaos) || 0) + (Number(data.irmas) || 0) || tot;
           g.irmandade += soma; tI += soma; 
-        } else {
+        } 
+        else if (sec === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { 
+          g.organistas += tot; tO += tot; 
+        } 
+        else {
           tM += tot;
-          if (sec === 'CORDAS') { g.cordas += com; g.cordasV += vis; }
-          else if (sec.includes('MADEIRA') || sec.includes('SAX')) { g.madeiras += com; g.madeirasV += vis; }
-          else if (sec.includes('METAI')) { g.metais += com; g.metaisV += vis; }
-          else if (sec === 'TECLAS' || id === 'acordeon') { g.teclas += com; g.teclasV += vis; }
+          if (sec === 'CORDAS' || ['violino', 'viola', 'violoncelo'].includes(saneId)) { 
+            g.cordas += com; g.cordasV += vis; 
+          }
+          else if (sec.includes('MADEIRA') || sec.includes('SAX') || ['flauta', 'clarinete', 'oboe', 'fagote', 'claronealto', 'claronebaixo', 'corneingles', 'saxalto', 'saxtenor', 'saxsoprano', 'saxbaritono'].includes(saneId)) { 
+            g.madeiras += com; g.madeirasV += vis; 
+          }
+          else if (sec.includes('METAI') || ['trompete', 'trombone', 'trompa', 'eufonio', 'tuba', 'flugelhorn'].includes(saneId)) { 
+            g.metais += com; g.metaisV += vis; 
+          }
+          else if (sec === 'TECLAS' || saneId === 'acordeon') { 
+            g.teclas += com; g.teclasV += vis; 
+          }
         }
       });
 
@@ -236,18 +234,17 @@ const DashPage = ({ userData }) => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans pb-32 overflow-x-hidden text-left">
-      
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm space-y-3 rounded-b-[2.2rem]">
         <div className="flex items-center gap-2 px-1">
-          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${isLocalViewOnly ? 'opacity-50 pointer-events-none' : (listaCidades.length <= 1 && !isComissao) ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${!isComissao ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
-              disabled={isLocalViewOnly}
-              value={isLocalViewOnly ? userData?.cidadeId : selectedCityId} 
+              disabled={!isComissao}
+              value={!isComissao ? userData?.cidadeId : selectedCityId} 
               onChange={(e) => { setSelectedCityId(e.target.value); setActiveComumId('consolidated'); }} 
               className="bg-transparent text-slate-950 font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
             >
-              {isLocalViewOnly ? (
+              {!isComissao ? (
                 <option value={userData?.cidadeId}>{userData?.cidadeNome || "SUA CIDADE"}</option>
               ) : (
                 <>
@@ -387,7 +384,7 @@ const DashPage = ({ userData }) => {
             <BarChart layout="vertical" data={visitaOrigemSlide === 0 ? origemVisitas.cargos.slice(0,6) : visitaOrigemSlide === 1 ? origemVisitas.bairros.slice(0,6) : origemVisitas.cidades.slice(0,6)} margin={{left: -20, right: 30}}>
               <XAxis type="number" hide /><YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 7, fontWeight: '900', fill: '#64748b' }} width={70} />
               <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={12}><LabelList dataKey="value" position="right" style={{fontSize: 8, fontWeight: 900}} /></Bar>
-            </BarChart>
+          </BarChart>
         </CarouselBox>
 
         <section className="space-y-4 pb-20">
@@ -446,7 +443,6 @@ const CarouselBox = ({ title, children, onPrev, onNext, dark }) => (
         <button onClick={onNext} className="p-1.5 bg-slate-50 rounded-lg text-slate-300 active:text-blue-600 transition-colors"><ChevronRight size={14} /></button>
     </div>
     <div className="h-56 w-full">
-      {/* PRESERVAÇÃO: Renderização segura para evitar erro de container sem dimensão */}
       <ResponsiveContainer width="99%" height="99%">
         {children}
       </ResponsiveContainer>

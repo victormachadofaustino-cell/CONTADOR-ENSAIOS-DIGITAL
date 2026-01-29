@@ -69,7 +69,7 @@ export const churchService = {
       });
 
       // 3. Injetar Matriz Nacional de Instrumentos (O "Cérebro" do Blueprint)
-      // Utiliza os IDs fixos do config.js para a subcoleção, mas dentro da Comum com ID aleatório
+      // Agora sincronizado com os 23 instrumentos do config.js (incluindo Coral)
       DEFAULT_INSTRUMENTS.Orquestra.forEach(inst => {
         // Saneamento de ID interno de instrumento para consistência (ex: saxalto)
         const saneInstId = inst.id.replace(/_/g, ''); 

@@ -34,19 +34,42 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
         const valIrmaos = parseInt(data.irmaos) || 0;
         const valIrmas = parseInt(data.irmas) || 0;
         const section = (data.section || "GERAL").toUpperCase();
+        const saneId = id.toLowerCase();
 
-        if (section === 'ORGANISTAS') {
+        // 1. LÓGICA DE SOMA DO CORAL (ACEITA PADRÃO ANTIGO E NOVO)
+        if (section === 'CORAL' || section === 'IRMANDADE' || saneId === 'coral' || saneId === 'irmandade') {
+          // Prioriza contagem detalhada para evitar duplicidade com valTotal
+          if (valIrmaos > 0 || valIrmas > 0) {
+            totals.irmaos += valIrmaos;
+            totals.irmas += valIrmas;
+          } else {
+            totals.irmaos += valTotal; // Fallback para quando só preencheram o total simples
+          }
+        } 
+        // 2. LÓGICA DE ORGANISTAS
+        else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') {
           totals.organistas += valTotal;
-        } else if (section === 'CORAL') {
-          totals.irmaos += (valTotal || valIrmaos);
-          totals.irmas += valIrmas;
-        } else {
+        } 
+        // 3. LÓGICA DE ORQUESTRA (MÚSICOS)
+        else {
           totals.musicos += valTotal;
-          if (section === 'CORDAS') totals.cordas += valTotal;
-          else if (section === 'MADEIRAS') totals.madeiras += valTotal;
-          else if (section === 'SAXOFONES') totals.saxofones += valTotal;
-          else if (section === 'METAIS') totals.metais += valTotal;
-          else if (section === 'TECLAS') totals.teclas += valTotal;
+          
+          // Distribuição por Naipes para o Gráfico de Equilíbrio
+          if (section === 'CORDAS' || ['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo'].includes(saneId)) {
+            totals.cordas += valTotal;
+          } 
+          else if (section.includes('SAX')) {
+            totals.saxofones += valTotal;
+          }
+          else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt', 'flauta', 'clarinete', 'fagote', 'claronealto', 'claronebaixo', 'corneingles'].includes(saneId)) {
+            totals.madeiras += valTotal;
+          }
+          else if (section.includes('METAI') || ['tpt', 'tbn', 'trp', 'euf', 'tub', 'trompete', 'trombone', 'trompa', 'eufonio', 'tuba', 'flugelhorn'].includes(saneId)) {
+            totals.metais += valTotal;
+          }
+          else if (section === 'TECLAS' || saneId === 'acordeon' || saneId === 'acd') {
+            totals.teclas += valTotal;
+          }
         }
       });
     }
@@ -84,10 +107,8 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
 
   const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
   
-  // REGRA CORRIGIDA: Apenas quem tem nível administrativo local ou superior exporta dados
   const canExport = isGemLocal;
 
-  // 1. MENSAGEM PARA ALIMENTAÇÃO (LANCHE)
   const handleShareLanche = async () => {
     const dataEnsaio = ataData?.date ? new Date(ataData.date + 'T12:00:00').toLocaleDateString() : new Date().toLocaleDateString();
     const msg = `*Serviço de Ensaio Local* - ${dataEnsaio} 🎵\n${userData?.comum}\n\n_*Resumo da Contagem para Alimentação:*_ 🍽️\n\nTotal Geral: ${stats.geral} ✅\n\n• Orquestra: ${stats.orquestra} 🎶\n      • _Músicos ${stats.musicos} + Organistas ${stats.organistas}_\n• Irmandade: ${stats.irmandade} 🗣️\n\nDeus abençoe grandemente. 🙏`;
@@ -96,7 +117,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
     else { navigator.clipboard.writeText(msg); toast.success("Resumo Alimentação Copiado!"); }
   };
 
-  // 2. MENSAGEM PARA RESUMO ESTATÍSTICO (OFICIAL)
   const handleShareEstatistico = async () => {
     const dataEnsaio = ataData?.date ? new Date(ataData.date + 'T12:00:00').toLocaleDateString() : new Date().toLocaleDateString();
     const msg = `*Serviço de Ensaio Local* - ${dataEnsaio} 🎵\n${userData?.comum} 📍\n\n_*Resumo Estatístico:*_ 📊\n\n• Músicos: ${stats.musicos}\n• Organistas: ${stats.organistas}\n• Irmandade (Coral): ${stats.irmandade}\n\n*Total Geral: ${stats.geral}*\n\n• _Encarregados Regionais: ${stats.encRegional}_\n• _Encarregados Locais: ${stats.encLocal}_\n• _Examinadoras: ${stats.examinadoras}_\n• _Ministério: ${stats.ministerio_oficio}_\n\nDeus abençoe grandemente!`;
@@ -108,7 +128,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
   return (
     <div className="space-y-4 pb-44 px-4 pt-6 max-w-md mx-auto animate-premium bg-[#F1F5F9] text-left">
       
-      {/* CARD RESUMO ALIMENTAÇÃO (Agora respeita accessLevel) */}
       <div className="bg-slate-950 p-5 rounded-[2rem] shadow-2xl relative overflow-hidden border border-white/5">
         <div className="flex justify-between items-center relative z-10">
           <div>
@@ -117,7 +136,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
               {stats.geral} <span className="text-[10px] font-black text-slate-500 uppercase ml-1">Presentes</span>
             </h3>
           </div>
-          {/* REGRA CORRIGIDA: Esconde o botão de compartilhar lanche para nível básico */}
           {!isBasico && (
             <button onClick={handleShareLanche} className="bg-white/10 p-2.5 rounded-xl text-emerald-500 active:scale-90 border border-white/5 shadow-inner">
                 <Share2 size={18} />
@@ -136,7 +154,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
         </div>
       </div>
 
-      {/* BIG NUMBERS PAREADOS */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard title="Músicos" value={stats.musicos} icon={<Music size={12}/>} />
         <StatCard title="Organistas" value={stats.organistas} icon={<PieChart size={12}/>} />
@@ -154,7 +171,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
         <p className="text-xl font-black text-slate-950 italic">{stats.ministerio_oficio}</p>
       </div>
 
-      {/* GRÁFICO DE EQUILÍBRIO REFERÊNCIA MOO */}
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex items-center gap-2 mb-2">
           <TrendingUp className="text-slate-900" size={16} />
@@ -182,7 +198,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
         </div>
       </div>
 
-      {/* RESUMO ESTATÍSTICO RESTAURADO COM NOVOS BOTÕES */}
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-[11px] font-black uppercase italic text-slate-950 tracking-tighter">Resumo Estatístico</h3>

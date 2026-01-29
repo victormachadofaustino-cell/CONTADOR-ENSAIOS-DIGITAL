@@ -30,10 +30,14 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
+  
+  // BLOQUEIO DE SEGURANÇA: Ignorar ferramentas de desenvolvimento e extensões
   if (
     url.includes('chrome-extension') || 
     url.includes('socket.io') || 
     url.includes('@vite') || 
+    url.includes('@react-refresh') || // Adicionado para sanar erro de dev
+    url.includes('node_modules') ||    // Adicionado para evitar lixo no cache
     url.includes('src/') ||
     event.request.method !== 'GET'
   ) {
@@ -41,14 +45,25 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    fetch(event.request)
-      .catch(() => {
-        return caches.match(event.request).then((response) => {
-          if (response) return response;
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
+    caches.match(event.request).then((response) => {
+      // Estratégia: Cache First, fallback para Network
+      if (response) {
+        return response;
+      }
+
+      return fetch(event.request).catch(() => {
+        // Se falhar a rede e for navegação de página, entrega o index.html (SPA)
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+        
+        // CORREÇÃO CRÍTICA: Garante que sempre retorne uma Response válida para evitar TypeError
+        return new Response('Offline: Recurso não disponível no cache.', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: new Headers({ 'Content-Type': 'text/plain' })
         });
-      })
+      });
+    })
   );
 });

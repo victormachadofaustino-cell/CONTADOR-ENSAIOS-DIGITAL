@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
+// PRESERVAÇÃO: Importações e caminhos originais mantidos
 import { db, collection, doc, addDoc, deleteDoc, updateDoc } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { Plus, Trash2, ShieldAlert, Award, Briefcase, Edit3, X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-// Importação do Cérebro de Autenticação para validação de nível Master
+// Importação do Cérebro de Autenticação para validação de níveis
 import { useAuth } from '../../context/AuthContext';
 
 const ModuleGlobal = ({ cargos, ministerios }) => {
   const { userData } = useAuth();
   
-  // NOVA LÓGICA DE PODER v2.1: Módulo exclusivo para nível Master
-  const isMaster = userData?.accessLevel === 'master';
+  // NOVA LÓGICA DE PODER v2.1: Módulo liberado para Master e Comissão
+  const isComissao = userData?.accessLevel === 'master' || userData?.accessLevel === 'comissao';
 
   const [newCargoInput, setNewCargoInput] = useState('');
   const [newMinisterioInput, setNewMinisterioInput] = useState('');
@@ -21,7 +22,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
   // Função unificada para adicionar à coleção referencia_cargos
   const addItemToList = async (tipo, val, set) => {
-    if (!isMaster) return toast.error("Ação restrita ao nível Master");
+    if (!isComissao) return toast.error("Ação restrita");
     if (!val.trim()) return toast.error("Digite um valor válido");
     try {
       await addDoc(collection(db, 'referencia_cargos'), { 
@@ -35,9 +36,9 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
     }
   };
 
-  // Função para salvar edição
+  // Função para salvar edição (Cargos ou Ministérios)
   const handleUpdate = async () => {
-    if (!isMaster) return toast.error("Ação restrita ao nível Master");
+    if (!isComissao) return toast.error("Ação restrita");
     if (!editValue.trim()) return toast.error("O nome não pode estar vazio");
     try {
       const docRef = doc(db, 'referencia_cargos', editingItem.id);
@@ -52,22 +53,22 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
   // Função para excluir
   const handleDelete = async (id) => {
-    if (!isMaster) return toast.error("Ação restrita ao nível Master");
+    if (!isComissao) return toast.error("Ação restrita");
     if (window.confirm('Remover da base oficial? Esta ação impactará filtros de todo o sistema.')) {
       try {
         await deleteDoc(doc(db, 'referencia_cargos', id));
-        toast.success("Removido da base");
+        toast.success("Removido com sucesso");
       } catch (e) {
         toast.error("Erro ao excluir");
       }
     }
   };
 
-  // TRAVA DE SEGURANÇA: Se não for master, não renderiza a interface administrativa
-  if (!isMaster) return (
+  // TRAVA DE SEGURANÇA: Se não for comissão/master, não renderiza a interface administrativa
+  if (!isComissao) return (
     <div className="p-10 text-center space-y-4">
         <ShieldAlert size={40} className="text-red-500 mx-auto opacity-20" />
-        <p className="text-[10px] font-black uppercase text-slate-400 italic">Acesso Restrito ao Administrador do Sistema</p>
+        <p className="text-[10px] font-black uppercase text-slate-400 italic">Acesso Restrito ao Administrador da Regional</p>
     </div>
   );
 
@@ -100,21 +101,10 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
         <div className="grid grid-cols-1 gap-2 pt-2">
           {cargos.map(c => (
-            <motion.div 
-              layout
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }}
-              key={c.id} 
-              className="bg-white p-4 rounded-[1.5rem] border border-slate-100 shadow-sm flex items-center justify-between"
-            >
+            <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={c.id} className="bg-white p-4 rounded-[1.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
               {editingItem?.id === c.id ? (
                 <div className="flex items-center gap-2 w-full">
-                  <input 
-                    autoFocus
-                    className="flex-1 bg-slate-50 p-2 rounded-lg text-[10px] font-black text-slate-950 outline-none uppercase italic"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                  />
+                  <input autoFocus className="flex-1 bg-slate-50 p-2 rounded-lg text-[10px] font-black text-slate-950 outline-none uppercase italic" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
                   <button onClick={handleUpdate} className="text-emerald-500 p-1"><Check size={16} /></button>
                   <button onClick={() => setEditingItem(null)} className="text-red-400 p-1"><X size={16} /></button>
                 </div>
@@ -122,18 +112,8 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
                 <>
                   <span className="text-[10px] font-black text-slate-700 uppercase italic leading-none">{c.nome}</span>
                   <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => { setEditingItem(c); setEditValue(c.nome); }}
-                      className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
-                    >
-                      <Edit3 size={14} />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(c.id)} 
-                      className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <button onClick={() => { setEditingItem(c); setEditValue(c.nome); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14} /></button>
+                    <button onClick={() => handleDelete(c.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </>
               )}
@@ -168,21 +148,10 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
 
         <div className="grid grid-cols-1 gap-2 pt-2">
           {ministerios.map(m => (
-            <motion.div 
-              layout
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }}
-              key={m.id} 
-              className="bg-white p-4 rounded-[1.5rem] border border-slate-100 shadow-sm flex items-center justify-between"
-            >
+            <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={m.id} className="bg-white p-4 rounded-[1.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
               {editingItem?.id === m.id ? (
                 <div className="flex items-center gap-2 w-full">
-                  <input 
-                    autoFocus
-                    className="flex-1 bg-slate-50 p-2 rounded-lg text-[10px] font-black text-slate-950 outline-none uppercase italic"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                  />
+                  <input autoFocus className="flex-1 bg-slate-50 p-2 rounded-lg text-[10px] font-black text-slate-950 outline-none uppercase italic" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
                   <button onClick={handleUpdate} className="text-emerald-500 p-1"><Check size={16} /></button>
                   <button onClick={() => setEditingItem(null)} className="text-red-400 p-1"><X size={16} /></button>
                 </div>
@@ -190,18 +159,8 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
                 <>
                   <span className="text-[10px] font-black text-slate-700 uppercase italic leading-none">{m.nome}</span>
                   <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => { setEditingItem(m); setEditValue(m.nome); }}
-                      className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
-                    >
-                      <Edit3 size={14} />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(m.id)} 
-                      className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <button onClick={() => { setEditingItem(m); setEditValue(m.nome); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14} /></button>
+                    <button onClick={() => handleDelete(m.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </>
               )}
@@ -216,7 +175,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
         <div className="text-left">
           <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest italic mb-1">Privilégio Administrativo</p>
           <p className="text-[8px] font-bold text-slate-400 uppercase leading-relaxed tracking-tighter">
-            Cargos e Ministérios editados aqui são globais. Qualquer mudança afetará instantaneamente os formulários de Ata e cadastros de todas as localidades do sistema.
+            Os cargos e ministérios editados aqui são referências globais para a sua Regional. Alterações refletirão em todos os formulários e filtros do sistema.
           </p>
         </div>
       </div>

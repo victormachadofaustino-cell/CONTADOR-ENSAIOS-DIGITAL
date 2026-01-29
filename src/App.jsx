@@ -14,10 +14,17 @@ import EventsPage from './pages/events/EventsPage'
 import LoginPage from './pages/auth/LoginPage'
 import CapaEntrada from './pages/CapaEntrada'
 import Header from './components/Header' 
+import Tickets from './components/Tickets' // Importação do sistema de suporte
 
-const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretario da Música'];
+// Importação do Contexto para unificar a fonte de verdade
+import { useAuth } from './context/AuthContext';
+
+const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretário da Música', 'Secretario da Música'];
 
 function App() {
+  // INTEGRAÇÃO: Consumindo o GPS Global diretamente no App
+  const { userData: authContextData } = useAuth();
+  
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [view, setView] = useState('loading');
@@ -28,7 +35,7 @@ function App() {
   const [direcao, setDirecao] = useState(0);
   const [events, setEvents] = useState([]);
 
-  // Inicialização robusta via localStorage
+  // Inicialização robusta via localStorage - MANTÉM A ÚLTIMA COMUM VISITADA
   const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId') || null);
   const [activeComumName, setActiveComumName] = useState(localStorage.getItem('activeComumName') || '');
   const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId') || null);
@@ -42,31 +49,33 @@ function App() {
   const [cargosDinamicos, setCargosDinamicos] = useState([]);
 
   // --- MATRIZ DE COMPETÊNCIAS v2.1 (CONEXÃO DIRETA COM ACCESSLEVEL) ---
-  const level = userData?.accessLevel;
+  // CORREÇÃO: Usando authContextData como fonte primária para evitar atrasos de estado
+  const level = authContextData?.accessLevel || userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
   const isRegionalCidade = isComissao || level === 'regional_cidade';
   const isGemLocal = isRegionalCidade || level === 'gem_local';
   const isBasico = level === 'basico';
   
-  // isAdmin aqui unifica quem pode operar funções administrativas básicas
   const isAdmin = isGemLocal;
   
-  const comumIdEfetivo = activeComumId || userData?.comumId;
+  // PRIORIDADE: Sincronia com o contexto global
+  const comumIdEfetivo = authContextData?.activeComumId || activeComumId || userData?.comumId;
 
-  // Trava de abas permitidas - CORRIGIDO PARA v2.1
+  const currentEventData = useMemo(() => {
+    return events.find(ev => ev.id === currentEventId);
+  }, [events, currentEventId]);
+
   const ORDEM_TABS = useMemo(() => {
-    // Agora olha para isGemLocal, garantindo que o Victor MG veja a aba 'config'
     const temAcessoAjustes = isGemLocal; 
     return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
   }, [isGemLocal]);
 
-  // Monitor de segurança para redirecionamento de aba ilegal
   useEffect(() => {
-    if (userData && !ORDEM_TABS.includes(lobbyTab)) {
+    if ((authContextData || userData) && !ORDEM_TABS.includes(lobbyTab)) {
       setLobbyTab('ensaios');
     }
-  }, [userData, lobbyTab, ORDEM_TABS]);
+  }, [authContextData, userData, lobbyTab, ORDEM_TABS]);
 
   const mudarTab = (novaTab) => {
     const idxAntigo = ORDEM_TABS.indexOf(lobbyTab);
@@ -75,6 +84,16 @@ function App() {
     setDirecao(idxNovo > idxAntigo ? 1 : -1);
     setLobbyTab(novaTab);
   };
+
+  // SINCRONIZAÇÃO DE ESTADO COM CONTEXTO
+  useEffect(() => {
+    if (authContextData?.activeComumId !== undefined) {
+      setActiveComumId(authContextData.activeComumId);
+    }
+    if (authContextData?.activeRegionalId !== undefined) {
+      setActiveRegionalId(authContextData.activeRegionalId);
+    }
+  }, [authContextData?.activeComumId, authContextData?.activeRegionalId]);
 
   useEffect(() => {
     let unsubSnap = null;
@@ -86,7 +105,6 @@ function App() {
             const data = docSnap.data();
             setUserData({ ...data, uid: u.uid, id: u.uid });
 
-            // Inicialização de Contexto Inteligente v2.1
             const podeNavegar = data.accessLevel === 'master' || data.accessLevel === 'comissao' || data.accessLevel === 'regional_cidade';
             
             if (podeNavegar) {
@@ -95,20 +113,20 @@ function App() {
               const savedRegionalId = localStorage.getItem('activeRegionalId');
               const savedRegionalName = localStorage.getItem('activeRegionalName');
 
-              if (savedComumId) {
-                setActiveComumId(savedComumId);
-                setActiveComumName(savedComumName);
-              } else {
+              if (!activeComumId && !savedComumId) {
                 setActiveComumId(data.comumId);
                 setActiveComumName(data.comum);
+              } else if (savedComumId && !activeComumId) {
+                setActiveComumId(savedComumId);
+                setActiveComumName(savedComumName);
               }
 
-              if (savedRegionalId) {
-                setActiveRegionalId(savedRegionalId);
-                setActiveRegionalName(savedRegionalName);
-              } else {
+              if (!activeRegionalId && !savedRegionalId) {
                 setActiveRegionalId(data.regionalId);
                 setActiveRegionalName(data.regionalNome || data.regional);
+              } else if (savedRegionalId && !activeRegionalId) {
+                setActiveRegionalId(savedRegionalId);
+                setActiveRegionalName(savedRegionalName);
               }
             } else {
               setActiveComumId(data.comumId);
@@ -128,35 +146,44 @@ function App() {
       } else { 
         if (unsubSnap) unsubSnap();
         setUserData(null);
+        setEvents([]); 
+        setActiveComumId(null);
+        setActiveComumName('');
+        setActiveRegionalId(null);
+        setActiveRegionalName('Navegar...');
+        localStorage.removeItem('activeComumId');
+        localStorage.removeItem('activeComumName');
+        localStorage.removeItem('activeRegionalId');
+        localStorage.removeItem('activeRegionalName');
         setView('login'); 
       }
     });
     return () => { unsubAuth(); if (unsubSnap) unsubSnap(); };
-  }, []);
+  }, []); 
 
   useEffect(() => {
-    if (!comumIdEfetivo || !activeRegionalId) return;
-    
-    const q = query(collection(db, 'comuns', comumIdEfetivo, 'events'), orderBy('date', 'desc'));
+    setEvents([]); 
+    if (!user?.uid || !comumIdEfetivo || !(authContextData || userData)) return;
+
+    const q = query(
+      collection(db, 'events_global'), 
+      where('comumId', '==', comumIdEfetivo), 
+      orderBy('date', 'desc')
+    );
+
     const unsub = onSnapshot(q, (snapshot) => {
-      const todosEventos = snapshot.docs.map(d => ({ 
+      const data = snapshot.docs.map(d => ({ 
         id: d.id, 
-        ...d.data(), 
-        comumId: comumIdEfetivo,
-        regionalId: d.data().regionalId || activeRegionalId 
+        ...d.data(),
+        comumId: d.data().comumId || comumIdEfetivo 
       }));
-      
-      setEvents(todosEventos.filter(ev => ev.regionalId === activeRegionalId || !ev.regionalId));
-      
-      if (currentEventId) {
-        const currentData = todosEventos.find(ev => ev.id === currentEventId);
-        if (currentData) setCounts(currentData.counts || {});
-      }
+      setEvents(data);
     }, (err) => {
-      console.error("Erro ao carregar eventos:", err);
+      console.warn("Snapshot de eventos finalizado:", err.message);
     });
+
     return () => unsub();
-  }, [comumIdEfetivo, activeRegionalId, currentEventId]);
+  }, [comumIdEfetivo, user?.uid, level, authContextData?.activeComumId]); 
 
   if (view === 'loading') return <div className="h-dvh flex items-center justify-center bg-[#F1F5F9] font-black text-slate-950 animate-pulse uppercase text-[10px]">Sincronizando Jurisdição...</div>;
 
@@ -166,21 +193,17 @@ function App() {
       <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
 
       {view === 'login' ? (
-        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} />
+        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData || userData} />
       ) : view === 'lobby' ? (
         <>
-          <Header userData={{ ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 
+          <Header userData={authContextData || { ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 
             onChurchChange={(id, nome) => { 
-              setActiveComumId(id); 
-              setActiveComumName(nome); 
-              localStorage.setItem('activeComumId', id); 
-              localStorage.setItem('activeComumName', nome); 
+              setActiveComumId(id); setActiveComumName(nome); 
+              localStorage.setItem('activeComumId', id); localStorage.setItem('activeComumName', nome); 
             }}
             onRegionalChange={(id, nome) => { 
-              setActiveRegionalId(id); 
-              setActiveRegionalName(nome); 
-              localStorage.setItem('activeRegionalId', id); 
-              localStorage.setItem('activeRegionalName', nome); 
+              setActiveRegionalId(id); setActiveRegionalName(nome); 
+              localStorage.setItem('activeRegionalId', id); localStorage.setItem('activeRegionalName', nome); 
             }}
           />
           <main className="flex-1 relative overflow-hidden">
@@ -189,23 +212,24 @@ function App() {
                 <div className="max-w-md mx-auto">
                   {lobbyTab === 'ensaios' && (
                     <EventsPage 
-                      userData={{ ...userData, activeCityId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isMaster, isComissao, isCidade: isRegionalCidade }} 
+                      key={authContextData?.activeCityId || 'default'} // Sincronia instantânea com o GPS Global
+                      allEvents={events}
+                      userData={authContextData || { ...userData, activeCityId: userData?.activeCityId || userData?.cidadeId, activeComumId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isMaster, isComissao, isCidade: isRegionalCidade }} 
                       isAdmin={isAdmin} 
                       onSelectEvent={(id) => { 
-                        const eventObj = events.find(ev => ev.id === id);
-                        if (eventObj && isRegionalCidade) {
-                          setActiveComumId(eventObj.comumId);
-                          setActiveComumName(eventObj.comum || "Localidade");
-                          localStorage.setItem('activeComumId', eventObj.comumId);
-                          localStorage.setItem('activeComumName', eventObj.comum || "Localidade");
-                        }
                         setCurrentEventId(id); 
                         setView('app'); 
                       }} 
+                      onChurchChange={(id, nome) => {
+                        setActiveComumId(id);
+                        setActiveComumName(nome);
+                        localStorage.setItem('activeComumId', id);
+                        localStorage.setItem('activeComumName', nome);
+                      }}
                     />
                   )}
-                  {lobbyTab === 'dash' && <DashPage userData={{ ...userData, activeCityId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId }} />}
-                  {lobbyTab === 'config' && <SettingsPage userData={{ ...userData, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isComissao, comumId: comumIdEfetivo, isRegional: isComissao, isCidade: isRegionalCidade, isGemLocal }} />}
+                  {lobbyTab === 'dash' && <DashPage userData={authContextData || { ...userData, activeCityId: userData?.activeCityId || userData?.cidadeId, activeComumId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId }} />}
+                  {lobbyTab === 'config' && <SettingsPage />}
                 </div>
               </motion.div>
             </AnimatePresence>
@@ -219,8 +243,27 @@ function App() {
           </nav>
         </>
       ) : (
-        <CounterPage currentEventId={currentEventId} counts={counts} onBack={() => setView('lobby')} isAdmin={isAdmin} isMaster={isMaster} userData={{ ...userData, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isBasico, isAdmin, isRegional: isComissao, isComissao, isCidade: isRegionalCidade }} allEvents={events} />
+        <CounterPage 
+          currentEventId={currentEventId} 
+          counts={counts} 
+          onBack={() => setView('lobby')} 
+          isAdmin={isAdmin} 
+          isMaster={isMaster} 
+          userData={authContextData || { 
+            ...userData, 
+            comumId: currentEventData?.comumId || comumIdEfetivo, 
+            comum: activeComumName, 
+            activeRegionalId, 
+            activeRegionalName, 
+            regionalId: activeRegionalId, 
+            isBasico, isAdmin, isRegional: isComissao, isComissao, isCidade: isRegionalCidade 
+          }} 
+          allEvents={events} 
+        />
       )}
+
+      {/* SISTEMA DE TICKETS (Floating Support) - Contextualizado pela aba ativa */}
+      <Tickets moduloAtual={lobbyTab} />
     </div>
   );
 }

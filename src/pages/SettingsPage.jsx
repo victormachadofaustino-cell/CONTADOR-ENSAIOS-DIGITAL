@@ -1,35 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // PRESERVAÇÃO: Caminho do Firebase subindo um nível
-import { db, collection, onSnapshot, doc, query, where, addDoc, deleteDoc, updateDoc } from '../config/firebase';
+import { db, collection, onSnapshot, doc, query, where } from '../config/firebase';
 import { 
   Home, Music, Users, ShieldCheck, Plus, ChevronDown, 
-  ChevronRight, ChevronLeft, MapPin, Building2, LayoutGrid, 
-  Trash2, Edit3, X, Check, PlusCircle, Send
+  MapPin, Building2, LayoutGrid, Settings, Briefcase
 } from 'lucide-react';
 // Importação do Cérebro de Autenticação (useAuth)
 import { useAuth } from '../context/AuthContext';
-// Importação do Serviço de Igreja para criação de novas localidades
-import { churchService } from '../services/churchService';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-// Importação dos Módulos (Caminhos ajustados para a subpasta settings)
+// Importação dos Módulos (Incluindo os novos arquivos criados)
 import ModuleChurch from './settings/ModuleChurch';
 import ModuleOrchestra from './settings/ModuleOrchestra';
 import ModuleGlobal from './settings/ModuleGlobal';
 import ModuleAccess from './settings/ModuleAccess';
+import ModuleCities from './settings/ModuleCities'; 
+import ModuleChurchesManager from './settings/ModuleChurchesManager';
 
 const SettingsPage = () => {
-  const { userData } = useAuth();
+  const { userData, setContext } = useAuth();
   const [loading, setLoading] = useState(true);
   
   const [selectedCity, setSelectedCity] = useState(null);
   const [selectedComum, setSelectedComum] = useState(null);
   const [activeMenu, setActiveMenu] = useState(null);
-
-  // Estados para Modais de Criação
-  const [isNewChurchModalOpen, setIsNewChurchModalOpen] = useState(false);
-  const [newChurchName, setNewChurchName] = useState('');
 
   // --- NOVA LÓGICA DE COMPETÊNCIAS v2.1 (MATRIZ DE PODER) ---
   const level = userData?.accessLevel;
@@ -38,21 +33,10 @@ const SettingsPage = () => {
   const isRegionalCidade = isComissao || level === 'regional_cidade';
   const isGemLocal = isRegionalCidade || level === 'gem_local';
 
-  // REATIVIDADE AO HEADER: Pega a Regional ativa do contexto
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId || null;
-  const activeRegionalName = userData?.activeRegionalName || userData?.regional || "Regional";
-
-  // Lista de IDs permitidos para o Regional (Sua comum + Adjacências)
-  const permitidasIds = useMemo(() => {
-    const ids = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
-    return [...new Set(ids.filter(Boolean))];
-  }, [userData]);
-  
-  // REGRA DE OURO: Prioriza a seleção ativa ou o activeComumId injetado pelo AuthContext
-  const comumIdEfetivo = selectedComum?.id || userData?.activeComumId || userData?.comumId;
+  const comumIdEfetivo = selectedComum?.id || userData?.activeComumId || null;
 
   const [sharedData, setSharedData] = useState({
-    church: {},
     cargos: [],
     ministeriosDropdown: [],
     instruments: [],
@@ -60,23 +44,30 @@ const SettingsPage = () => {
     comunsDaRegional: [] 
   });
 
-  // 1. MONITOR GEOGRÁFICO REATIVO (Cargos, Cidades e Comuns)
+  // Sincronização passiva com o GPS Global - HIGIENE DE TROCA
+  useEffect(() => {
+    if (userData?.activeCityId) {
+      const city = sharedData.cidades.find(c => c.id === userData.activeCityId);
+      if (city) setSelectedCity(city);
+      else setSelectedCity(null);
+    } else {
+      setSelectedCity(null);
+    }
+
+    if (!userData?.activeComumId) {
+      setSelectedComum(null);
+    }
+  }, [userData?.activeCityId, userData?.activeComumId, sharedData.cidades]);
+
+  // 1. MONITOR GEOGRÁFICO REATIVO
   useEffect(() => {
     if (!activeRegionalId || !userData) return;
     let isMounted = true;
     const unsubs = [];
 
-    // Reset para Master/Comissão ao trocar Regional, mas mantém para Local
-    if (isRegionalCidade) {
-        setSelectedCity(null);
-        setSelectedComum(null);
-        setActiveMenu(null);
-    }
-    
     setLoading(true);
 
     try {
-      // CARGOS UNIFICADOS (Referência Global)
       unsubs.push(onSnapshot(collection(db, 'referencia_cargos'), (s) => {
         if (!isMounted) return;
         const cargosData = s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -87,84 +78,65 @@ const SettingsPage = () => {
         }));
       }));
 
-      // BUSCA DE TODAS AS COMUNS DA REGIONAL ATIVA
       const qComuns = query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId));
       unsubs.push(onSnapshot(qComuns, (s) => {
         if (!isMounted) return;
-        const listaComuns = s.docs.map(d => ({ id: d.id, ...d.data(), comum: d.data().comum || "Sem Nome" }));
+        const listaBruta = s.docs.map(d => ({ id: d.id, ...d.data(), comum: d.data().comum || "Sem Nome" }));
+        const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
         
         const comunsVisiveis = (isComissao) 
-          ? listaComuns 
-          : listaComuns.filter(c => permitidasIds.includes(c.id) || c.cidadeId === userData?.cidadeId);
+          ? listaBruta 
+          : listaBruta.filter(c => c.cidadeId === userData?.cidadeId || permitidasIds.includes(c.id));
 
         setSharedData(prev => ({ ...prev, comunsDaRegional: comunsVisiveis }));
 
-        // CIDADES DA REGIONAL
         const qCidades = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
-        unsubs.push(onSnapshot(qCidades, (sCidades) => {
+        unsubs.push(onSnapshot(qCidades, (sCids) => {
           if (!isMounted) return;
-          const todasCidades = sCidades.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-          
-          let filtradas = [];
-          if (isComissao) {
-            filtradas = todasCidades.sort((a, b) => a.nome.localeCompare(b.nome));
-          } else {
-            const cidadesIdsPermitidas = listaComuns
-              .filter(com => permitidasIds.includes(com.id) || com.cidadeId === userData?.cidadeId)
-              .map(com => com.cidadeId);
-            filtradas = todasCidades.filter(cid => cidadesIdsPermitidas.includes(cid.id));
-          }
+          const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+          const filtradas = isComissao ? todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)) : todasCidades.filter(cid => cid.id === userData?.cidadeId);
           
           setSharedData(prev => ({ ...prev, cidades: filtradas }));
           
-          // Inicialização geográfica inteligente
-          if (filtradas.length > 0 && !selectedCity) {
-            const userCity = filtradas.find(c => c.id === userData?.activeCityId || c.id === userData?.cidadeId);
-            if (userCity) setSelectedCity(userCity);
+          // Se a regional for nova (sem cidades), limpa seleções residuais
+          if (filtradas.length === 0) {
+            setSelectedCity(null);
+            setSelectedComum(null);
+          } else if (!selectedCity) {
+            const myCity = filtradas.find(c => c.id === (userData?.activeCityId || userData?.cidadeId));
+            if (myCity) setSelectedCity(myCity);
           }
-          
           setLoading(false); 
         }));
       }));
-
     } catch (error) {
-      console.error("Erro reatividade Geográfica:", error);
       if (isMounted) setLoading(false);
     }
-
     return () => { isMounted = false; unsubs.forEach(unsub => unsub?.()); };
-  }, [activeRegionalId, userData?.uid]); 
+  }, [activeRegionalId, isComissao]);
 
-  // 2. MONITOR DE INSTRUMENTOS REATIVO (Ajustado para a Comum Ativa)
+  // 2. MONITOR DE INSTRUMENTOS
   useEffect(() => {
     if (!comumIdEfetivo) return;
     let isMounted = true;
-    const unsub = onSnapshot(collection(db, 'comuns', comumIdEfetivo, 'instrumentos_config'), (sInst) => {
+    
+    // Trava de Jurisdição: Verifica se a comum ativa ainda pertence à regional carregada
+    const comumAindaValida = sharedData.comunsDaRegional.some(c => c.id === comumIdEfetivo);
+    if (!comumAindaValida) {
+        setSelectedComum(null);
+        return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'comuns', comumIdEfetivo), (docSnap) => {
+        if (docSnap.exists() && isMounted) setSelectedComum({ id: docSnap.id, ...docSnap.data() });
+    });
+    const unsubInst = onSnapshot(collection(db, 'comuns', comumIdEfetivo, 'instrumentos_config'), (sInst) => {
       if (!isMounted) return;
       setSharedData(prev => ({ ...prev, instruments: sInst.docs.map(d => ({ ...d.data(), id: d.id, section: d.data().section?.toUpperCase() || 'GERAL' })) }));
     });
-    return () => { isMounted = false; unsub(); };
-  }, [comumIdEfetivo]);
+    return () => { isMounted = false; unsub(); unsubInst(); };
+  }, [comumIdEfetivo, sharedData.comunsDaRegional]);
 
-  const handleCreateChurch = async () => {
-    if (!newChurchName.trim()) return toast.error("Informe o nome da localidade");
-    if (!selectedCity) return toast.error("Selecione uma cidade primeiro");
-
-    const sucesso = await churchService.createChurch({
-      nome: newChurchName.toUpperCase().trim(),
-      cidadeId: selectedCity.id,
-      regionalId: activeRegionalId,
-      cidadeNome: selectedCity.nome,
-      regionalNome: activeRegionalName
-    });
-
-    if (sucesso) {
-      setNewChurchName('');
-      setIsNewChurchModalOpen(false);
-    }
-  };
-
-  // Trava de segurança para evitar renderizar sem dados de usuário
   if (!userData) return null;
 
   if (loading && isRegionalCidade) return (
@@ -177,136 +149,122 @@ const SettingsPage = () => {
   return (
     <div className="space-y-6 pb-40 px-4 pt-6 max-w-md mx-auto text-left font-sans">
       
-      {/* SELETORES HIERÁRQUICOS UNIFICADOS (v2.1) - Exclusivo para quem pode navegar */}
+      {/* BLOCO 1: GESTÃO ADMINISTRATIVA DE BASE (Acima dos Pills) */}
+      {isComissao && (
+        <div className="space-y-3">
+          <MenuCard id="global" active={activeMenu} setActive={setActiveMenu} icon={<Briefcase size={18}/>} module="Referências" title="Cargos & Ministérios">
+            <ModuleGlobal 
+              cargos={sharedData.cargos} 
+              ministerios={sharedData.ministeriosDropdown}
+            />
+          </MenuCard>
+
+          <MenuCard id="cities" active={activeMenu} setActive={setActiveMenu} icon={<MapPin size={18}/>} module="Geografia" title="Gestão de Cidades">
+            <ModuleCities regionalId={activeRegionalId} />
+          </MenuCard>
+        </div>
+      )}
+
+      {/* BLOCO 2: DIVISOR DE CONTEXTO (Os Pills) */}
       {isRegionalCidade && (
-        <div className="flex items-center gap-2 px-1">
-          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${sharedData.cidades.length <= 1 && !isComissao ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div key={`pills-container-${activeRegionalId}`} className="flex items-center gap-2 px-1 py-4 border-y border-slate-100">
+          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
               className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
               value={selectedCity?.id || ''}
+              disabled={!isComissao || sharedData.cidades.length === 0}
               onChange={(e) => {
                 const city = sharedData.cidades.find(c => c.id === e.target.value);
                 setSelectedCity(city);
+                setContext('city', city?.id);
                 setSelectedComum(null);
+                setContext('comum', null);
                 setActiveMenu(null);
               }}
             >
-              <option value="">CIDADE...</option>
+              <option value="">{sharedData.cidades.length === 0 ? "NENHUMA CIDADE" : isComissao ? "CIDADE..." : (userData?.cidadeNome || "SUA CIDADE")}</option>
               {sharedData.cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           </div>
 
-          <div className="flex-[1.2] flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 relative">
+          <div className={`flex-[1.2] flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 ${(!selectedCity && sharedData.cidades.length > 0) ? 'opacity-50 pointer-events-none' : ''}`}>
             <Home size={10} className="text-blue-400 shrink-0" />
             <select 
-              className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer pr-8"
+              className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer pr-4"
               value={selectedComum?.id || ''}
+              disabled={!selectedCity && sharedData.cidades.length > 0}
               onChange={(e) => {
                 const com = sharedData.comunsDaRegional.find(c => c.id === e.target.value);
                 setSelectedComum(com);
+                setContext('comum', com?.id);
                 setActiveMenu(null);
               }}
             >
-              <option value="" className="text-slate-900">{selectedComum?.comum || "LOCALIDADE..."}</option>
+              <option value="" className="text-slate-900">
+                {sharedData.cidades.length === 0 ? "AGUARDANDO CIDADE" : sharedData.comunsDaRegional.filter(c => selectedCity ? c.cidadeId === selectedCity.id : true).length === 0 ? "VAZIO" : "LOCALIDADE..."}
+              </option>
               {sharedData.comunsDaRegional
                 .filter(c => selectedCity ? c.cidadeId === selectedCity.id : true)
                 .map(c => <option key={c.id} value={c.id} className="text-slate-900">{c.comum}</option>)}
             </select>
-            
-            <div className="absolute right-2 flex items-center gap-1">
-              {isRegionalCidade && selectedCity && (
-                <button 
-                  onClick={() => setIsNewChurchModalOpen(true)}
-                  className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors"
-                  title="Nova Comum"
-                >
-                  <PlusCircle size={16} strokeWidth={3} />
-                </button>
-              )}
-              <ChevronDown size={10} className="text-white/20" />
-            </div>
+            <ChevronDown size={10} className="text-white/20 ml-auto" />
           </div>
         </div>
       )}
 
-      {/* BLOCO 2: GESTÃO GLOBAL (Exclusivo Master) */}
-      {isMaster && (
-        <MenuCard id="global" active={activeMenu} setActive={setActiveMenu} icon={<LayoutGrid size={18}/>} module="Administração" title="Cidades, Cargos & Ministérios">
-          <ModuleGlobal 
-            cargos={sharedData.cargos} 
-            ministerios={sharedData.ministeriosDropdown}
-            regionalId={activeRegionalId}
-          />
-        </MenuCard>
-      )}
-
-      {/* BLOCO 3: MÓDULOS DE MANUTENÇÃO - Visíveis para GEM Local ou superior */}
+      {/* BLOCO 3: GESTÃO OPERACIONAL (Abaixo dos Pills) */}
       <div className="space-y-3">
-        <div className="px-2 mb-2">
-            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none">Manutenção Ativa em:</p>
-            <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter leading-none mt-1">
-              {selectedComum?.comum || userData.comum || "CARREGANDO..."}
-            </h3>
-        </div>
+        {/* Gestão de Infraestrutura (Livre para Comissão gerenciar igrejas da cidade selecionada) */}
+        {isComissao && (
+          <MenuCard id="churches_mgr" active={activeMenu} setActive={setActiveMenu} icon={<Building2 size={18}/>} module="Infraestrutura" title="Manutenção de Comuns">
+            <ModuleChurchesManager 
+              selectedCity={selectedCity} 
+              regionalId={activeRegionalId} 
+            />
+          </MenuCard>
+        )}
 
-        {isGemLocal && (
-          <>
-            <MenuCard id="orchestra" active={activeMenu} setActive={setActiveMenu} icon={<Music size={18}/>} module="Configuração" title="Orquestra & Instrumentos">
-                <ModuleOrchestra comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />
-            </MenuCard>
-            
-            <MenuCard id="users" active={activeMenu} setActive={setActiveMenu} icon={<ShieldCheck size={18}/>} module="Segurança" title="Acesso & Portaria">
-                <ModuleAccess comumId={comumIdEfetivo} cargos={sharedData.cargos} />
-            </MenuCard>
-            
-            <MenuCard id="church" active={activeMenu} setActive={setActiveMenu} icon={<Home size={18}/>} module="Gestão" title="Dados Cadastrais">
-                <ModuleChurch 
-                  localData={selectedComum || {id: userData.comumId, comum: userData.comum}} 
-                  onUpdate={(updated) => setSelectedComum(updated)} 
-                />
-            </MenuCard>
-          </>
+        {/* Manutenção Local: PROTEÇÃO RIGOROSA - Oculta se não houver comum selecionada ou se a jurisdição mudar */}
+        {selectedComum?.id && sharedData.comunsDaRegional.some(c => c.id === selectedComum.id) ? (
+          <div className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="px-2 mb-2 leading-none pt-4">
+                <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none">Manutenção Ativa:</p>
+                <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter leading-none mt-1">
+                  {selectedComum.comum}
+                </h3>
+            </div>
+
+            {isGemLocal && (
+              <>
+                <MenuCard id="orchestra" active={activeMenu} setActive={setActiveMenu} icon={<Music size={18}/>} module="Configuração" title="Orquestra & Instrumentos">
+                    <ModuleOrchestra comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />
+                </MenuCard>
+                
+                <MenuCard id="users" active={activeMenu} setActive={setActiveMenu} icon={<Users size={18}/>} module="Segurança" title="Acesso & Portaria">
+                    <ModuleAccess comumId={comumIdEfetivo} cargos={sharedData.cargos} />
+                </MenuCard>
+                
+                <MenuCard id="church" active={activeMenu} setActive={setActiveMenu} icon={<Home size={18}/>} module="Gestão" title="Dados Cadastrais">
+                    <ModuleChurch 
+                      localData={selectedComum} 
+                      onUpdate={(updated) => setSelectedComum(updated)} 
+                    />
+                </MenuCard>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="p-10 text-center bg-white rounded-[2.5rem] border border-dashed border-slate-200 animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 bg-slate-50 text-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MapPin size={32} />
+            </div>
+            <p className="text-slate-400 font-black uppercase italic text-[10px] tracking-widest leading-relaxed">
+              Jurisdição Indefinida <br/> <span className="text-[8px] opacity-60">Selecione uma localidade acima para gerenciar</span>
+            </p>
+          </div>
         )}
       </div>
-
-      <AnimatePresence>
-        {isNewChurchModalOpen && (
-          <div className="fixed inset-0 z-[700] flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsNewChurchModalOpen(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white rounded-[3rem] p-8 shadow-2xl space-y-6">
-              <div className="text-left space-y-1">
-                <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none">Expansão de Jurisdição</p>
-                <h3 className="text-xl font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight">Nova Localidade</h3>
-                <p className="text-[9px] font-bold text-slate-400 uppercase italic">Cidade: {selectedCity?.nome}</p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic">Nome da Comum</label>
-                  <input 
-                    autoFocus
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-5 px-6 text-xs font-black text-slate-950 outline-none uppercase italic shadow-inner" 
-                    placeholder="EX: JD. AEROPORTO..."
-                    value={newChurchName}
-                    onChange={e => setNewChurchName(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <button 
-                  onClick={handleCreateChurch}
-                  className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all flex justify-center items-center gap-3"
-                >
-                  <Send size={16} /> Confirmar Cadastro
-                </button>
-                <button onClick={() => setIsNewChurchModalOpen(false)} className="w-full py-3 text-slate-300 font-black uppercase text-[9px] tracking-widest">Cancelar</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
@@ -325,7 +283,7 @@ const MenuCard = ({ id, active, setActive, icon, module, title, children }) => {
         </div>
         <ChevronDown size={14} className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
-      <div className={`transition-all duration-500 ease-in-out ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
+      <div className={`transition-all duration-500 ease-in-out ${isOpen ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
         <div className="p-6 pt-2 bg-slate-50/30 border-t border-slate-50">
           {children}
         </div>

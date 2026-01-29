@@ -8,17 +8,23 @@ import { useAuth } from '../../context/AuthContext';
 const ModuleChurch = ({ localData, onUpdate }) => {
   const { userData } = useAuth();
   
-  // --- NOVA LÓGICA DE AUTORIDADE v2.1 (MATRIZ DE PODER) ---
+  // --- CORREÇÃO DE AUTORIDADE v2.1 (MATRIZ DE PODER AJUSTADA) ---
   const temPoderEdicao = useMemo(() => {
     const level = userData?.accessLevel;
     const isMaster = level === 'master';
     const isComissao = isMaster || level === 'comissao';
-    const isRegionalCidade = isComissao || level === 'regional_cidade';
-    const isGemLocal = isRegionalCidade || level === 'gem_local';
+    const isRegionalCidade = level === 'regional_cidade';
+    const isGemLocal = level === 'gem_local';
 
-    // O usuário precisa ter nível administrativo E estar na jurisdição correta
-    // Master e Comissão editam qualquer uma. Regional/Local editam se for a sua comumId.
+    // 1. Master e Comissão editam qualquer localidade do sistema
     if (isComissao) return true;
+
+    // 2. Regional de Cidade edita qualquer igreja que pertença à sua cidade de cadastro
+    if (isRegionalCidade) {
+      return userData?.cidadeId === localData?.cidadeId;
+    }
+
+    // 3. GEM Local edita estritamente a sua própria comumId
     return isGemLocal && userData?.comumId === localData?.id;
   }, [userData, localData]);
 

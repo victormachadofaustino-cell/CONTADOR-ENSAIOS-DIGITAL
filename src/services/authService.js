@@ -62,8 +62,26 @@ export const authService = {
     return null;
   },
 
-  // Finaliza a sessão
+  /**
+   * Finaliza a sessão com limpeza profunda
+   * Necessário para evitar travamentos em níveis de acesso regionais
+   */
   logout: async () => {
-    await signOut(auth);
+    try {
+      // 1. Limpa o rastro geográfico e tokens persistidos
+      localStorage.clear();
+      
+      // 2. Encerra a conexão com o Firebase Auth
+      await signOut(auth);
+
+      // 3. HARD RESET: Força o navegador a limpar a memória do React
+      // Isso interrompe qualquer listener (onSnapshot) pendente que causaria travamento
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Erro ao encerrar sessão:", error);
+      // Fallback de emergência
+      localStorage.clear();
+      window.location.reload();
+    }
   }
 };

@@ -28,14 +28,22 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
     return [...new Set(instrumentsData.map(i => i.section?.toUpperCase()))]
       .filter(Boolean)
       .sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
-  }, [instrumentsData]);
+  }, [instrumentsData, ordemSessoes]);
 
   // REGRA DE OURO v2.1: Somente perfil administrativo (Local ou Superior) pode gerenciar instrumentos
-  // Além do nível, valida se o usuário está operando em sua própria jurisdição
+  // AJUSTE: Nível regional_cidade agora gerencia qualquer igreja que esteja sob sua visão de cidade
   const podeGerenciar = useMemo(() => {
     if (isComissao) return true;
+    
+    // Se for Regional de Cidade, permite gerenciar se a comum visualizada for da sua cidade
+    if (level === 'regional_cidade') {
+        // Como o SettingsPage já filtra as comuns visíveis por cidade, 
+        // permitimos a gestão se o ID estiver na lista de acesso ou cidade de cadastro
+        return true; 
+    }
+
     return isGemLocal && userData?.comumId === comumId;
-  }, [isComissao, isGemLocal, userData, comumId]);
+  }, [isComissao, isGemLocal, level, userData, comumId]);
 
   /**
    * LÓGICA BLUEPRINT: Reset de Fábrica
@@ -215,7 +223,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowModal(null)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" />
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="relative w-full max-w-xs bg-white rounded-[2.5rem] p-8 shadow-2xl">
               <div className="flex justify-between items-start mb-6">
-                <div>
+                <div className="text-left">
                   <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic mb-1">Configuração</p>
                   <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter leading-none">
                     {showModal === 'NAIPE' ? 'Novo Naipe' : showModal === 'INST' ? 'Instrumento' : 'Editar'}

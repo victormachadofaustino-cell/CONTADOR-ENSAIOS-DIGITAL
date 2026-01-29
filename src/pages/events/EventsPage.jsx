@@ -8,12 +8,15 @@ import AtaPage from './AtaPage';
 
 import toast from 'react-hot-toast';
 import { 
-  Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home, AlertTriangle, Settings
+  Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home, AlertTriangle, Settings, Building2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+// Importação do Cérebro de Autenticação (GPS de Acessos v2.1)
+import { useAuth } from '../../context/AuthContext';
 
-const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
-  const [events, setEvents] = useState([]);
+let debounceTimers = {};
+
+const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, onChurchChange }) => {
   const [showModal, setShowModal] = useState(false);
   const [showConfigError, setShowConfigError] = useState(false); // Modal de erro de conformidade
   const [newEventDate, setNewEventDate] = useState(new Date().toISOString().split('T')[0]);
@@ -26,6 +29,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
   const [comuns, setComuns] = useState([]);
   
   // --- LÓGICA DE COMPETÊNCIAS v2.1 (MATRIZ DE PODER) ---
+  const { setContext } = useAuth();
   const level = userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
@@ -34,67 +38,57 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
   const isBasico = level === 'basico';
 
   // REGRA DE OURO: Inicializa com os dados do perfil do usuário, mas permite alteração pelo contexto ativo (GPS Global)
-  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || '');
-  const [selectedChurchId, setSelectedChurchId] = useState(userData?.activeComumId || userData?.comumId || '');
+  const selectedCityId = userData?.activeCityId || userData?.cidadeId || '';
+  const selectedChurchId = userData?.activeComumId || userData?.comumId || '';
 
-  // DEFINE PERMISSÃO: Baseado na jurisdição ativa e no nível de acesso
-  const temPermissaoCriarAqui = useMemo(() => {
-    if (isBasico) return false; // Nível operacional nunca cria eventos
-    if (isMaster || isComissao) return true; // Comissão navega livremente na Regional
-    
-    // Nível Regional/Cidade ou GEM/Local precisam estar na sua jurisdição permitida
-    const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
-    return permitidasIds.includes(selectedChurchId);
-  }, [isMaster, isComissao, isBasico, selectedChurchId, userData]);
-
-  // Lista de IDs permitidos para este usuário
+  // Lista de IDs permitidos para este usuário (Sua comum + acessos manuais)
   const permitidasIds = useMemo(() => {
-    const lista = [userData?.comumId];
-    if (userData?.acessosPermitidos) lista.push(...userData.acessosPermitidos);
+    const lista = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return [...new Set(lista.filter(id => id))];
   }, [userData]);
 
+  // DEFINE PERMISSÃO: Baseado na jurisdição ativa e no nível de acesso
+  const temPermissaoCriarAqui = useMemo(() => {
+    if (isBasico) return false; 
+    if (isMaster || isComissao) return true; 
+    
+    // Nível Regional de Cidade: Pode criar em qualquer comum que pertença à sua CIDADE
+    if (level === 'regional_cidade') {
+        const comumAlvo = comuns.find(c => c.id === selectedChurchId);
+        return comumAlvo && (comumAlvo.cidadeId === userData?.cidadeId || permitidasIds.includes(selectedChurchId));
+    }
+
+    return permitidasIds.includes(selectedChurchId);
+  }, [isMaster, isComissao, isBasico, level, selectedChurchId, userData, comuns, permitidasIds]);
+
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
 
-  // Sincroniza estados locais se as props mudarem via Header (GPS Global)
-  useEffect(() => {
-    if (userData?.activeCityId) setSelectedCityId(userData.activeCityId);
-    if (userData?.activeComumId) setSelectedChurchId(userData.activeComumId);
-  }, [userData?.activeCityId, userData?.activeComumId]);
-
-  // 1. SINCRONIZAÇÃO DE CASCATA: REGIONAL -> CIDADE (Escalabilidade de Dados)
+  // 1. SINCRONIZAÇÃO DE CASCATA: REGIONAL -> CIDADE
   useEffect(() => {
     if (!activeRegionalId) return;
     let isMounted = true;
     
-    const qIgr = (isComissao) 
-      ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
-      : query(collection(db, 'comuns'), where('__name__', 'in', permitidasIds.slice(0, 10)));
-
-    const unsubIgr = onSnapshot(qIgr, (sIgs) => {
+    const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
+    const unsubCid = onSnapshot(qCid, (sCids) => {
       if (!isMounted) return;
-      const igsData = sIgs.docs.map(d => ({ id: d.id, cidadeId: d.data().cidadeId }));
-      const cidadesComAcesso = [...new Set(igsData.map(i => i.cidadeId))];
-
-      const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
-      const unsubCid = onSnapshot(qCid, (sCids) => {
-        if (!isMounted) return;
-        const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-        
-        if (isComissao) {
-          setCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
-        } else {
-          const filtradas = todasCidades.filter(c => cidadesComAcesso.includes(c.id));
-          setCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
-        }
-      });
-      return () => unsubCid();
+      const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+      
+      if (isComissao) {
+        const sorted = todasCidades.sort((a, b) => a.nome.localeCompare(b.nome));
+        setCidades(sorted);
+        // Higiene: Se a regional for vazia, reseta a cidade ativa
+        if (sorted.length === 0) setContext('city', null);
+      } else {
+        // Regional Cidade vê apenas a sua cidade de cadastro
+        const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
+        setCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
+      }
     });
 
-    return () => { isMounted = false; unsubIgr(); };
-  }, [activeRegionalId, isComissao, permitidasIds]); 
+    return () => { isMounted = false; unsubCid(); };
+  }, [activeRegionalId, isComissao, userData?.cidadeId]); 
 
-  // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM
+  // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM (REATIVIDADE DE TROCA)
   useEffect(() => {
     if (!selectedCityId) {
       setComuns([]);
@@ -107,68 +101,51 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
       if (!isMounted) return;
       const list = s.docs.map(d => ({ 
         id: d.id, 
-        nome: d.data().comum || "Sem Nome" 
+        nome: d.data().comum || "Sem Nome",
+        cidadeId: d.data().cidadeId 
       }));
       
-      const filteredList = (isComissao) 
-        ? list.sort((a, b) => a.nome.localeCompare(b.nome))
-        : list.filter(c => permitidasIds.includes(c.id)).sort((a, b) => a.nome.localeCompare(b.nome));
+      const sortedList = list.sort((a, b) => a.nome.localeCompare(b.nome));
+      
+      // Filtro de visualização conforme nível
+      const filteredList = (isRegionalCidade) 
+        ? sortedList
+        : sortedList.filter(c => permitidasIds.includes(c.id));
       
       setComuns(filteredList);
 
-      if (userData?.comumId && filteredList.some(c => c.id === userData.comumId) && !selectedChurchId) {
-        setSelectedChurchId(userData.comumId);
+      // --- CORREÇÃO DEFINITIVA (VÍDEO) ---
+      if (filteredList.length === 0) {
+        if (selectedChurchId !== null) {
+          setContext('comum', null);
+          if (onChurchChange) onChurchChange(null, '');
+        }
+      } else {
+        const comumValidaNestaCidade = filteredList.some(c => c.id === selectedChurchId);
+        if (!comumValidaNestaCidade) {
+          const primeira = filteredList[0];
+          setContext('comum', primeira.id);
+          if (onChurchChange) onChurchChange(primeira.id, primeira.nome);
+        }
       }
-    });
-    return () => { isMounted = false; unsub(); };
-  }, [selectedCityId, isComissao, permitidasIds, userData?.comumId]);
-
-  // 3. BUSCA DE ENSAIOS (Motor de Sincronização Robusta)
-  useEffect(() => {
-    if (!selectedChurchId) {
-      setEvents([]);
-      return;
-    }
-    let isMounted = true;
-
-    const eventsRef = collection(db, 'comuns', selectedChurchId, 'events');
-    const q = query(eventsRef, orderBy('date', 'desc'));
-    
-    const unsub = onSnapshot(q, (snapshot) => {
-      if (!isMounted) return;
-      
-      if (snapshot.empty) {
-        setEvents([]);
-        return;
-      }
-
-      const comumAtual = comuns.find(c => c.id === selectedChurchId);
-      const evs = snapshot.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data(),
-        comumId: selectedChurchId,
-        comum: comumAtual?.nome || d.data().comumNome || "Localidade"
-      }));
-      setEvents(evs);
-      
-      const currentYear = new Date().getFullYear().toString();
-      setOpenYears(prev => ({ [currentYear]: true, ...prev }));
-    }, (error) => {
-      console.error("Erro ao carregar eventos:", error);
-      if (isMounted) setEvents([]);
     });
 
     return () => { isMounted = false; unsub(); };
-  }, [selectedChurchId, comuns]);
+  }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
+  // 3. LÓGICA DE AGRUPAMENTO (TRAVA DE SEGURANÇA ANTIFANTASMA)
   const groupedEvents = useMemo(() => {
-    return events.reduce((acc, event) => {
+    const isComumValida = comuns.some(c => c.id === selectedChurchId);
+    if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};
+
+    const list = allEvents || []; 
+    return list.reduce((acc, event) => {
       const year = event.date ? event.date.split('-')[0] : 'Sem Data';
       if (!acc[year]) acc[year] = [];
       acc[year].push(event);
       return acc;
     }, {});
-  }, [events]);
+  }, [allEvents, selectedChurchId, comuns]);
 
   const years = Object.keys(groupedEvents).sort((a, b) => b - a);
   const toggleYear = (year) => setOpenYears(prev => ({ ...prev, [year]: !prev[year] }));
@@ -180,6 +157,11 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
     return months[m] || '---';
   };
 
+  useEffect(() => {
+    const currentYear = new Date().getFullYear().toString();
+    setOpenYears(prev => ({ ...prev, [currentYear]: true }));
+  }, []);
+
   const handleCreate = async () => {
     if (!selectedChurchId) return toast.error("Selecione uma comum");
     const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
@@ -190,7 +172,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
         date: newEventDate,
         responsavel: responsavel || 'Pendente',
         regionalId: activeRegionalId,
-        comumNome: (comumSelecionada?.nome || "LOCALIDADE").toUpperCase(),
+        comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
         comumId: selectedChurchId,
         cidadeId: selectedCityId
       });
@@ -209,7 +191,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
 
   const confirmDelete = async () => {
     if (!eventToDelete || !selectedChurchId) return;
-    const targetEvent = events.find(ev => ev.id === eventToDelete);
+    const targetEvent = allEvents.find(ev => ev.id === eventToDelete);
     if (targetEvent?.ata?.status === 'closed') {
       toast.error("Ensaios lacrados não podem ser excluídos.");
       setEventToDelete(null);
@@ -231,37 +213,42 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
       
       {/* SELETORES HIERÁRQUICOS (Garantia de Jurisdição v2.1) */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(cidades.length <= 1 && !isComissao) ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
           <select 
-            disabled={cidades.length <= 1 && !isComissao}
+            disabled={!isRegionalCidade || cidades.length === 0}
             value={selectedCityId} 
-            onChange={(e) => { setSelectedCityId(e.target.value); setSelectedChurchId(''); }}
+            onChange={(e) => setContext('city', e.target.value)}
             className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
           >
+            <option value="">{cidades.length === 0 ? "NENHUMA CIDADE" : isComissao ? "CIDADE..." : (userData?.cidadeNome || "SUA CIDADE")}</option>
             {cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            {cidades.length === 0 && <option value="">Carregando Cidades...</option>}
           </select>
         </div>
 
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(comuns.length <= 1 && !isComissao) ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex-1 flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 transition-all ${(!isRegionalCidade || comuns.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <Home size={10} className="text-blue-600 shrink-0" />
           <select 
-            disabled={comuns.length <= 1 && !isComissao}
-            value={selectedChurchId} 
-            onChange={(e) => setSelectedChurchId(e.target.value)}
-            className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
+            disabled={!isRegionalCidade || comuns.length === 0}
+            value={selectedChurchId || ''} 
+            onChange={(e) => {
+                const com = comuns.find(c => c.id === e.target.value);
+                if (com) {
+                    setContext('comum', com.id);
+                    if (onChurchChange) onChurchChange(com.id, com.nome);
+                }
+            }}
+            className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer"
           >
-            <option value="">
-              {comuns.length > 0 ? "SELECIONE A COMUM" : (userData?.comum?.toUpperCase() || "CARREGANDO...")}
+            <option value="" className="text-slate-900">
+              {cidades.length === 0 ? "AGUARDANDO CIDADE" : comuns.length === 0 ? "VAZIO" : "LOCALIDADE..."}
             </option>
-            {comuns.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            {comuns.map(c => <option key={c.id} value={c.id} className="text-slate-900">{c.nome}</option>)}
           </select>
         </div>
       </div>
 
-      {/* BOTÃO DE NOVO ENSAIO - Respeita trava de nível Básico e Jurisdição */}
-      {temPermissaoCriarAqui && selectedChurchId && (
+      {temPermissaoCriarAqui && selectedChurchId && comuns.length > 0 && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
             <Plus size={20} strokeWidth={3} /> Novo Ensaio
@@ -270,10 +257,25 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
       )}
 
       <div className="space-y-8 max-w-md mx-auto">
-        {years.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm">
-            <Calendar className="mx-auto text-slate-200 mb-4" size={48} />
-            <p className="text-slate-400 font-black uppercase italic text-[10px] tracking-[0.4em]">Agenda Vazia</p>
+        {(!selectedChurchId || years.length === 0) ? (
+          <div className="text-center py-16 px-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
+            {comuns.length === 0 ? (
+              <>
+                <Building2 className="text-blue-100 mb-4" size={56} />
+                <p className="text-slate-950 font-[900] uppercase italic text-xs tracking-tight mb-2">Cidade sem Localidades</p>
+                <p className="text-slate-400 font-bold uppercase text-[8px] leading-relaxed mb-8 max-w-[200px] mx-auto">Não existem comuns cadastradas para esta cidade no banco de dados.</p>
+                {isComissao && (
+                  <button onClick={onNavigateToSettings} className="bg-blue-50 text-blue-600 px-6 py-3 rounded-xl font-black uppercase text-[9px] italic flex items-center gap-2 active:scale-95 transition-all">
+                    <Settings size={14} /> Cadastrar Comum em Ajustes
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <Calendar className="mx-auto text-slate-100 mb-4" size={48} />
+                <p className="text-slate-400 font-black uppercase italic text-[10px] tracking-[0.4em]">Agenda Vazia</p>
+              </>
+            )}
           </div>
         ) : (
           years.map(year => (
@@ -292,7 +294,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
                     const isClosed = e.ata?.status === 'closed';
                     return (
                       <div key={e.id} onClick={() => onSelectEvent(e.id)} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex justify-between items-center shadow-sm active:scale-95 transition-all relative overflow-hidden group">
-                        <div className={`absolute left-0 top-0 h-full w-1.5 ${isClosed ? 'bg-slate-300' : 'bg-amber-500'}`} />
+                        <div className={`absolute left-0 top-0 h-full w-1.5 ${isClosed ? 'bg-slate-300' : 'bg-amber-50'}`} />
                         <div className="flex items-center gap-5">
                           <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-[1.8rem] border-2 ${isClosed ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-950 text-slate-950 shadow-md'}`}>
                             <span className="text-2xl font-[900] italic">{e.date?.split('-')[2] || '--'}</span>
@@ -357,17 +359,13 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings }) => {
               <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed mb-10">Esta localidade ainda não possui uma orquestra configurada. É necessário definir os instrumentos antes de agendar ensaios.</p>
               
               <div className="space-y-3">
-                {isGemLocal ? (
+                {isGemLocal && (
                   <button 
                     onClick={() => { setShowConfigError(false); onNavigateToSettings(); }} 
                     className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg flex items-center justify-center gap-3"
                   >
                     <Settings size={16} /> Configurar Agora
                   </button>
-                ) : (
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[9px] font-black text-slate-400 uppercase italic">Contate seu Secretário Local</p>
-                  </div>
                 )}
                 <button onClick={() => setShowConfigError(false)} className="w-full py-3 text-slate-300 font-black uppercase text-[9px] tracking-widest">Entendido</button>
               </div>

@@ -3,28 +3,32 @@ import { deleteField, arrayUnion } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
+ * v3.0 - Arquitetura Global de Alta Performance
  * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
- * Saneado para performance em escala nacional (166 comuns)
  */
 export const eventService = {
 
-  // Escuta os eventos de uma comum específica em tempo real
+  // Escuta os eventos de uma comum específica na COLEÇÃO GLOBAL
   subscribeToEvents: (comumId, callback) => {
     if (!comumId) return; 
-    const q = query(collection(db, 'comuns', comumId, 'events'), orderBy('date', 'desc'));
+    // MUDANÇA: Agora filtra por comumId dentro da events_global
+    const q = query(
+      collection(db, 'events_global'), 
+      where('comumId', '==', comumId), 
+      orderBy('date', 'desc')
+    );
     return onSnapshot(q, (snapshot) => {
-      if (snapshot.metadata.hasPendingWrites) return; // Otimização: ignora ecos locais
+      if (snapshot.metadata.hasPendingWrites) return; 
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       callback(events);
     }, (error) => {
-      console.error("Erro no Listener de Eventos:", error);
+      console.error("Erro no Listener de Eventos Global:", error);
     });
   },
 
   /**
-   * Cria um novo ensaio amarrado à Regional Ativa
-   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local da igreja.
-   * DIRETRIZ: Se não houver configuração, interrompe para forçar a criação manual.
+   * Cria um novo ensaio na Coleção Global
+   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local da igreja pai.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
@@ -33,27 +37,22 @@ export const eventService = {
     let initialCounts = {};
 
     try {
-      // 1. BUSCA O SNAPSHOT LOCAL (O que a igreja configurou como sua orquestra)
+      // 1. BUSCA O SNAPSHOT LOCAL (A orquestra continua configurada dentro da Comum)
       const localRef = collection(db, 'comuns', comumId, 'instrumentos_config');
       const localSnap = await getDocs(localRef);
       
-      // 2. VALIDAÇÃO DE GOVERNANÇA: Bloqueia criação se a orquestra local não existir
       if (localSnap.empty) {
         console.warn("Bloqueio de conformidade: Comum sem instrumentos configurados.");
         throw new Error("CONFIG_REQUIRED"); 
       }
 
-      // 3. MONTAGEM DO MAPA DE CONTAGEM INICIAL (SNAPSHOT IMUTÁVEL)
+      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL
       localSnap.docs.forEach(docInst => {
         const inst = docInst.data();
         const id = docInst.id;
 
         initialCounts[id] = {
-          total: 0,
-          comum: 0,
-          enc: 0,
-          irmaos: 0, 
-          irmas: 0,  
+          total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0,  
           name: inst.name || id.toUpperCase(),
           section: inst.section?.toUpperCase() || 'GERAL',
           evalType: inst.evalType || 'Sem'
@@ -62,46 +61,46 @@ export const eventService = {
       
     } catch (err) {
       if (err.message === "CONFIG_REQUIRED") throw err;
-      console.error("Erro ao capturar instrumentos para o novo evento:", err);
+      console.error("Erro ao capturar instrumentos:", err);
       throw new Error("Falha ao acessar configuração da localidade.");
     }
     
-    // 4. PERSISTÊNCIA DO EVENTO (Multitenancy Hierárquico)
-    return await addDoc(collection(db, 'comuns', comumId, 'events'), {
+    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v3.0)
+    return await addDoc(collection(db, 'events_global'), {
       type: type || 'Ensaio Local',
       date,
       responsavel: responsavel || 'Pendente',
       comumNome: comumNome || '',
-      comumId: comumId, // Garante integridade para buscas Master
+      comumId: comumId,
       cidadeId: cidadeId || '',
-      regionalId, 
+      regionalId: regionalId || '',
       ata: { status: 'open' },
       counts: initialCounts, 
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      dbVersion: "3.0-global"
     });
   },
 
-  // Exclui um ensaio e todos os seus dados
+  // Exclui um ensaio da coleção global
   deleteEvent: async (comumId, eventId) => {
-    if (!comumId || !eventId) return; 
-    return await deleteDoc(doc(db, 'comuns', comumId, 'events', eventId));
+    if (!eventId) return; 
+    return await deleteDoc(doc(db, 'events_global', eventId));
   },
 
   /**
-   * Atualiza a contagem de um instrumento e grava log de auditoria
-   * Implementado controle de tamanho de histórico para evitar latência.
+   * Atualiza a contagem na COLEÇÃO GLOBAL
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
-    if (!comumId || !eventId || !instId) {
+    if (!eventId || !instId) {
       console.warn("Tentativa de atualização com IDs incompletos.");
       return; 
     }
 
-    const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
+    // MUDANÇA: Referência direta à events_global
+    const eventRef = doc(db, 'events_global', eventId);
     const val = Math.max(0, parseInt(value) || 0);
     const timestamp = Date.now();
     
-    // LOG DE AUDITORIA: Registra QUEM alterou O QUÊ e QUANDO
     const logEntry = {
       user: userData?.name || 'Sistema',
       field: field,
@@ -112,14 +111,12 @@ export const eventService = {
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Busca estado atual para limitar histórico (Performance Fix)
       const snap = await getDoc(eventRef);
       const currentInstData = snap.data()?.counts?.[instId] || {};
       let history = currentInstData.history || [];
       
-      // Mantém apenas as últimas 10 alterações para não estourar o limite do documento
-      history.push(logEntry);
       if (history.length > 10) history = history.slice(-10);
+      history.push(logEntry);
 
       const baseUpdate = {
         lastEditBy: userData?.name || 'Sistema',
@@ -138,26 +135,26 @@ export const eventService = {
         } 
       });
     } catch (e) {
-      console.error("Erro ao atualizar contagem no Firestore:", e);
+      console.error("Erro ao atualizar contagem:", e);
       throw new Error("Falha na sincronização.");
     }
   },
 
-  // Remove um instrumento extra da contagem (apenas deste ensaio)
+  // Remove um instrumento extra da contagem global
   removeExtraInstrument: async (comumId, eventId, instId) => {
-    if (!comumId || !eventId || !instId) return;
-    const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
+    if (!eventId || !instId) return;
+    const eventRef = doc(db, 'events_global', eventId);
     return await updateDoc(eventRef, { 
       [`counts.${instId}`]: deleteField() 
     });
   },
 
   /**
-   * Salva os dados da Ata e processa metadados de hinos
+   * Salva Ata na COLEÇÃO GLOBAL
    */
   saveAtaData: async (comumId, eventId, ataData) => {
-    if (!comumId || !eventId) throw new Error("Referência de evento inválida.");
-    const eventRef = doc(db, 'comuns', comumId, 'events', eventId);
+    if (!eventId) throw new Error("Referência de evento inválida.");
+    const eventRef = doc(db, 'events_global', eventId);
     
     let todosHinos = [];
     (ataData.partes || []).forEach(p => {
@@ -176,7 +173,7 @@ export const eventService = {
     try {
       await updateDoc(eventRef, { ata: finalAta });
     } catch (e) {
-      console.error("Erro ao salvar Ata no Firestore:", e);
+      console.error("Erro ao salvar Ata:", e);
       throw new Error("Erro ao salvar os dados da Ata.");
     }
   }

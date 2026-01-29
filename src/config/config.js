@@ -18,6 +18,9 @@ export const LOCALIDADE_PADRAO = "Selecionar Localidade...";
  */
 export const DEFAULT_INSTRUMENTS = {
     'Orquestra': [
+        // IRMANDADE (CORAL) - ESSENCIAL PARA O COUNTER v2.1
+        { id: 'Coral', name: 'CORAL', section: 'IRMANDADE' },
+
         // CORDAS
         { id: 'violino', name: 'Violinos', section: 'Cordas' },
         { id: 'viola', name: 'Violas', section: 'Cordas' },
@@ -26,7 +29,10 @@ export const DEFAULT_INSTRUMENTS = {
         // MADEIRAS
         { id: 'flauta', name: 'Flautas', section: 'Madeiras' },
         { id: 'clarinete', name: 'Clarinetes', section: 'Madeiras' },
+        { id: 'claronealto', name: 'Clarone Alto', section: 'Madeiras' },
+        { id: 'claronebaixo', name: 'Clarone Baixo', section: 'Madeiras' },
         { id: 'oboe', name: 'Oboés', section: 'Madeiras' },
+        { id: 'corneingles', name: 'Corne Inglês', section: 'Madeiras' },
         { id: 'fagote', name: 'Fagotes', section: 'Madeiras' },
         
         // SAXOFONES
@@ -37,6 +43,7 @@ export const DEFAULT_INSTRUMENTS = {
         
         // METAIS
         { id: 'trompete', name: 'Trompetes', section: 'Metais' },
+        { id: 'flugelhorn', name: 'Flugelhorn', section: 'Metais' },
         { id: 'trombone', name: 'Trombones', section: 'Metais' },
         { id: 'trompa', name: 'Trompas', section: 'Metais' },
         { id: 'eufonio', name: 'Eufônios', section: 'Metais' },

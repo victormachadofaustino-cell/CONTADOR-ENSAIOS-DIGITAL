@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { db, doc, onSnapshot, collection, query, orderBy } from '../../config/firebase';
+import { db, doc, onSnapshot, collection, query, orderBy, getDoc } from '../../config/firebase';
 import { eventService } from '../../services/eventService'; 
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -110,25 +110,42 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
   useEffect(() => {
     if (!comumId || !eventId) return;
     let isMounted = true;
+    
     const unsubRef = onSnapshot(collection(db, 'referencia_cargos'), (s) => {
       if (!isMounted) return;
       const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
       setReferenciaMinisterio(lista);
     });
+
     const unsubLocal = onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
       if (!isMounted) return;
       const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
       setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
     });
-    const unsubAta = onSnapshot(doc(db, 'comuns', comumId, 'events', eventId), (s) => {
+
+    // CORREÇÃO v3.0: OUVIR NA COLEÇÃO GLOBAL PARA GARANTIR SINCRONIA DO LACRE
+    const globalEventRef = doc(db, 'events_global', eventId);
+    const unsubAta = onSnapshot(globalEventRef, (s) => {
       if (!isMounted) return;
       if (s.exists()) {
         const eventData = s.data();
         setEventMeta(eventData);
         if (eventData.ata && eventData.ata.partes?.length > 0) setAtaData(eventData.ata);
+        setLoading(false);
+      } else {
+        // Fallback para legado caso a migração ainda não tenha ocorrido para este ID
+        const legacyRef = doc(db, 'comuns', comumId, 'events', eventId);
+        getDoc(legacyRef).then(ls => {
+          if (ls.exists() && isMounted) {
+            const lData = ls.data();
+            setEventMeta(lData);
+            if (lData.ata && lData.ata.partes?.length > 0) setAtaData(lData.ata);
+          }
+          setLoading(false);
+        });
       }
-      setLoading(false);
     });
+
     return () => { isMounted = false; unsubRef(); unsubLocal(); unsubAta(); if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [eventId, comumId]);
 
@@ -277,8 +294,13 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
         </div>
       </Accordion>
 
+      {/* BLOCO DE LACRE COM TRAVA DE SINCRONIZAÇÃO v3.0 */}
       <div className="pt-12 px-2 pb-10">
-        {!isClosed ? (
+        {loading ? (
+          <div className="w-full py-7 text-center font-black text-slate-300 uppercase text-[8px] animate-pulse">
+            Sincronizando Status do Ensaio...
+          </div>
+        ) : !isClosed ? (
           isGemLocal && <button onClick={() => setShowConfirmLock(true)} className="w-full bg-slate-950 text-white py-7 rounded-[3rem] font-black uppercase italic tracking-[0.2em] shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all border border-white/10 text-xs"><Lock size={22} /> Lacrar Ensaio</button>
         ) : (
           isComissao && <button onClick={() => setShowConfirmReopen(true)} className="w-full bg-blue-50 text-blue-800 py-7 rounded-[3rem] font-black uppercase italic tracking-[0.1em] flex items-center justify-center gap-4 border-2 border-blue-100 active:scale-95 transition-all shadow-md text-xs"><RotateCcw size={22} /> Reabrir Ensaio</button>

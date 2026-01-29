@@ -23,6 +23,9 @@ export const AuthProvider = ({ children }) => {
       if (currentUser) {
         // Se estiver logado, busca os "poderes" dele no banco de dados
         const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
+          // Proteção contra processamento de snapshot em estado de logout iminente
+          if (!auth.currentUser) return;
+
           if (docSnap.exists()) {
             const data = docSnap.data();
             
@@ -40,11 +43,14 @@ export const AuthProvider = ({ children }) => {
             };
 
             // TRAVA DE SEGURANÇA MULTITENANCY (GPS CORRIGIDO)
-            // Somente quem é RegionalCidade ou superior pode navegar entre cidades/comuns.
-            // O nível GEM_LOCAL (Victor MG) deve ficar preso ao data.comumId do seu próprio perfil.
-            const validRegionalId = (permissions.isComissao) ? (activeRegionalId || data.regionalId) : data.regionalId;
-            const validCityId = (permissions.isRegionalCidade) ? (activeCityId || data.cidadeId) : data.cidadeId;
-            const validComumId = (permissions.isRegionalCidade) ? (activeComumId || data.comumId) : data.comumId;
+            // Alterado para respeitar a persistência da última visita antes do cadastro original
+            const storedReg = localStorage.getItem('activeRegionalId');
+            const storedCity = localStorage.getItem('activeCityId');
+            const storedComum = localStorage.getItem('activeComumId');
+
+            const validRegionalId = (permissions.isComissao) ? (activeRegionalId || storedReg || data.regionalId) : data.regionalId;
+            const validCityId = (permissions.isRegionalCidade) ? (activeCityId || storedCity || data.cidadeId) : data.cidadeId;
+            const validComumId = (permissions.isRegionalCidade) ? (activeComumId || storedComum || data.comumId) : data.comumId;
 
             // Injeta os IDs ativos no userData para que todo o app seja reativo
             setUserData({ 
@@ -57,10 +63,25 @@ export const AuthProvider = ({ children }) => {
             });
           }
           setLoading(false);
+        }, (err) => {
+          console.error("Erro no Listener de Perfil:", err);
+          setLoading(false);
         });
         return () => unsubSnap();
       } else {
+        // --- LIMPEZA DE SEGURANÇA NO LOGOUT ---
         setUserData(null);
+        
+        // Reseta estados de navegação
+        setActiveRegionalId(null);
+        setActiveCityId(null);
+        setActiveComumId(null);
+
+        // Limpa cache de localização para o próximo login
+        localStorage.removeItem('activeRegionalId');
+        localStorage.removeItem('activeCityId');
+        localStorage.removeItem('activeComumId');
+
         setLoading(false);
       }
     });
@@ -68,22 +89,29 @@ export const AuthProvider = ({ children }) => {
     return () => unsubAuth();
   }, [activeRegionalId, activeCityId, activeComumId]); 
 
-  // FUNÇÕES DE COMANDO (Chamadas pelo Header para trocar o contexto)
+  // FUNÇÕES DE COMANDO (Chamadas pelos seletores para trocar o contexto)
   const setContext = (type, id) => {
     if (type === 'regional') {
       setActiveRegionalId(id);
       localStorage.setItem('activeRegionalId', id);
+      
+      // Reset em cascata reativo
       setActiveCityId(null);
       setActiveComumId(null);
       localStorage.removeItem('activeCityId');
       localStorage.removeItem('activeComumId');
     }
+    
     if (type === 'city') {
       setActiveCityId(id);
       localStorage.setItem('activeCityId', id);
+      
+      // CRÍTICO PARA NÍVEL COMISSÃO: Limpa a comum ativa no estado reativo
+      // Isso força o App.jsx a resetar a lista de eventos
       setActiveComumId(null);
       localStorage.removeItem('activeComumId');
     }
+    
     if (type === 'comum') {
       setActiveComumId(id);
       localStorage.setItem('activeComumId', id);

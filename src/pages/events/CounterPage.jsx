@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs } from '../../config/firebase';
+import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
 import AtaPage from './AtaPage';
 import DashEventPage from '../dashboard/DashEventPage';
@@ -26,7 +26,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const isBasico = level === 'basico';
   
   // isAdmin aqui define quem pode EDITAR abas administrativas (Ata)
-  // Básico pode visualizar Ata e Dash, mas não editar a Ata.
   const canEditAta = isGemLocal; 
 
   const [activeTab, setActiveTab] = useState('contador');
@@ -48,60 +47,86 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   // Sincroniza as contagens vindas do Firebase com o estado local
   useEffect(() => { if (counts) setLocalCounts(counts); }, [counts]);
 
+  // --- 1. CARREGAMENTO DA MATRIZ DE INSTRUMENTOS ---
+  useEffect(() => {
+    let isMounted = true;
+    const loadInstruments = async () => {
+      try {
+        // Busca Matriz Nacional
+        const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc')));
+        if (isMounted) setInstrumentsNacionais(nacSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        // Se já sabemos qual a comum do evento, busca a configuração local dela
+        if (eventComumId) {
+          const locSnap = await getDocs(collection(db, 'comuns', eventComumId, 'instrumentos_config'));
+          if (isMounted) setInstrumentsConfig(locSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }
+      } catch (e) {
+        console.error("Erro ao carregar matriz de instrumentos:", e);
+      }
+    };
+    loadInstruments();
+    return () => { isMounted = false; };
+  }, [eventComumId]);
+
+  // --- 2. ESCUTA REATIVA DO EVENTO (AGORA NA COLEÇÃO GLOBAL) ---
   useEffect(() => {
     if (!currentEventId) return;
     let isMounted = true;
 
     const loadData = async () => {
-      // CORREÇÃO MESTRA: Determinamos o ID da comum REAL deste evento
       const eventInfo = allEvents?.find(ev => ev.id === currentEventId);
       const targetComumId = eventInfo?.comumId || userData?.activeComumId || userData?.comumId;
 
       if (targetComumId && isMounted) {
         setEventComumId(targetComumId);
-        try {
-          const snapNacional = await getDocs(collection(db, 'config_instrumentos_nacional'));
-          if (isMounted) setInstrumentsNacionais(snapNacional.docs.map(d => ({ id: d.id, ...d.data() })));
-          
-          const unsubInst = onSnapshot(collection(db, 'comuns', targetComumId, 'instrumentos_config'), 
-            (snapshot) => { 
-              if (isMounted) {
-                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                setInstrumentsConfig(data); 
-              }
-            }
-          );
+        
+        // MUDANÇA CHAVE: Escuta na events_global
+        const eventRef = doc(db, 'events_global', currentEventId);
+        
+        const unsubEvent = onSnapshot(eventRef, (s) => {
+          if (s.exists() && isMounted) {
+            const data = s.data();
+            const pertenceACidade = data.cidadeId === userData.cidadeId;
+            const ehMasterOuComissao = isMaster || isComissao;
 
-          const unsubEvent = onSnapshot(doc(db, 'comuns', targetComumId, 'events', currentEventId), (s) => {
-            if (s.exists() && isMounted) {
-              const data = s.data();
-              setAtaData(data.ata || { 
-                status: 'open', 
-                comumNome: data.comumNome || userData?.activeComumName || userData?.comum 
-              });
+            if (ehMasterOuComissao || pertenceACidade || data.comumId === userData.comumId) {
+              setAtaData(data.ata || { status: 'open', comumNome: data.comumNome });
               setEventDateRaw(data.date || '');
+              if (data.counts) setLocalCounts(data.counts);
               setLoading(false);
-            } else if (isMounted) {
-              toast.error("Evento indisponível nesta jurisdição.");
-              setLoading(false);
-              onBack(); 
+            } else {
+              toast.error("Acesso negado: Fora de sua jurisdição.");
+              onBack();
             }
-          }, (err) => {
-              console.error("Erro Snapshot Counter:", err);
-              if (isMounted) setLoading(false);
-          });
+          } else if (isMounted) {
+            // Fallback para buscar no legado caso não tenha sido migrado ainda
+            const legacyRef = doc(db, 'comuns', targetComumId, 'events', currentEventId);
+            getDoc(legacyRef).then(ls => {
+                if (ls.exists() && isMounted) {
+                    const lData = ls.data();
+                    setAtaData(lData.ata || { status: 'open', comumNome: lData.comumNome });
+                    setEventDateRaw(lData.date || '');
+                    if (lData.counts) setLocalCounts(lData.counts);
+                    setLoading(false);
+                } else {
+                    toast.error("Evento não localizado.");
+                    onBack();
+                }
+            });
+          }
+        }, (err) => {
+            console.error("Erro Firestore:", err);
+            if (isMounted) onBack();
+        });
 
-          return () => { unsubInst(); unsubEvent(); };
-        } catch (err) { 
-          console.error("Erro no carregamento CounterPage:", err);
-          if (isMounted) setLoading(false); 
-        }
+        return () => unsubEvent();
       }
     };
 
     loadData();
     return () => { isMounted = false; };
-  }, [currentEventId, userData?.activeComumId, userData?.comumId, allEvents, onBack]);
+  }, [currentEventId, allEvents, userData]);
 
   const allInstruments = useMemo(() => {
     const ordemOficial = [
@@ -194,8 +219,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     const responsibleId = localCounts?.[metaKey]?.responsibleId;
     if (activeGroup === sec) { setActiveGroup(null); return; }
     
-    // REGRA CORRIGIDA: Somente o MASTER abre direto. Todos os outros (incluindo ADMs) 
-    // passam pelo modal de posse para garantir que o responsável seja registrado.
     if (isMaster || responsibleId === myUID) {
         setActiveGroup(sec);
     } else {
@@ -208,7 +231,8 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
     if (wantsToOwn) {
       try {
-        await updateDoc(doc(db, 'comuns', eventComumId, 'events', currentEventId), {
+        // Atualiza na events_global
+        await updateDoc(doc(db, 'events_global', currentEventId), {
           [`counts.${metaKey}.responsibleId`]: myUID,
           [`counts.${metaKey}.responsibleName`]: userData?.name || "Colaborador",
           [`counts.${metaKey}.updatedAt`]: Date.now()
@@ -219,7 +243,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     setShowOwnershipModal(null);
   };
 
-  // Edição habilitada se for Master ou se for o dono da seção logado
   const isEditingEnabled = (sec) => isMaster || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando Jurisdição...</div>;
@@ -231,7 +254,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           <button onClick={onBack} className="bg-slate-100 p-3 rounded-2xl text-slate-400 active:scale-90 transition-transform"><ChevronLeft size={20} strokeWidth={3} /></button>
           <div className="text-center px-4 overflow-hidden">
             <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1 italic leading-none truncate">
-              {ataData?.comumNome || userData?.activeComumName || userData?.comum || "Localidade"}
+              {ataData?.comumNome || "Localidade"}
             </p>
             <h2 className="text-xl font-[900] text-slate-950 italic uppercase tracking-tighter">
                 {eventDateRaw ? `${eventDateRaw.split('-')[2]}/${eventDateRaw.split('-')[1]}/${eventDateRaw.split('-')[0]}` : '---'}
@@ -283,7 +306,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                           disabled={!isEditingEnabled(sec)} 
                          />
                       ))}
-                      {/* REGRA CORRIGIDA: Nível Básico também pode adicionar extras se tiver assumido a seção */}
                       {!isClosed && isEditingEnabled(sec) && sec !== 'IRMANDADE' && sec !== 'CORAL' && sec !== 'ORGANISTAS' && (
                         <button 
                           onClick={() => setShowExtraModal(sec)} 
@@ -410,7 +432,7 @@ const InstrumentCard = ({ inst, data, onUpdate, disabled }) => {
               <CounterBox label="COMUM" color="white" val={comum} onChange={v => handleUpdate('comum', v)} disabled={disabled} />
               <div className="flex-[0.6] h-14 bg-slate-50 rounded-xl border border-slate-100 flex flex-col items-center justify-center leading-none">
                   <p className="text-[5px] font-black uppercase text-slate-400 mb-1 tracking-tighter">VISITAS</p>
-                  <span className={`font-[900] text-xl ${disabled ? 'text-slate-400' : 'text-slate-950'}`}>{Math.max(0, total - comum)}</span>
+                  <span className={`font-[900] text-xl ${disabled ? 'text-slate-400' : 'text-slate-950'}`}>{Math.max(0, total - comum) || 0}</span>
               </div>
             </>
           )}
