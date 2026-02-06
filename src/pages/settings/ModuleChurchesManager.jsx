@@ -5,7 +5,7 @@ import { Plus, Trash2, Edit3, Check, X, Home, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const ModuleChurchesManager = ({ selectedCity, regionalId }) => {
+const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) => {
   const [comuns, setComuns] = useState([]);
   const [newChurchName, setNewChurchName] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -43,12 +43,32 @@ const ModuleChurchesManager = ({ selectedCity, regionalId }) => {
     } catch (e) { toast.error("Erro ao atualizar"); }
   };
 
-  const handleDelete = async (id, nome) => {
-    if (window.confirm(`Remover a comum ${nome}? Todos os ensaios vinculados serão perdidos.`)) {
-      try {
-        await deleteDoc(doc(db, 'comuns', id));
-        toast.success("Igreja removida");
-      } catch (e) { toast.error("Erro ao excluir"); }
+  const handleDelete = (id, nome) => {
+    // INTEGRAÇÃO: Utiliza o alerta nativo configurado na SettingsPage
+    if (onConfirmDelete) {
+      onConfirmDelete(nome, async () => {
+        try {
+          await deleteDoc(doc(db, 'comuns', id));
+          toast.success("Igreja removida", {
+            style: { 
+              backgroundColor: '#020617', 
+              color: '#fff', 
+              fontSize: '10px', 
+              fontWeight: '900', 
+              textTransform: 'uppercase' 
+            }
+          });
+        } catch (e) { 
+          toast.error("Erro ao excluir"); 
+        }
+      });
+    } else {
+      // Fallback para manter o funcionamento caso a prop não exista
+      if (window.confirm(`Remover a comum ${nome}? Todos os ensaios vinculados serão perdidos.`)) {
+        deleteDoc(doc(db, 'comuns', id))
+          .then(() => toast.success("Igreja removida"))
+          .catch(() => toast.error("Erro ao excluir"));
+      }
     }
   };
 

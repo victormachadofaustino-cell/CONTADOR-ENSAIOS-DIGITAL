@@ -123,26 +123,16 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
       setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
     });
 
-    // CORREÇÃO v3.0: OUVIR NA COLEÇÃO GLOBAL PARA GARANTIR SINCRONIA DO LACRE
+    // CORREÇÃO v3.1: SINCRONIA TOTAL COM O SISTEMA DE LOCKING
     const globalEventRef = doc(db, 'events_global', eventId);
     const unsubAta = onSnapshot(globalEventRef, (s) => {
       if (!isMounted) return;
       if (s.exists()) {
         const eventData = s.data();
         setEventMeta(eventData);
-        if (eventData.ata && eventData.ata.partes?.length > 0) setAtaData(eventData.ata);
+        // Prioriza os dados de ata que vêm do snapshot global reativo
+        if (eventData.ata) setAtaData(eventData.ata);
         setLoading(false);
-      } else {
-        // Fallback para legado caso a migração ainda não tenha ocorrido para este ID
-        const legacyRef = doc(db, 'comuns', comumId, 'events', eventId);
-        getDoc(legacyRef).then(ls => {
-          if (ls.exists() && isMounted) {
-            const lData = ls.data();
-            setEventMeta(lData);
-            if (lData.ata && lData.ata.partes?.length > 0) setAtaData(lData.ata);
-          }
-          setLoading(false);
-        });
       }
     });
 
@@ -167,7 +157,7 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
   };
 
   const handleOpenVisitaModal = (v = null, idx = null) => {
-    if (isInputDisabled && !isClosed) return; // Permite abrir para ver se estiver fechado, mas trava edição
+    if (isInputDisabled && !isClosed) return; 
     if (v) { setNewVisita(v); setEditIndex(idx); } 
     else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
     setShowVisitaModal(true);
@@ -185,8 +175,8 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
 
   const togglePresencaLocal = (m) => {
     if (isInputDisabled) return;
-    const list = ataData.presencaLocal.includes(m.name) ? ataData.presencaLocal.filter(n => n !== m.name) : [...ataData.presencaLocal, m.name];
-    const full = ataData.presencaLocalFull.find(x => x.nome === m.name) ? ataData.presencaLocalFull.filter(x => x.nome !== m.name) : [...ataData.presencaLocalFull, { nome: m.name, role: m.role }];
+    const list = (ataData.presencaLocal || []).includes(m.name) ? ataData.presencaLocal.filter(n => n !== m.name) : [...(ataData.presencaLocal || []), m.name];
+    const full = (ataData.presencaLocalFull || []).find(x => x.nome === m.name) ? ataData.presencaLocalFull.filter(x => x.nome !== m.name) : [...(ataData.presencaLocalFull || []), { nome: m.name, role: m.role }];
     handleChange({ ...ataData, presencaLocal: list, presencaLocalFull: full });
   };
 
@@ -228,7 +218,7 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
           </div>
 
           <div className="space-y-4">
-            {ataData.partes.map((parte, pIdx) => (
+            {(ataData.partes || []).map((parte, pIdx) => (
               <div key={pIdx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
                 <div className="flex justify-between items-center mb-6">
                   <h4 className="font-black italic uppercase text-[10px] tracking-widest text-blue-600">{parte.label}</h4>
@@ -239,7 +229,7 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
                   <Select label="Ministério / Cargo" val={parte.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => { const np = [...ataData.partes]; np[pIdx].min = v; handleChange({...ataData, partes: np}); }} />
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {parte.hinos.map((h, hIdx) => (
+                  {(parte.hinos || []).map((h, hIdx) => (
                     <div key={hIdx} className="relative">
                       <input type="text" disabled={isInputDisabled} className="w-14 h-14 bg-slate-50 rounded-2xl text-center font-black text-blue-800 text-sm outline-none border-2 border-transparent focus:border-blue-500 focus:bg-white transition-all disabled:opacity-50" value={h || ''} placeholder="-" onChange={e => handleHinoChange(pIdx, hIdx, e.target.value)} />
                       {!isInputDisabled && hIdx >= (pIdx < 2 ? 5 : 3) && (
@@ -247,11 +237,11 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
                       )}
                     </div>
                   ))}
-                  {!isInputDisabled && <button onClick={() => { const np = [...ataData.partes]; np[pIdx].hinos.push(''); handleChange({...ataData, partes: np}); }} className="w-14 h-14 border-2 border-dashed border-slate-200 rounded-2xl text-slate-300 flex items-center justify-center active:scale-95 transition-all"><Plus size={20}/></button>}
+                  {!isInputDisabled && <button onClick={() => { const np = [...ataData.partes]; np[pIdx].hinos = [...(np[pIdx].hinos || []), '']; handleChange({...ataData, partes: np}); }} className="w-14 h-14 border-2 border-dashed border-slate-200 rounded-2xl text-slate-300 flex items-center justify-center active:scale-95 transition-all"><Plus size={20}/></button>}
                 </div>
               </div>
             ))}
-            {!isInputDisabled && <button onClick={() => { const np = [...ataData.partes]; np.push({ label: `${ataData.partes.length + 1}ª Parte`, nome: '', min: '', hinos: ['', '', ''] }); handleChange({ ...ataData, partes: np }); }} className="w-full py-5 bg-white border-2 border-dashed border-blue-100 rounded-[2.5rem] text-blue-600 font-black uppercase text-[9px] italic flex items-center justify-center gap-3 active:scale-95 transition-all"><Plus size={16}/> Incluir Nova Parte</button>}
+            {!isInputDisabled && <button onClick={() => { const np = [...(ataData.partes || [])]; np.push({ label: `${np.length + 1}ª Parte`, nome: '', min: '', hinos: ['', '', ''] }); handleChange({ ...ataData, partes: np }); }} className="w-full py-5 bg-white border-2 border-dashed border-blue-100 rounded-[2.5rem] text-blue-600 font-black uppercase text-[9px] italic flex items-center justify-center gap-3 active:scale-95 transition-all"><Plus size={16}/> Incluir Nova Parte</button>}
           </div>
         </div>
       </Accordion>
@@ -310,7 +300,7 @@ const AtaPage = ({ eventId, comumId, allEvents }) => {
       <AnimatePresence>
         {showConfirmLock && (
           <Modal title="Confirmar Lacre?" icon={<Lock size={40}/>} confirmLabel="Confirmar Lacre" onConfirm={() => { saveStatus('closed'); setShowConfirmLock(false); }} onCancel={() => setShowConfirmLock(false)}>
-            Esta ação congela os dados para o Dashboard Regional.
+            Esta ação congela os dados para o Dashboard Regional e encerra as sessões de contagem ativas.
           </Modal>
         )}
 

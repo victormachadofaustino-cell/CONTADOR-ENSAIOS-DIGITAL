@@ -1,89 +1,271 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  text-align: center;
+import { useState, useEffect, useMemo } from 'react'
+import { 
+  auth, db, doc, onSnapshot, collection, query, orderBy, where, onAuthStateChanged 
+} from './config/firebase'
+import { authService } from './services/authService' 
+import { LOCALIDADE_PADRAO } from './config/config'
+import toast, { Toaster } from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
+
+import DashPage from './pages/dashboard/DashPage'
+import SettingsPage from './pages/SettingsPage'
+import CounterPage from './pages/events/CounterPage'
+import EventsPage from './pages/events/EventsPage' 
+import LoginPage from './pages/auth/LoginPage'
+import CapaEntrada from './pages/CapaEntrada'
+import Header from './components/Header' 
+import Tickets from './components/Tickets' // Importação do sistema de suporte
+
+// Importação do Contexto para unificar a fonte de verdade
+import { useAuth } from './context/AuthContext';
+
+const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretário da Música', 'Secretario da Música'];
+
+function App() {
+  // INTEGRAÇÃO: Consumindo o GPS Global diretamente no App
+  const { userData: authContextData } = useAuth();
+  
+  const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const [view, setView] = useState('loading');
+  const [showSplash, setShowSplash] = useState(true); 
+  const [lobbyTab, setLobbyTab] = useState('ensaios');
+  const [currentEventId, setCurrentEventId] = useState(null);
+  const [counts, setCounts] = useState({});
+  const [direcao, setDirecao] = useState(0);
+  const [events, setEvents] = useState([]);
+
+  // Inicialização robusta via localStorage - MANTÉM A ÚLTIMA COMUM VISITADA
+  const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId') || null);
+  const [activeComumName, setActiveComumName] = useState(localStorage.getItem('activeComumName') || '');
+  const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId') || null);
+  const [activeRegionalName, setActiveRegionalName] = useState(localStorage.getItem('activeRegionalName') || 'Navegar...');
+
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState(''); 
+  const [authMode, setAuthMode] = useState('login');
+  const [cargosDinamicos, setCargosDinamicos] = useState([]);
+
+  // --- MATRIZ DE COMPETÊNCIAS v2.1 (CONEXÃO DIRETA COM ACCESSLEVEL) ---
+  // CORREÇÃO: Usando authContextData como fonte primária para evitar atrasos de estado
+  const level = authContextData?.accessLevel || userData?.accessLevel;
+  const isMaster = level === 'master';
+  const isComissao = isMaster || level === 'comissao';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
+  
+  const isAdmin = isGemLocal;
+  
+  // PRIORIDADE: Sincronia com o contexto global
+  const comumIdEfetivo = authContextData?.activeComumId || activeComumId || userData?.comumId;
+
+  const currentEventData = useMemo(() => {
+    return events.find(ev => ev.id === currentEventId);
+  }, [events, currentEventId]);
+
+  const ORDEM_TABS = useMemo(() => {
+    const temAcessoAjustes = isGemLocal; 
+    return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
+  }, [isGemLocal]);
+
+  useEffect(() => {
+    if ((authContextData || userData) && !ORDEM_TABS.includes(lobbyTab)) {
+      setLobbyTab('ensaios');
+    }
+  }, [authContextData, userData, lobbyTab, ORDEM_TABS]);
+
+  const mudarTab = (novaTab) => {
+    const idxAntigo = ORDEM_TABS.indexOf(lobbyTab);
+    const idxNovo = ORDEM_TABS.indexOf(novaTab);
+    if (idxAntigo === idxNovo) return;
+    setDirecao(idxNovo > idxAntigo ? 1 : -1);
+    setLobbyTab(novaTab);
+  };
+
+  // SINCRONIZAÇÃO DE ESTADO COM CONTEXTO
+  useEffect(() => {
+    if (authContextData?.activeComumId !== undefined) {
+      setActiveComumId(authContextData.activeComumId);
+    }
+    if (authContextData?.activeRegionalId !== undefined) {
+      setActiveRegionalId(authContextData.activeRegionalId);
+    }
+  }, [authContextData?.activeComumId, authContextData?.activeRegionalId]);
+
+  useEffect(() => {
+    let unsubSnap = null;
+    const unsubAuth = onAuthStateChanged(auth, u => {
+      setUser(u);
+      if (u) {
+        unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUserData({ ...data, uid: u.uid, id: u.uid });
+
+            const podeNavegar = data.accessLevel === 'master' || data.accessLevel === 'comissao' || data.accessLevel === 'regional_cidade';
+            
+            if (podeNavegar) {
+              const savedComumId = localStorage.getItem('activeComumId');
+              const savedComumName = localStorage.getItem('activeComumName');
+              const savedRegionalId = localStorage.getItem('activeRegionalId');
+              const savedRegionalName = localStorage.getItem('activeRegionalName');
+
+              if (!activeComumId && !savedComumId) {
+                setActiveComumId(data.comumId);
+                setActiveComumName(data.comum);
+              } else if (savedComumId && !activeComumId) {
+                setActiveComumId(savedComumId);
+                setActiveComumName(savedComumName);
+              }
+
+              if (!activeRegionalId && !savedRegionalId) {
+                setActiveRegionalId(data.regionalId);
+                setActiveRegionalName(data.regionalNome || data.regional);
+              } else if (savedRegionalId && !activeRegionalId) {
+                setActiveRegionalId(savedRegionalId);
+                setActiveRegionalName(savedRegionalName);
+              }
+            } else {
+              setActiveComumId(data.comumId);
+              setActiveComumName(data.comum || "Localidade");
+              setActiveRegionalId(data.regionalId);
+              setActiveRegionalName(data.regionalNome || data.regional || "Regional");
+            }
+            
+            setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
+          } else { 
+            setView('login'); 
+          }
+        }, (err) => { 
+          console.error("Erro no Snapshot de Usuário:", err);
+          setView('login'); 
+        });
+      } else { 
+        if (unsubSnap) unsubSnap();
+        setUserData(null);
+        setEvents([]); 
+        setActiveComumId(null);
+        setActiveComumName('');
+        setActiveRegionalId(null);
+        setActiveRegionalName('Navegar...');
+        localStorage.removeItem('activeComumId');
+        localStorage.removeItem('activeComumName');
+        localStorage.removeItem('activeRegionalId');
+        localStorage.removeItem('activeRegionalName');
+        setView('login'); 
+      }
+    });
+    return () => { unsubAuth(); if (unsubSnap) unsubSnap(); };
+  }, []); 
+
+  useEffect(() => {
+    setEvents([]); 
+    if (!user?.uid || !comumIdEfetivo || !(authContextData || userData)) return;
+
+    const q = query(
+      collection(db, 'events_global'), 
+      where('comumId', '==', comumIdEfetivo), 
+      orderBy('date', 'desc')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ 
+        id: d.id, 
+        ...d.data(),
+        comumId: d.data().comumId || comumIdEfetivo 
+      }));
+      setEvents(data);
+    }, (err) => {
+      console.warn("Snapshot de eventos finalizado:", err.message);
+    });
+
+    return () => unsub();
+  }, [comumIdEfetivo, user?.uid, level, authContextData?.activeComumId]); 
+
+  if (view === 'loading') return <div className="h-dvh flex items-center justify-center bg-[#F1F5F9] font-black text-slate-950 animate-pulse uppercase text-[10px]">Sincronizando Jurisdição...</div>;
+
+  return (
+    <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left">
+      <Toaster position="top-center" />
+      <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
+
+      {view === 'login' ? (
+        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData || userData} />
+      ) : view === 'lobby' ? (
+        <>
+          <Header userData={authContextData || { ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 
+            onChurchChange={(id, nome) => { 
+              setActiveComumId(id); setActiveComumName(nome); 
+              localStorage.setItem('activeComumId', id); localStorage.setItem('activeComumName', nome); 
+            }}
+            onRegionalChange={(id, nome) => { 
+              setActiveRegionalId(id); setActiveRegionalName(nome); 
+              localStorage.setItem('activeRegionalId', id); localStorage.setItem('activeRegionalName', nome); 
+            }}
+          />
+          <main className="flex-1 relative overflow-hidden">
+            <AnimatePresence mode="popLayout" custom={direcao}>
+              <motion.div key={lobbyTab} custom={direcao} initial={{ opacity: 0, x: direcao * 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: direcao * -100 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="w-full h-full overflow-y-auto no-scrollbar pt-4 pb-32 px-4">
+                <div className="max-w-md mx-auto">
+                  {lobbyTab === 'ensaios' && (
+                    <EventsPage 
+                      key={authContextData?.activeCityId || 'default'} 
+                      allEvents={events}
+                      userData={authContextData || { ...userData, activeCityId: userData?.activeCityId || userData?.cidadeId, activeComumId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isMaster, isComissao, isCidade: isRegionalCidade }} 
+                      isAdmin={isAdmin} 
+                      onSelectEvent={(id) => { 
+                        setCurrentEventId(id); 
+                        setView('app'); 
+                      }} 
+                      onChurchChange={(id, nome) => {
+                        setActiveComumId(id);
+                        setActiveComumName(nome);
+                        localStorage.setItem('activeComumId', id);
+                        localStorage.setItem('activeComumName', nome);
+                      }}
+                    />
+                  )}
+                  {lobbyTab === 'dash' && <DashPage userData={authContextData || { ...userData, activeCityId: userData?.activeCityId || userData?.cidadeId, activeComumId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId }} />}
+                  {lobbyTab === 'config' && <SettingsPage />}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+          <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-slate-950 text-white rounded-[2.2rem] flex justify-around p-1.5 z-50 shadow-2xl border border-white/5">
+            {ORDEM_TABS.map(tab => (
+              <button key={tab} onClick={() => mudarTab(tab)} className={`relative flex-1 py-3 rounded-[1.8rem] transition-all duration-300 ${lobbyTab === tab ? 'bg-white text-slate-950 shadow-lg scale-105 font-black' : 'text-slate-500'}`}>
+                <span className="text-[9px] font-black uppercase italic tracking-widest">{tab === 'ensaios' ? 'Ensaios' : tab === 'dash' ? 'Geral' : 'Ajustes'}</span>
+              </button>
+            ))}
+          </nav>
+        </>
+      ) : (
+        <CounterPage 
+          currentEventId={currentEventId} 
+          counts={counts} 
+          onBack={() => setView('lobby')} 
+          isAdmin={isAdmin} 
+          isMaster={isMaster} 
+          userData={authContextData || { 
+            ...userData, 
+            comumId: currentEventData?.comumId || comumIdEfetivo, 
+            comum: activeComumName, 
+            activeRegionalId, 
+            activeRegionalName, 
+            regionalId: activeRegionalId, 
+            isBasico, isAdmin, isRegional: isComissao, isComissao, isCidade: isRegionalCidade 
+          }} 
+          allEvents={events} 
+        />
+      )}
+
+      {/* SISTEMA DE TICKETS (Floating Support) - Trava de segurança para não aparecer na Capa */}
+      {!showSplash && <Tickets moduloAtual={lobbyTab} />}
+    </div>
+  );
 }
 
-/* Estilização Base */
-body {
-  margin: 0;
-  background-color: #f9fafb; /* gray-50 */
-  color: #1f2937; /* gray-800 */
-}
-
-/* Logos e Animações Originais Preservadas */
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
-}
-
-/* --- NOVAS REGRAS PARA CARDS DE INSTRUMENTOS --- */
-
-/* Borda lateral esquerda fixa que sobe até o topo */
-.card-section {
-  position: relative;
-  overflow: hidden;
-  border-left-width: 12px !important; /* Borda grossa lateral */
-  transition: all 300ms ease;
-}
-
-/* Cores por Família (Classes que aplicaremos no CounterPage) */
-.border-cordas {
-  border-left-color: #fcd34d !important; /* Amber-300 (Amarelo) */
-}
-
-.border-madeiras {
-  border-left-color: #6ee7b7 !important; /* Emerald-300 (Verde) */
-}
-
-.border-metais {
-  border-left-color: #fca5a5 !important; /* Rose-300 (Vermelho) */
-}
-
-.border-orgao {
-  border-left-color: #d8b4fe !important; /* Purple-300 (Roxo) */
-}
-
-/* Efeito de Ring ao focar no card aberto */
-.card-active {
-  ring: 2px;
-  ring-color: rgba(59, 130, 246, 0.2);
-}
-
-/* Ajuste para inputs do Chrome para não mostrar setas de número */
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-input[type=number] {
-  -moz-appearance: textfield;
-}
+export default App;

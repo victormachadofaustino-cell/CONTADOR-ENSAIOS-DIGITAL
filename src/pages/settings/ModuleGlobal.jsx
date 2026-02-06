@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 // Importação do Cérebro de Autenticação para validação de níveis
 import { useAuth } from '../../context/AuthContext';
 
-const ModuleGlobal = ({ cargos, ministerios }) => {
+const ModuleGlobal = ({ cargos, ministerios, onConfirmDelete }) => {
   const { userData } = useAuth();
   
   // NOVA LÓGICA DE PODER v2.1: Módulo liberado para Master e Comissão
@@ -51,15 +51,33 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
     }
   };
 
-  // Função para excluir
-  const handleDelete = async (id) => {
+  // Função para excluir - INTEGRADA COM O SISTEMA NATIVO
+  const handleDelete = (id, nome) => {
     if (!isComissao) return toast.error("Ação restrita");
-    if (window.confirm('Remover da base oficial? Esta ação impactará filtros de todo o sistema.')) {
-      try {
-        await deleteDoc(doc(db, 'referencia_cargos', id));
-        toast.success("Removido com sucesso");
-      } catch (e) {
-        toast.error("Erro ao excluir");
+
+    if (onConfirmDelete) {
+      onConfirmDelete(nome, async () => {
+        try {
+          await deleteDoc(doc(db, 'referencia_cargos', id));
+          toast.success("Removido da base oficial", {
+            style: { 
+              backgroundColor: '#020617', 
+              color: '#fff', 
+              fontSize: '10px', 
+              fontWeight: '900', 
+              textTransform: 'uppercase' 
+            }
+          });
+        } catch (e) {
+          toast.error("Erro ao excluir");
+        }
+      });
+    } else {
+      // Fallback de segurança preservado
+      if (window.confirm('Remover da base oficial? Esta ação impactará filtros de todo o sistema.')) {
+        deleteDoc(doc(db, 'referencia_cargos', id))
+          .then(() => toast.success("Removido com sucesso"))
+          .catch(() => toast.error("Erro ao excluir"));
       }
     }
   };
@@ -113,7 +131,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
                   <span className="text-[10px] font-black text-slate-700 uppercase italic leading-none">{c.nome}</span>
                   <div className="flex items-center gap-1">
                     <button onClick={() => { setEditingItem(c); setEditValue(c.nome); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14} /></button>
-                    <button onClick={() => handleDelete(c.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                    <button onClick={() => handleDelete(c.id, c.nome)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </>
               )}
@@ -160,7 +178,7 @@ const ModuleGlobal = ({ cargos, ministerios }) => {
                   <span className="text-[10px] font-black text-slate-700 uppercase italic leading-none">{m.nome}</span>
                   <div className="flex items-center gap-1">
                     <button onClick={() => { setEditingItem(m); setEditValue(m.nome); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14} /></button>
-                    <button onClick={() => handleDelete(m.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                    <button onClick={() => handleDelete(m.id, m.nome)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </>
               )}

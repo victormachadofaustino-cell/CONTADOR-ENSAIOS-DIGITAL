@@ -3,7 +3,7 @@ import { deleteField, arrayUnion } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v3.0 - Arquitetura Global de Alta Performance
+ * v3.2 - Arquitetura Global com Blindagem de Metadados
  * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
  */
 export const eventService = {
@@ -11,7 +11,6 @@ export const eventService = {
   // Escuta os eventos de uma comum específica na COLEÇÃO GLOBAL
   subscribeToEvents: (comumId, callback) => {
     if (!comumId) return; 
-    // MUDANÇA: Agora filtra por comumId dentro da events_global
     const q = query(
       collection(db, 'events_global'), 
       where('comumId', '==', comumId), 
@@ -28,7 +27,7 @@ export const eventService = {
 
   /**
    * Cria um novo ensaio na Coleção Global
-   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local da igreja pai.
+   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local e inicializa metadados de sessão.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
@@ -37,7 +36,7 @@ export const eventService = {
     let initialCounts = {};
 
     try {
-      // 1. BUSCA O SNAPSHOT LOCAL (A orquestra continua configurada dentro da Comum)
+      // 1. BUSCA O SNAPSHOT LOCAL
       const localRef = collection(db, 'comuns', comumId, 'instrumentos_config');
       const localSnap = await getDocs(localRef);
       
@@ -46,16 +45,31 @@ export const eventService = {
         throw new Error("CONFIG_REQUIRED"); 
       }
 
-      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL
+      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL + METADADOS DE SEÇÃO
+      const sessoesDetectadas = new Set();
+
       localSnap.docs.forEach(docInst => {
         const inst = docInst.data();
         const id = docInst.id;
+        const sectionName = inst.section?.toUpperCase() || 'GERAL';
+        sessoesDetectadas.add(sectionName);
 
         initialCounts[id] = {
           total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0,  
           name: inst.name || id.toUpperCase(),
-          section: inst.section?.toUpperCase() || 'GERAL',
+          section: sectionName,
           evalType: inst.evalType || 'Sem'
+        };
+      });
+
+      // INICIALIZAÇÃO INTELIGENTE: Cria os metadados para cada seção da orquestra
+      sessoesDetectadas.forEach(sec => {
+        const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
+        initialCounts[metaKey] = {
+          responsibleId: null,
+          responsibleName: null,
+          isActive: false,
+          updatedAt: Date.now()
         };
       });
       
@@ -65,7 +79,7 @@ export const eventService = {
       throw new Error("Falha ao acessar configuração da localidade.");
     }
     
-    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v3.0)
+    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v3.1)
     return await addDoc(collection(db, 'events_global'), {
       type: type || 'Ensaio Local',
       date,
@@ -77,7 +91,7 @@ export const eventService = {
       ata: { status: 'open' },
       counts: initialCounts, 
       createdAt: Date.now(),
-      dbVersion: "3.0-global"
+      dbVersion: "3.1-global-locking"
     });
   },
 
@@ -96,7 +110,6 @@ export const eventService = {
       return; 
     }
 
-    // MUDANÇA: Referência direta à events_global
     const eventRef = doc(db, 'events_global', eventId);
     const val = Math.max(0, parseInt(value) || 0);
     const timestamp = Date.now();
@@ -111,17 +124,21 @@ export const eventService = {
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
+      // Usamos um getDoc para garantir que não sobrescrevemos a "sessão" ativa de outros
       const snap = await getDoc(eventRef);
+      if (!snap.exists()) return;
+
       const currentInstData = snap.data()?.counts?.[instId] || {};
-      let history = currentInstData.history || [];
       
-      if (history.length > 10) history = history.slice(-10);
+      // Histórico rotativo (mantém as últimas 10 alterações para auditoria)
+      let history = currentInstData.history || [];
+      if (history.length >= 10) history = history.slice(-9);
       history.push(logEntry);
 
       const baseUpdate = {
         lastEditBy: userData?.name || 'Sistema',
         timestamp: timestamp,
-        section: section || currentInstData.section || 'Outros',
+        section: section || currentInstData.section || 'GERAL',
         history: history 
       };
 
@@ -151,11 +168,13 @@ export const eventService = {
 
   /**
    * Salva Ata na COLEÇÃO GLOBAL
+   * AJUSTE v3.2: Proteção de Metadados da Raiz
    */
   saveAtaData: async (comumId, eventId, ataData) => {
     if (!eventId) throw new Error("Referência de evento inválida.");
     const eventRef = doc(db, 'events_global', eventId);
     
+    // 1. Extração de Hinos para estatística rápida
     let todosHinos = [];
     (ataData.partes || []).forEach(p => {
       if (p.hinos) {
@@ -163,15 +182,22 @@ export const eventService = {
       }
     });
 
+    // 2. BLINDAGEM: Removemos campos que pertencem à RAIZ para não duplicar/conflitar dentro do objeto ATA
+    // Isso evita que o PDF se confunda entre ata.date e a raiz date.
+    const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData;
+
     const finalAta = {
-      ...ataData,
+      ...ataLimpa,
       hinosChamados: todosHinos.length,
       hinosLista: todosHinos,
       lastUpdate: Date.now()
     };
 
     try {
-      await updateDoc(eventRef, { ata: finalAta });
+      // Usamos updateDoc para atualizar APENAS o mapa 'ata', preservando a raiz do documento intacta
+      await updateDoc(eventRef, { 
+        ata: finalAta 
+      });
     } catch (e) {
       console.error("Erro ao salvar Ata:", e);
       throw new Error("Erro ao salvar os dados da Ata.");

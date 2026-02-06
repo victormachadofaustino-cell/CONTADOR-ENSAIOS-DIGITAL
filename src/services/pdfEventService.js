@@ -2,7 +2,16 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export const pdfEventService = {
-  generateAtaEnsaio: (stats, ataData, userData, counts) => {
+  /**
+   * Gera o PDF da Ata de Ensaio
+   * v3.3 - Inclusão de Total Orquestra e Ajuste de Layout Vertical
+   * @param {Object} stats - Estatísticas calculadas no useMemo
+   * @param {Object} ataData - Dados da Ata + Raiz do Evento (date, comumId)
+   * @param {Object} userData - Dados do usuário logado (para Regional)
+   * @param {Object} counts - Mapa completo de contagens
+   * @param {Object} comumFullData - Dados vindos da coleção 'comuns' (Endereço/Agenda)
+   */
+  generateAtaEnsaio: (stats, ataData, userData, counts, comumFullData) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.width;
     const margin = 10;
@@ -19,20 +28,19 @@ export const pdfEventService = {
       return days[dayNum] || "";
     };
 
-    // 1. TRATAMENTO DE IDENTIDADE E DATAS (CORREÇÃO DO REFERENCE ERROR)
-    const comumNome = (ataData?.comumNome || userData?.comum || "Localidade").toUpperCase();
+    // 1. TRATAMENTO DE IDENTIDADE E DATAS
+    const comumNome = (comumFullData?.comum || ataData?.comumNome || userData?.comum || "Localidade").toUpperCase();
     
-    let cidadeRaw = userData?.cidade || "Jundiaí";
+    let cidadeRaw = comumFullData?.cidadeNome || ataData?.cidadeNome || userData?.cidadeNome || "Jundiaí";
     if (cidadeRaw === "N6xKnEAxY3Ku2FOez55K") cidadeRaw = "JUNDIAÍ";
     const cidadeNome = toTitleCase(cidadeRaw);
 
     const regionalRaw = userData?.activeRegionalName || userData?.regional || "Regional";
     const regionalNome = toTitleCase(regionalRaw);
     
-    const rawDate = ataData?.date || new Date().toISOString().split('T')[0];
-    const dateParts = rawDate.split('-');
+    const rawDate = ataData?.date || counts?.date || "2026-01-01"; 
+    const dateParts = rawDate.split('-'); 
     
-    // Declaração explícita para evitar ReferenceError no doc.save
     const fAno = dateParts[0];
     const fMes = dateParts[1];
     const fDia = dateParts[2];
@@ -52,16 +60,15 @@ export const pdfEventService = {
     doc.text(`DATA: ${dataFormatada}`, pageWidth - margin, 38, { align: "right" });
     doc.line(margin, 39, pageWidth - margin, 39);
 
-    // --- 3. LÓGICA DINÂMICA DE INSTRUMENTOS (CAPTURA TROMBONITO E EXTRAS) ---
+    // --- 3. LÓGICA DINÂMICA DE INSTRUMENTOS ---
     const officialKeys = [
       'violino','viola','violoncelo','flauta','oboe','corne_ingles','fagote','clarinete',
       'clarone_alto','clarone_baixo','sax_soprano','sax_alto','sax_tenor','sax_baritono',
       'trompete','flugelhorn','trompa','trombone','eufonio','tuba','acordeon'
     ];
 
-    // Detecta instrumentos que estão no 'counts' mas não são da lista fixa
     const extraKeys = Object.keys(counts || {}).filter(key => 
-      !officialKeys.includes(key) && !key.startsWith('meta_') && key !== 'orgao' && key !== 'irmandade'
+      !officialKeys.includes(key) && !key.startsWith('meta_') && key !== 'orgao' && key !== 'irmandade' && key !== 'Coral'
     );
 
     const fullInstOrder = [...officialKeys, ...extraKeys];
@@ -69,7 +76,8 @@ export const pdfEventService = {
     const orqBody = fullInstOrder.map((key, idx) => {
       const d = counts?.[key] || { total: 0, comum: 0 };
       const label = d.name || key.replace(/_/g, ' ').toUpperCase();
-      return [(idx + 1).toString().padStart(2, '0'), label, d.comum || 0, Math.max(0, (d.total || 0) - (d.comum || 0)), d.total || 0];
+      const vis = Math.max(0, (parseInt(d.total) || 0) - (parseInt(d.comum) || 0));
+      return [(idx + 1).toString().padStart(2, '0'), label, d.comum || 0, vis, d.total || 0];
     });
 
     autoTable(doc, {
@@ -81,7 +89,6 @@ export const pdfEventService = {
       columnStyles: { 1: { halign: 'left', fontStyle: 'bold' }, 4: { fillColor: [240, 240, 240] } }
     });
 
-    // B. Tabela Organistas
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 4, margin: { right: pageWidth / 2 + 2 },
       head: [['Nº', 'ORGANISTAS', 'COM.', 'VIS.', 'TOT.']],
@@ -91,7 +98,6 @@ export const pdfEventService = {
       columnStyles: { 1: { halign: 'left', fontStyle: 'bold' }, 4: { fillColor: [240, 240, 240] } }
     });
 
-    // C. Tabela Coral
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 4, margin: { right: pageWidth / 2 + 2 },
       head: [['Nº', 'CORAL', 'IRMÃOS', 'IRMÃS', 'TOT.']],
@@ -101,11 +107,24 @@ export const pdfEventService = {
       columnStyles: { 1: { halign: 'left', fontStyle: 'bold' }, 4: { fillColor: [240, 240, 240] } }
     });
 
-    const finalTableY = doc.lastAutoTable.finalY + 6;
-    doc.setFontSize(8); doc.setFont("times", "normal");
-    doc.text(`MÚSICOS: ${stats.musicos} | ORGANISTAS: ${stats.organistas} | CORAL: ${stats.irmandade}`, margin, finalTableY);
+    // --- AJUSTE DE LAYOUT DOS TOTAIS (SEM SOBREPOSIÇÃO) ---
+    let finalY = doc.lastAutoTable.finalY + 8;
+
+    // Linha 1: Total Orquestra (Músicos + Organistas)
+    doc.setFontSize(8); 
     doc.setFont("times", "bold");
-    doc.text(`TOTAL GERAL DE PRESENTES: ${stats.geral}`, margin, finalTableY + 4);
+    doc.text(`TOTAL ORQUESTRA: ${stats.musicos + stats.organistas}`, margin, finalY);
+
+    // Linha 2: Detalhamento Técnico (Abaixo da anterior)
+    finalY += 5;
+    doc.setFont("times", "normal");
+    doc.text(`MÚSICOS: ${stats.musicos} | ORGANISTAS: ${stats.organistas} | CORAL: ${stats.irmandade}`, margin, finalY);
+
+    // Linha 3: Total Geral de Presentes (Destaque final)
+    finalY += 6;
+    doc.setFont("times", "bold");
+    doc.setFontSize(9);
+    doc.text(`TOTAL GERAL DE PRESENTES: ${stats.geral}`, margin, finalY);
 
     // --- 4. COLUNA DIREITA ---
     doc.setFont("times", "bold"); doc.setFontSize(9);
@@ -128,7 +147,6 @@ export const pdfEventService = {
       columnStyles: { 1: { halign: 'right' }, 3: { fillColor: [245, 245, 245], fontStyle: 'bold' } }
     });
 
-    // Equilíbrio MOO
     const mooY = doc.lastAutoTable.finalY + 8;
     doc.setFont("times", "bold"); doc.setFontSize(9);
     doc.text("ESTATÍSTICA REF. MOO", rightColX, mooY);
@@ -149,7 +167,7 @@ export const pdfEventService = {
       doc.setDrawColor(200, 200, 200); doc.line(rightColX + (n.ref / 100 * 85), rowY + 1, rightColX + (n.ref / 100 * 85), rowY + 6);
     });
 
-    // --- 5. TABELA MINISTERIAL (CORREÇÃO BAIRRO/COMUM) ---
+    // --- 5. TABELA MINISTERIAL ---
     const pesos = { 'Encarregado Regional': 1, 'Encarregado Local': 2, 'Examinadora': 3, 'Ancião': 4, 'Diácono': 5, 'Cooperador do Ofício': 6, 'Cooperador RJM': 7 };
     const minRows = [];
     
@@ -164,7 +182,7 @@ export const pdfEventService = {
     minRows.sort((a, b) => a.peso - b.peso || a.nome.localeCompare(b.nome));
 
     autoTable(doc, {
-      startY: Math.max(finalTableY + 15, doc.lastAutoTable.finalY + 10, mooY + 45),
+      startY: Math.max(finalY + 10, doc.lastAutoTable.finalY + 10, mooY + 45),
       head: [['MINISTÉRIO', 'NOME', 'COMUM/BAIRRO', 'CIDADE/UF', 'DATA ENS.', 'HORA']],
       body: minRows.map(r => [r.cargo, r.nome, r.comum, r.cidade, r.data, r.hora]),
       theme: 'grid', styles: { fontSize: 6, font: "times", cellPadding: 1 },
@@ -173,13 +191,13 @@ export const pdfEventService = {
 
     // --- 6. LOCALIDADE E RODAPÉ ---
     const footerY = 278;
-    const agendaDias = userData?.diasSelecao ? userData.diasSelecao.map(d => translateDay(d)).join(' e ') : "---";
-    const rua = userData?.endereco?.rua || "";
-    const num = userData?.endereco?.numero || "";
-    const cep = userData?.endereco?.cep || "";
+    const agendaDias = comumFullData?.diasSelecao ? comumFullData.diasSelecao.map(d => translateDay(d)).join(' e ') : "---";
+    const rua = comumFullData?.endereco?.rua || "";
+    const num = comumFullData?.endereco?.numero || "";
+    const cep = comumFullData?.endereco?.cep || "";
     const enderecoFull = `${rua}${rua && num ? ', ' : ''}${num}${cep ? ' - ' + cep : ''}`;
     
-    const infoIgreja = `${comumNome} - ${enderecoFull} - Culto: ${agendaDias} às ${userData?.horaCulto || '---'} - Ensaio Local: ${userData?.ensaioLocal || '---'} às ${userData?.horaEnsaio || '---'}`;
+    const infoIgreja = `${comumNome} - ${enderecoFull || 'Endereço não informado'} - Culto: ${agendaDias} às ${comumFullData?.horaCulto || '---'} - Ensaio Local: ${comumFullData?.ensaioLocal || '---'} às ${comumFullData?.horaEnsaio || '---'}`;
     
     doc.setFontSize(7); doc.setFont("times", "bold");
     doc.text(infoIgreja, pageWidth / 2, footerY, { align: "center" });

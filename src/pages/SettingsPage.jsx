@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db, collection, onSnapshot, doc, query, where } from '../config/firebase';
 import { 
   Home, Music, Users, ShieldCheck, Plus, ChevronDown, 
-  MapPin, Building2, LayoutGrid, Settings, Briefcase
+  MapPin, Building2, LayoutGrid, Settings, Briefcase, Trash2, X
 } from 'lucide-react';
 // Importação do Cérebro de Autenticação (useAuth)
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +43,52 @@ const SettingsPage = () => {
     cidades: [],
     comunsDaRegional: [] 
   });
+
+  // FUNÇÃO DE EXCLUSÃO NATIVA (REPLACE window.confirm)
+  const confirmarExclusaoNativa = (itemNome, aoConfirmar) => {
+    toast((t) => (
+      <div className="flex flex-col gap-4 p-1 min-w-[280px]">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-red-600">
+            <Trash2 size={16} strokeWidth={3} />
+            <p className="text-[12px] font-black uppercase tracking-wider">Confirmar Exclusão</p>
+          </div>
+          <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+            Deseja realmente excluir <span className="font-bold text-slate-950 italic">"{itemNome}"</span>? 
+            Esta ação é irreversível e removerá todos os dados vinculados.
+          </p>
+        </div>
+        
+        <div className="flex gap-2 justify-end pt-2">
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+              aoConfirmar();
+            }}
+            className="bg-red-600 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center gap-2"
+          >
+            Excluir Agora
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: Infinity, // Mantém aberto até o usuário decidir
+      position: 'top-center',
+      style: {
+        borderRadius: '2.5rem',
+        background: '#fff',
+        border: '1px solid #F1F5F9',
+        padding: '20px',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)'
+      },
+    });
+  };
 
   // Sincronização passiva com o GPS Global - HIGIENE DE TROCA
   useEffect(() => {
@@ -98,7 +144,6 @@ const SettingsPage = () => {
           
           setSharedData(prev => ({ ...prev, cidades: filtradas }));
           
-          // Se a regional for nova (sem cidades), limpa seleções residuais
           if (filtradas.length === 0) {
             setSelectedCity(null);
             setSelectedComum(null);
@@ -120,7 +165,6 @@ const SettingsPage = () => {
     if (!comumIdEfetivo) return;
     let isMounted = true;
     
-    // Trava de Jurisdição: Verifica se a comum ativa ainda pertence à regional carregada
     const comumAindaValida = sharedData.comunsDaRegional.some(c => c.id === comumIdEfetivo);
     if (!comumAindaValida) {
         setSelectedComum(null);
@@ -149,18 +193,22 @@ const SettingsPage = () => {
   return (
     <div className="space-y-6 pb-40 px-4 pt-6 max-w-md mx-auto text-left font-sans">
       
-      {/* BLOCO 1: GESTÃO ADMINISTRATIVA DE BASE (Acima dos Pills) */}
+      {/* BLOCO 1: GESTÃO ADMINISTRATIVA DE BASE */}
       {isComissao && (
         <div className="space-y-3">
           <MenuCard id="global" active={activeMenu} setActive={setActiveMenu} icon={<Briefcase size={18}/>} module="Referências" title="Cargos & Ministérios">
             <ModuleGlobal 
               cargos={sharedData.cargos} 
               ministerios={sharedData.ministeriosDropdown}
+              onConfirmDelete={confirmarExclusaoNativa} // Prop para exclusão nativa
             />
           </MenuCard>
 
           <MenuCard id="cities" active={activeMenu} setActive={setActiveMenu} icon={<MapPin size={18}/>} module="Geografia" title="Gestão de Cidades">
-            <ModuleCities regionalId={activeRegionalId} />
+            <ModuleCities 
+              regionalId={activeRegionalId} 
+              onConfirmDelete={confirmarExclusaoNativa} // Prop para exclusão nativa
+            />
           </MenuCard>
         </div>
       )}
@@ -213,19 +261,18 @@ const SettingsPage = () => {
         </div>
       )}
 
-      {/* BLOCO 3: GESTÃO OPERACIONAL (Abaixo dos Pills) */}
+      {/* BLOCO 3: GESTÃO OPERACIONAL */}
       <div className="space-y-3">
-        {/* Gestão de Infraestrutura (Livre para Comissão gerenciar igrejas da cidade selecionada) */}
         {isComissao && (
           <MenuCard id="churches_mgr" active={activeMenu} setActive={setActiveMenu} icon={<Building2 size={18}/>} module="Infraestrutura" title="Manutenção de Comuns">
             <ModuleChurchesManager 
               selectedCity={selectedCity} 
               regionalId={activeRegionalId} 
+              onConfirmDelete={confirmarExclusaoNativa} // Prop para exclusão nativa
             />
           </MenuCard>
         )}
 
-        {/* Manutenção Local: PROTEÇÃO RIGOROSA - Oculta se não houver comum selecionada ou se a jurisdição mudar */}
         {selectedComum?.id && sharedData.comunsDaRegional.some(c => c.id === selectedComum.id) ? (
           <div className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="px-2 mb-2 leading-none pt-4">

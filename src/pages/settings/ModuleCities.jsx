@@ -4,7 +4,7 @@ import { Plus, Trash2, Edit3, Check, X, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const ModuleCities = ({ regionalId }) => {
+const ModuleCities = ({ regionalId, onConfirmDelete }) => {
   const [cidades, setCidades] = useState([]);
   const [newCityName, setNewCityName] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -41,12 +41,26 @@ const ModuleCities = ({ regionalId }) => {
     } catch (e) { toast.error("Erro ao atualizar"); }
   };
 
-  const handleDelete = async (id, nome) => {
-    if (window.confirm(`Excluir a cidade ${nome}?`)) {
-      try {
-        await deleteDoc(doc(db, 'config_cidades', id));
-        toast.success("Cidade removida");
-      } catch (e) { toast.error("Erro ao excluir"); }
+  // MUDANÇA: Substituição do window.confirm pela função nativa recebida via props
+  const handleDelete = (id, nome) => {
+    if (onConfirmDelete) {
+      onConfirmDelete(nome, async () => {
+        try {
+          await deleteDoc(doc(db, 'config_cidades', id));
+          toast.success("Cidade removida", {
+            style: { backgroundColor: '#020617', color: '#fff', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }
+          });
+        } catch (e) { 
+          toast.error("Erro ao excluir"); 
+        }
+      });
+    } else {
+      // Fallback de segurança caso a prop não seja passada
+      if (window.confirm(`Excluir a cidade ${nome}?`)) {
+        deleteDoc(doc(db, 'config_cidades', id))
+          .then(() => toast.success("Cidade removida"))
+          .catch(() => toast.error("Erro ao excluir"));
+      }
     }
   };
 

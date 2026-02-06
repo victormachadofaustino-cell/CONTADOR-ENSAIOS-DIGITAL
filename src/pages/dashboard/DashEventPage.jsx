@@ -6,11 +6,11 @@ import {
   CheckCircle2, Info, ShieldCheck, Users, FileText, Briefcase
 } from 'lucide-react';
 import { pdfEventService } from '../../services/pdfEventService';
-// Importação do Cérebro de Autenticação v2.1
+import { whatsappService } from '../../services/whatsappService';
 import { useAuth } from '../../context/AuthContext';
+import { db, doc, getDoc } from '../../config/firebase';
 
-const DashEventPage = ({ counts, ataData, isAdmin }) => {
-  // EXTRAÇÃO DE PODERES: Identifica o nível do usuário via accessLevel
+const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   const { userData } = useAuth();
   const level = userData?.accessLevel;
   
@@ -36,25 +36,22 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
         const section = (data.section || "GERAL").toUpperCase();
         const saneId = id.toLowerCase();
 
-        // 1. LÓGICA DE SOMA DO CORAL (ACEITA PADRÃO ANTIGO E NOVO)
         if (section === 'CORAL' || section === 'IRMANDADE' || saneId === 'coral' || saneId === 'irmandade') {
-          // Prioriza contagem detalhada para evitar duplicidade com valTotal
           if (valIrmaos > 0 || valIrmas > 0) {
             totals.irmaos += valIrmaos;
             totals.irmas += valIrmas;
           } else {
-            totals.irmaos += valTotal; // Fallback para quando só preencheram o total simples
+            totals.irmaos += valTotal;
           }
         } 
-        // 2. LÓGICA DE ORGANISTAS
         else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') {
           totals.organistas += valTotal;
+          totals.examinadoras += parseInt(data.enc) || 0;
         } 
-        // 3. LÓGICA DE ORQUESTRA (MÚSICOS)
         else {
           totals.musicos += valTotal;
+          totals.encLocal += parseInt(data.enc) || 0;
           
-          // Distribuição por Naipes para o Gráfico de Equilíbrio
           if (section === 'CORDAS' || ['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo'].includes(saneId)) {
             totals.cordas += valTotal;
           } 
@@ -78,7 +75,6 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
     totals.orquestra = totals.musicos + totals.organistas;
     totals.geral = totals.orquestra + totals.irmandade;
 
-    const liderança = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Examinadoras'];
     const oficio = ['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM'];
     
     const processarPessoas = (lista, isVisitante = false) => {
@@ -86,13 +82,8 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
       lista.forEach(p => {
         const cargo = (p.min || p.role || "");
         if (isVisitante) totals.visitas_total++;
-        if (liderança.includes(cargo)) {
-          if (cargo === 'Encarregado Regional') totals.encRegional++;
-          if (cargo === 'Encarregado Local') totals.encLocal++;
-          if (cargo.includes('Examinadora')) totals.examinadoras++;
-        } else if (oficio.includes(cargo)) {
-          totals.ministerio_oficio++;
-        }
+        if (cargo === 'Encarregado Regional') totals.encRegional++;
+        if (oficio.includes(cargo)) totals.ministerio_oficio++;
       });
     };
     processarPessoas(ataData?.visitantes, true);
@@ -109,25 +100,53 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
   
   const canExport = isGemLocal;
 
+  // COMPARTILHAMENTO WHATSAPP BLINDADO
   const handleShareLanche = async () => {
-    const dataEnsaio = ataData?.date ? new Date(ataData.date + 'T12:00:00').toLocaleDateString() : new Date().toLocaleDateString();
-    const msg = `*Serviço de Ensaio Local* - ${dataEnsaio} 🎵\n${userData?.comum}\n\n_*Resumo da Contagem para Alimentação:*_ 🍽️\n\nTotal Geral: ${stats.geral} ✅\n\n• Orquestra: ${stats.orquestra} 🎶\n      • _Músicos ${stats.musicos} + Organistas ${stats.organistas}_\n• Irmandade: ${stats.irmandade} 🗣️\n\nDeus abençoe grandemente. 🙏`;
-    
-    if (navigator.share) await navigator.share({ text: msg });
-    else { navigator.clipboard.writeText(msg); toast.success("Resumo Alimentação Copiado!"); }
+    const msg = whatsappService.obterTextoAlimentacao(ataData);
+    if (navigator.share) {
+      try { await navigator.share({ text: msg }); } catch (err) { console.log("Cancelado"); }
+    } else {
+      navigator.clipboard.writeText(msg);
+      toast.success("Resumo Alimentação Copiado!");
+    }
   };
 
   const handleShareEstatistico = async () => {
-    const dataEnsaio = ataData?.date ? new Date(ataData.date + 'T12:00:00').toLocaleDateString() : new Date().toLocaleDateString();
-    const msg = `*Serviço de Ensaio Local* - ${dataEnsaio} 🎵\n${userData?.comum} 📍\n\n_*Resumo Estatístico:*_ 📊\n\n• Músicos: ${stats.musicos}\n• Organistas: ${stats.organistas}\n• Irmandade (Coral): ${stats.irmandade}\n\n*Total Geral: ${stats.geral}*\n\n• _Encarregados Regionais: ${stats.encRegional}_\n• _Encarregados Locais: ${stats.encLocal}_\n• _Examinadoras: ${stats.examinadoras}_\n• _Ministério: ${stats.ministerio_oficio}_\n\nDeus abençoe grandemente!`;
-    
-    if (navigator.share) await navigator.share({ text: msg });
-    else { navigator.clipboard.writeText(msg); toast.success("Resumo Estatístico Copiado!"); }
+    const msg = whatsappService.obterTextoEstatistico({ ...ataData, counts });
+    if (navigator.share) {
+      try { await navigator.share({ text: msg }); } catch (err) { console.log("Cancelado"); }
+    } else {
+      navigator.clipboard.writeText(msg);
+      toast.success("Resumo Estatístico Copiado!");
+    }
+  };
+
+  // GERAÇÃO DE PDF BLINDADA (Captura endereço real da comum)
+  const handleGeneratePDF = async () => {
+    const loadingToast = toast.loading("Buscando dados da localidade...");
+    try {
+      // CASCATA DE BUSCA DE ID: Essencial para administradores que visualizam outras igrejas
+      const comumId = ataData?.comumId || counts?.comumId || userData?.activeComumId || userData?.comumId; 
+      
+      if (!comumId) throw new Error("ID da comum não identificado.");
+
+      const comumRef = doc(db, 'comuns', comumId);
+      const comumSnap = await getDoc(comumRef);
+      const comumFullData = comumSnap.exists() ? comumSnap.data() : null;
+
+      pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, comumFullData);
+      
+      toast.dismiss(loadingToast);
+      toast.success("PDF Gerado!");
+    } catch (error) {
+      console.error("Erro PDF:", error);
+      toast.dismiss(loadingToast);
+      toast.error(error.message || "Falha ao processar PDF.");
+    }
   };
 
   return (
     <div className="space-y-4 pb-44 px-4 pt-6 max-w-md mx-auto animate-premium bg-[#F1F5F9] text-left">
-      
       <div className="bg-slate-950 p-5 rounded-[2rem] shadow-2xl relative overflow-hidden border border-white/5">
         <div className="flex justify-between items-center relative z-10">
           <div>
@@ -206,7 +225,7 @@ const DashEventPage = ({ counts, ataData, isAdmin }) => {
               <button onClick={handleShareEstatistico} className="bg-slate-50 p-2.5 rounded-xl text-slate-500 active:scale-90 border border-slate-100 hover:bg-emerald-50 transition-colors">
                 <Share2 size={16} />
               </button>
-              <button onClick={() => pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts)} className="bg-blue-50 p-2.5 rounded-xl text-blue-600 active:scale-90 border border-blue-100 flex items-center gap-2 hover:bg-blue-100 transition-colors">
+              <button onClick={handleGeneratePDF} className="bg-blue-50 p-2.5 rounded-xl text-blue-600 active:scale-90 border border-blue-100 flex items-center gap-2 hover:bg-blue-100 transition-colors">
                 <FileText size={16} />
                 <span className="text-[8px] font-black uppercase">Gerar PDF</span>
               </button>

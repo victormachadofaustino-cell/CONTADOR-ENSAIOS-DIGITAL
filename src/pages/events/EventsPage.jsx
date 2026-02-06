@@ -48,16 +48,17 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
   }, [userData]);
 
   // DEFINE PERMISSÃO: Baseado na jurisdição ativa e no nível de acesso
-  const temPermissaoCriarAqui = useMemo(() => {
+  const temPermissaoAqui = useMemo(() => {
     if (isBasico) return false; 
     if (isMaster || isComissao) return true; 
     
-    // Nível Regional de Cidade: Pode criar em qualquer comum que pertença à sua CIDADE
+    // Nível Regional de Cidade: Pode gerenciar qualquer comum que pertença à sua CIDADE cadastrada
     if (level === 'regional_cidade') {
         const comumAlvo = comuns.find(c => c.id === selectedChurchId);
-        return comumAlvo && (comumAlvo.cidadeId === userData?.cidadeId || permitidasIds.includes(selectedChurchId));
+        return comumAlvo && (comumAlvo.cidadeId === userData?.cidadeId);
     }
 
+    // Nível GEM Local: Apenas em suas comuns permitidas
     return permitidasIds.includes(selectedChurchId);
   }, [isMaster, isComissao, isBasico, level, selectedChurchId, userData, comuns, permitidasIds]);
 
@@ -76,10 +77,8 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       if (isComissao) {
         const sorted = todasCidades.sort((a, b) => a.nome.localeCompare(b.nome));
         setCidades(sorted);
-        // Higiene: Se a regional for vazia, reseta a cidade ativa
         if (sorted.length === 0) setContext('city', null);
       } else {
-        // Regional Cidade vê apenas a sua cidade de cadastro
         const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
         setCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
       }
@@ -106,15 +105,12 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       }));
       
       const sortedList = list.sort((a, b) => a.nome.localeCompare(b.nome));
-      
-      // Filtro de visualização conforme nível
       const filteredList = (isRegionalCidade) 
         ? sortedList
         : sortedList.filter(c => permitidasIds.includes(c.id));
       
       setComuns(filteredList);
 
-      // --- CORREÇÃO DEFINITIVA (VÍDEO) ---
       if (filteredList.length === 0) {
         if (selectedChurchId !== null) {
           setContext('comum', null);
@@ -133,7 +129,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     return () => { isMounted = false; unsub(); };
   }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
-  // 3. LÓGICA DE AGRUPAMENTO (TRAVA DE SEGURANÇA ANTIFANTASMA)
+  // 3. LÓGICA DE AGRUPAMENTO
   const groupedEvents = useMemo(() => {
     const isComumValida = comuns.some(c => c.id === selectedChurchId);
     if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};
@@ -183,7 +179,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         setShowModal(false);
         setShowConfigError(true);
       } else {
-        console.error("Erro na criação:", error);
         toast.error("Erro ao criar."); 
       }
     }
@@ -192,26 +187,28 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
   const confirmDelete = async () => {
     if (!eventToDelete || !selectedChurchId) return;
     const targetEvent = allEvents.find(ev => ev.id === eventToDelete);
+    
     if (targetEvent?.ata?.status === 'closed') {
-      toast.error("Ensaios lacrados não podem ser excluídos.");
+      toast.error("Impossível excluir ensaios lacrados.");
       setEventToDelete(null);
       return;
     }
 
     try {
       await eventService.deleteEvent(selectedChurchId, eventToDelete);
-      toast.success("Ensaio removido!");
+      toast.success("Agenda removida!", {
+        style: { backgroundColor: '#020617', color: '#fff', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }
+      });
       setEventToDelete(null);
     } catch (error) { 
-      console.error("Erro na exclusão:", error);
-      toast.error("Erro ao excluir."); 
+      toast.error("Erro na exclusão."); 
     }
   };
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium text-left">
       
-      {/* SELETORES HIERÁRQUICOS (Garantia de Jurisdição v2.1) */}
+      {/* SELETORES HIERÁRQUICOS */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
         <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
@@ -248,7 +245,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         </div>
       </div>
 
-      {temPermissaoCriarAqui && selectedChurchId && comuns.length > 0 && (
+      {temPermissaoAqui && selectedChurchId && comuns.length > 0 && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
             <Plus size={20} strokeWidth={3} /> Novo Ensaio
@@ -308,7 +305,8 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
                         <div className="flex items-center gap-2">
                           {isClosed ? <Lock size={16} className="text-slate-200" /> : <ShieldCheck size={16} className="text-emerald-500 animate-pulse" />}
                           
-                          {temPermissaoCriarAqui && !isClosed && (
+                          {/* CORREÇÃO DO BUG: GEM, Regional e Comissão agora podem excluir se não estiver lacrado */}
+                          {temPermissaoAqui && !isClosed && (
                             <button onClick={(ex) => { ex.stopPropagation(); setEventToDelete(e.id); }} className="bg-red-50 text-red-400 p-3 rounded-2xl active:bg-red-500 active:text-white transition-all shadow-sm">
                               <Trash2 size={16} />
                             </button>
@@ -331,12 +329,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
               <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
               <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8 leading-none tracking-tighter">Novo Registro</h3>
               <div className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Tipo de Evento</label>
-                  <select disabled className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black uppercase outline-none opacity-60" value="Ensaio Local">
-                     <option value="Ensaio Local">Ensaio Local</option>
-                  </select>
-                </div>
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Data Agendada</label>
                   <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
@@ -374,19 +366,22 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         )}
       </AnimatePresence>
 
-      {eventToDelete && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6 animate-in zoom-in duration-200">
-          <div className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl relative border border-slate-100">
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><Trash2 size={24} /></div>
-            <h3 className="text-lg font-[900] uppercase italic text-slate-950 tracking-tighter leading-tight">Remover Agenda?</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase mt-4 mb-8 leading-relaxed">Todos os dados e contagens deste ensaio serão permanentemente excluídos.</p>
-            <div className="flex flex-col gap-2">
-              <button onClick={confirmDelete} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg shadow-red-100">Sim, Remover Ensaio</button>
-              <button onClick={() => setEventToDelete(null)} className="w-full py-2 font-black uppercase text-[9px] text-slate-300 tracking-widest">Manter Ensaio</button>
-            </div>
+      {/* MODAL DE EXCLUSÃO NATIVO PADRONIZADO */}
+      <AnimatePresence>
+        {eventToDelete && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6 animate-in zoom-in duration-200">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl relative border border-slate-100">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6"><Trash2 size={24} strokeWidth={3} /></div>
+              <h3 className="text-lg font-[900] uppercase italic text-slate-950 tracking-tighter leading-tight">Remover Agenda?</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mt-4 mb-8 leading-relaxed">Todos os dados e contagens deste ensaio serão permanentemente excluídos da jurisdição.</p>
+              <div className="flex flex-col gap-2">
+                <button onClick={confirmDelete} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg shadow-red-100">Sim, Remover Agora</button>
+                <button onClick={() => setEventToDelete(null)} className="w-full py-3 font-black uppercase text-[9px] text-slate-300 tracking-widest">Manter Registro</button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 };
