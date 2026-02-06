@@ -4,3 +4,4 @@ dist
 serviceAccount.json
 contexto_projeto.txt
 extracao_profunda_banco.json
+.vercel
