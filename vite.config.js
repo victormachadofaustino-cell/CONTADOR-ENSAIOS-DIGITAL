@@ -33,16 +33,20 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // CORREÇÃO CRÍTICA: Remove caches de versões anteriores do build para evitar erro de MIME type
+        cleanupOutdatedCaches: true,
         // Cacheia automaticamente todos os arquivos gerados pelo build (JS, CSS, HTML)
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         // Fallback para SPA (Garante que rotas como /dash funcionem offline)
-        navigateFallback: '/index.html'
+        navigateFallback: '/index.html',
+        // Bloqueia o fallback para arquivos que deveriam ser estáticos (evita retornar HTML em vez de JS)
+        navigateFallbackDenylist: [/^\/assets\//, /.*\.js$/, /.*\.css$/]
       }
     })
   ],
   base: '/', 
   server: {
-    host: '127.0.0.1',
+    host: '127.0.0.1', // Evita o Connection Refused em ambiente local
     port: 5174,
     strictPort: true,
   }
