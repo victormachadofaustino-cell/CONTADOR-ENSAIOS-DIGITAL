@@ -7,6 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate', // Atualiza o app automaticamente quando houver nova versão
+      // DESATIVAÇÃO EM DESENVOLVIMENTO: Evita conflitos com Firebase Auth e listeners assíncronos
+      devOptions: {
+        enabled: false 
+      },
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png'],
       manifest: {
         short_name: "Ensaio Local",
@@ -47,7 +51,7 @@ export default defineConfig({
   base: '/', 
   server: {
     host: '127.0.0.1', // Evita o Connection Refused em ambiente local
-    port: 5174,
+    port: 3000,
     strictPort: true,
   }
 })

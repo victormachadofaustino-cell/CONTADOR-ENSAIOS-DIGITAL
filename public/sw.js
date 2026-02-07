@@ -32,13 +32,16 @@ self.addEventListener('fetch', (event) => {
   const url = event.request.url;
   
   // BLOQUEIO DE SEGURANÇA: Ignorar ferramentas de desenvolvimento e extensões
+  // ADICIONADO: Proteção contra travamento de login no Localhost (VS Code)
   if (
     url.includes('chrome-extension') || 
     url.includes('socket.io') || 
     url.includes('@vite') || 
-    url.includes('@react-refresh') || // Adicionado para sanar erro de dev
-    url.includes('node_modules') ||    // Adicionado para evitar lixo no cache
+    url.includes('@react-refresh') || 
+    url.includes('node_modules') ||    
     url.includes('src/') ||
+    url.includes('127.0.0.1') || // Impede o SW de travar o Auth localmente [cite: 1913]
+    url.includes('localhost') ||   // Blindagem para ambiente de desenvolvimento [cite: 1913]
     event.request.method !== 'GET'
   ) {
     return;

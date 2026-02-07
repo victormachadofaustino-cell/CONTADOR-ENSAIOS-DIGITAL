@@ -100,9 +100,10 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   
   const canExport = isGemLocal;
 
-  // COMPARTILHAMENTO WHATSAPP BLINDADO
+  // COMPARTILHAMENTO WHATSAPP BLINDADO v1.3
   const handleShareLanche = async () => {
-    const msg = whatsappService.obterTextoAlimentacao(ataData);
+    // CORREÇÃO: Passando 'stats' como segundo argumento para garantir dados reais no WhatsApp
+    const msg = whatsappService.obterTextoAlimentacao(ataData, stats);
     if (navigator.share) {
       try { await navigator.share({ text: msg }); } catch (err) { console.log("Cancelado"); }
     } else {
@@ -112,7 +113,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   };
 
   const handleShareEstatistico = async () => {
-    const msg = whatsappService.obterTextoEstatistico({ ...ataData, counts });
+    const msg = whatsappService.obterTextoEstatistico({ ...ataData, counts }, stats);
     if (navigator.share) {
       try { await navigator.share({ text: msg }); } catch (err) { console.log("Cancelado"); }
     } else {
