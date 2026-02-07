@@ -14,12 +14,12 @@ import EventsPage from './pages/events/EventsPage'
 import LoginPage from './pages/auth/LoginPage'
 import CapaEntrada from './pages/CapaEntrada'
 import Header from './components/Header' 
-import Tickets from './components/Tickets' // Importação do sistema de suporte
+import Tickets from './components/Tickets' 
 
 // Importação do Contexto para unificar a fonte de verdade
 import { useAuth } from './context/AuthContext';
 
-const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretário da Música', 'Secretario da Música'];
+const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretario da Música'];
 
 function App() {
   // INTEGRAÇÃO: Consumindo o GPS Global diretamente no App
@@ -35,7 +35,7 @@ function App() {
   const [direcao, setDirecao] = useState(0);
   const [events, setEvents] = useState([]);
 
-  // Inicialização robusta via localStorage - MANTÉM A ÚLTIMA COMUM VISITADA
+  // Inicialização robusta via localStorage
   const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId') || null);
   const [activeComumName, setActiveComumName] = useState(localStorage.getItem('activeComumName') || '');
   const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId') || null);
@@ -48,7 +48,7 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [cargosDinamicos, setCargosDinamicos] = useState([]);
 
-  // --- MATRIZ DE COMPETÊNCIAS v2.1 (CONEXÃO DIRETA COM ACCESSLEVEL) ---
+  // --- MATRIZ DE COMPETÊNCIAS v2.1 ---
   const level = authContextData?.accessLevel || userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
@@ -58,7 +58,6 @@ function App() {
   
   const isAdmin = isGemLocal;
   
-  // PRIORIDADE: Sincronia com o contexto global
   const comumIdEfetivo = authContextData?.activeComumId || activeComumId || userData?.comumId;
 
   const currentEventData = useMemo(() => {
@@ -242,7 +241,6 @@ function App() {
             </AnimatePresence>
           </main>
           
-          {/* O ÍCONE DE SUPORTE FOI MOVIDO PARA CÁ: Só aparece no Lobby se a Capa sumir */}
           {!showSplash && <Tickets moduloAtual={lobbyTab} />}
 
           <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-slate-950 text-white rounded-[2.2rem] flex justify-around p-1.5 z-50 shadow-2xl border border-white/5">
@@ -272,7 +270,6 @@ function App() {
             }} 
             allEvents={events} 
           />
-          {/* ÍCONE DE SUPORTE TAMBÉM DISPONÍVEL NA TELA DE CONTAGEM */}
           {!showSplash && <Tickets moduloAtual="contador" />}
         </>
       )}

@@ -19,7 +19,16 @@ let debounceTimers = {};
 const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, onChurchChange }) => {
   const [showModal, setShowModal] = useState(false);
   const [showConfigError, setShowConfigError] = useState(false); // Modal de erro de conformidade
-  const [newEventDate, setNewEventDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // CORREÇÃO DE FUSO HORÁRIO: Garante que a data inicial seja a data local correta
+  const getLocalDate = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const localDate = new Date(now.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+  };
+
+  const [newEventDate, setNewEventDate] = useState(getLocalDate());
   const [newEventType, setNewEventType] = useState('Ensaio Local');
   const [responsavel, setResponsavel] = useState(userData?.name || '');
   const [eventToDelete, setEventToDelete] = useState(null);
@@ -331,11 +340,11 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
               <div className="space-y-5">
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Data Agendada</label>
-                  <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
+                  <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-base font-black outline-none" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Responsável / Encarregado</label>
-                  <input type="text" placeholder="Nome completo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-[11px] font-black outline-none uppercase placeholder:text-slate-300 shadow-inner" value={responsavel} onChange={e => setResponsavel(e.target.value)} />
+                  <input type="text" placeholder="Nome completo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-base font-black outline-none uppercase placeholder:text-slate-300 shadow-inner" value={responsavel} onChange={e => setResponsavel(e.target.value)} />
                 </div>
               </div>
               <button onClick={handleCreate} className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-10 transition-all border border-white/10"><Send size={16}/> Confirmar Agenda</button>
