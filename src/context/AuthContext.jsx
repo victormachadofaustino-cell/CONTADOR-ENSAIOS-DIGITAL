@@ -18,13 +18,27 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Fica ouvindo se o usuário está logado ou não
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      
+      // TRAVA DE SEGURANÇA v2.2: Impede a entrada reativa se o e-mail não estiver verificado
+      // Isso evita que a aprovação manual do Master "pule" a validação do e-mail.
+      // Se o e-mail não for verificado, forçamos o estado para null imediatamente.
+      if (currentUser && !currentUser.emailVerified) {
+        setUser(null);
+        setUserData(null);
+        setLoading(false);
+        return;
+      }
+
       setUser(currentUser);
       
       if (currentUser) {
-        // Se estiver logado, busca os "poderes" dele no banco de dados
+        // Se estiver logado e verificado, busca os "poderes" dele no banco de dados
         const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
-          // Proteção contra processamento de snapshot em estado de logout iminente
-          if (!auth.currentUser) return;
+          // Proteção contra processamento de snapshot em estado de logout iminente ou e-mail não verificado
+          if (!auth.currentUser || !auth.currentUser.emailVerified) {
+            setLoading(false);
+            return;
+          }
 
           if (docSnap.exists()) {
             const data = docSnap.data();
@@ -122,7 +136,7 @@ export const AuthProvider = ({ children }) => {
     user,
     userData,
     loading,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && user.emailVerified === true, // Só é autenticado se validou e-mail explicitamente
     setContext, 
   };
 

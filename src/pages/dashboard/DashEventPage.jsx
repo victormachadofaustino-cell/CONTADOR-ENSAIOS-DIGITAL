@@ -46,7 +46,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         } 
         else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') {
           totals.organistas += valTotal;
-          totals.examinadoras += parseInt(data.enc) || 0;
+          // REMOVIDO: totals.examinadoras += parseInt(data.enc) para obedecer à regra de pegar apenas da Ata
         } 
         else {
           totals.musicos += valTotal;
@@ -82,10 +82,16 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
       lista.forEach(p => {
         const cargo = (p.min || p.role || "");
         if (isVisitante) totals.visitas_total++;
+        
         if (cargo === 'Encarregado Regional') totals.encRegional++;
+        
+        // CORREÇÃO: Examinadoras agora são contadas APENAS aqui (Listas nominais da Ata)
+        if (cargo === 'Examinadora') totals.examinadoras++;
+        
         if (oficio.includes(cargo)) totals.ministerio_oficio++;
       });
     };
+
     processarPessoas(ataData?.visitantes, true);
     processarPessoas(ataData?.presencaLocalFull, false);
 
@@ -100,9 +106,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   
   const canExport = isGemLocal;
 
-  // COMPARTILHAMENTO WHATSAPP BLINDADO v1.3
   const handleShareLanche = async () => {
-    // CORREÇÃO: Passando 'stats' como segundo argumento para garantir dados reais no WhatsApp
     const msg = whatsappService.obterTextoAlimentacao(ataData, stats);
     if (navigator.share) {
       try { await navigator.share({ text: msg }); } catch (err) { console.log("Cancelado"); }
@@ -122,13 +126,10 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
     }
   };
 
-  // GERAÇÃO DE PDF BLINDADA (Captura endereço real da comum)
   const handleGeneratePDF = async () => {
     const loadingToast = toast.loading("Buscando dados da localidade...");
     try {
-      // CASCATA DE BUSCA DE ID: Essencial para administradores que visualizam outras igrejas
       const comumId = ataData?.comumId || counts?.comumId || userData?.activeComumId || userData?.comumId; 
-      
       if (!comumId) throw new Error("ID da comum não identificado.");
 
       const comumRef = doc(db, 'comuns', comumId);

@@ -23,7 +23,7 @@ const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora'
 
 function App() {
   // INTEGRAÇÃO: Consumindo o GPS Global diretamente no App
-  const { userData: authContextData } = useAuth();
+  const { userData: authContextData, loading: authContextLoading } = useAuth();
   
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
@@ -106,9 +106,27 @@ function App() {
   useEffect(() => {
     let unsubSnap = null;
     const unsubAuth = onAuthStateChanged(auth, u => {
+      
+      // TRAVA DE SEGURANÇA v2.2: Se o e-mail não for verificado, nem tenta sincronizar jurisdição.
+      // Isso mata o estado de "loading" infinito e manda para a LoginPage.
+      if (u && !u.emailVerified) {
+        setUser(null);
+        setUserData(null);
+        setView('login');
+        return;
+      }
+
       setUser(u);
+
       if (u) {
+        // Se estiver logado, busca os "poderes" dele no banco de dados
         unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
+          // Proteção extra contra e-mail não verificado durante a escuta
+          if (!auth.currentUser || !auth.currentUser.emailVerified) {
+             setView('login');
+             return;
+          }
+
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUserData({ ...data, uid: u.uid, id: u.uid });
@@ -143,6 +161,7 @@ function App() {
               setActiveRegionalName(data.regionalNome || data.regional || "Regional");
             }
             
+            // Define se vai para o lobby ou para a tela de instruções de aprovação
             setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
           } else { 
             setView('login'); 
@@ -167,7 +186,8 @@ function App() {
   }, []); 
 
   useEffect(() => {
-    if (!user?.uid || !comumIdEfetivo || !(authContextData || userData)) return;
+    // Só sincroniza eventos se o usuário estiver aprovado e verificado
+    if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !(authContextData || userData)) return;
 
     setEvents([]); 
 
@@ -191,15 +211,37 @@ function App() {
     return () => unsub();
   }, [comumIdEfetivo, user?.uid, level]); 
 
-  if (view === 'loading') return <div className="h-dvh flex items-center justify-center bg-[#F1F5F9] font-black text-slate-950 animate-pulse uppercase text-[10px]">Sincronizando Jurisdição...</div>;
+  // --- TRATAMENTO VISUAL DE CARREGAMENTO ---
+  if (view === 'loading') {
+    return (
+      <div className="h-dvh flex flex-col items-center justify-center bg-[#F1F5F9] p-8 text-center space-y-4">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-950 rounded-full animate-spin" />
+        <p className="font-black text-slate-950 uppercase text-[10px] tracking-widest italic">Sincronizando Jurisdição...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left">
       <Toaster position="top-center" />
       <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
 
-      {view === 'login' ? (
-        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData || userData} />
+      {/* AJUSTE CRÍTICO: Unificação da LoginPage para Login e Espera de Aprovação */}
+      {(view === 'login' || view === 'waiting-approval') ? (
+        <LoginPage 
+          authMode={authMode} 
+          setAuthMode={setAuthMode} 
+          email={email} 
+          setEmail={setEmail} 
+          pass={pass} 
+          setPass={setPass} 
+          userName={userName} 
+          setUserName={setUserName} 
+          userRole={userRole} 
+          setUserRole={setUserRole} 
+          cargosDinamicos={cargosDinamicos} 
+          userData={authContextData || userData} 
+        />
       ) : view === 'lobby' ? (
         <>
           <Header userData={authContextData || { ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 

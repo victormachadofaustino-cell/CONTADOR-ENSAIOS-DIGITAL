@@ -12,13 +12,19 @@ import {
  */
 export const authService = {
   
-  // Realiza o login do usuário
+  // Realiza o login do usuário com Trava de Segurança em Camadas
   login: async (email, password) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
+    
+    // TRAVA 1: Verificação de E-mail
+    // Se o e-mail não estiver verificado, reenvia o link, desloga e mata o processo.
+    // Isso impede que sessões pendentes fiquem "sincronizando" ou entrem após aprovação manual.
     if (!cred.user.emailVerified) {
       await sendEmailVerification(cred.user);
-      throw new Error("E-mail não verificado. Verifique sua caixa de entrada.");
+      await signOut(auth); // Limpa a sessão pendente no Firebase para evitar "piscadas"
+      throw new Error("ACESSO BLOQUEADO: E-mail não verificado. Verifique sua caixa de entrada e SPAM.");
     }
+    
     return cred.user;
   },
 
@@ -51,7 +57,12 @@ export const authService = {
       dbVersion: "2.1-matriz"
     });
 
+    // 3. Envia verificação e força Logout
+    // O usuário não deve "permanecer" logado após o registro se o e-mail não está validado.
+    // Isso garante que ele caia na tela de Login e veja a instrução de validar o e-mail.
     await sendEmailVerification(cred.user);
+    await signOut(auth); 
+
     return cred.user;
   },
 

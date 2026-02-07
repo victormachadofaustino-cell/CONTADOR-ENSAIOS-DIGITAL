@@ -2,6 +2,12 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode'; // Biblioteca validada e instalada
 
+// Exportação explícita para ser usada em outros componentes
+export const toTitleCase = (str) => {
+  if (!str) return "";
+  return str.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+};
+
 export const pdfEventService = {
   /**
    * Gera o PDF da Ata de Ensaio
@@ -20,11 +26,6 @@ export const pdfEventService = {
     const rightColX = pageWidth / 2 + 2;
 
     // --- FUNÇÕES AUXILIARES ---
-    const toTitleCase = (str) => {
-      if (!str) return "";
-      return str.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    };
-
     const translateDay = (dayNum) => {
       const days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
       return days[dayNum] || "";
