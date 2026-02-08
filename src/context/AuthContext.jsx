@@ -73,7 +73,8 @@ export const AuthProvider = ({ children }) => {
               ...permissions,
               activeRegionalId: validRegionalId, 
               activeCityId: validCityId,
-              activeComumId: validComumId
+              activeComumId: validComumId,
+              emailVerified: currentUser.emailVerified // v2.3: Injetado para facilitar leitura no Login
             });
           }
           setLoading(false);
@@ -136,7 +137,8 @@ export const AuthProvider = ({ children }) => {
     user,
     userData,
     loading,
-    isAuthenticated: !!user && user.emailVerified === true, // Só é autenticado se validou e-mail explicitamente
+    // v2.3: Autenticação agora exige e-mail verificado E aprovação do administrador
+    isAuthenticated: !!user && user.emailVerified === true && userData?.approved === true, 
     setContext, 
   };
 

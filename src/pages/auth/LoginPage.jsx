@@ -130,7 +130,6 @@ const LoginPage = ({
   };
 
   // --- TELA DE BLOQUEIO DE SEGURANÇA (AGUARDANDO APROVAÇÃO) ---
-  // Esta tela agora é tratada como um retorno independente para evitar conflitos de renderização
   if (userData && !userData.approved && userData.emailVerified) {
     return (
       <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
@@ -155,7 +154,7 @@ const LoginPage = ({
             <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight italic">{getProximoPasso()}</p>
           </div>
           <button 
-            onClick={() => authService.logout()}
+            onClick={() => { setEmailSent(false); authService.logout(); }}
             className="flex items-center justify-center gap-2 mx-auto text-[10px] font-black text-red-500 uppercase tracking-widest hover:bg-red-50 px-6 py-3 rounded-2xl transition-all active:scale-95"
           >
             <LogOut size={14} /> Sair da Conta
@@ -272,8 +271,7 @@ const LoginPage = ({
             </button>
           </form>
 
-          {/* AJUSTE CRÍTICO: setAuthMode garantido pela verificação de tipo */}
-          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => typeof setAuthMode === 'function' && setAuthMode(authMode === 'login' ? 'register' : 'login')}>
+          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => { setEmailSent(false); typeof setAuthMode === 'function' && setAuthMode(authMode === 'login' ? 'register' : 'login'); }}>
             {authMode === 'login' ? 'Não tem conta? Solicite Acesso' : 'Já possui conta? Faça Login'}
           </button>
         </div>

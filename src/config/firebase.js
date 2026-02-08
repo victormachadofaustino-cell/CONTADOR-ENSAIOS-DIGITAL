@@ -13,7 +13,8 @@ import {
 import { 
   getAuth, signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, onAuthStateChanged, signOut,
-  sendEmailVerification 
+  sendEmailVerification,
+  deleteUser // ADICIONADO: Essencial para o sistema de Rollback v2.2
 } from "firebase/auth";
 
 const firebaseConfig = {
@@ -46,5 +47,6 @@ export {
   writeBatch,
   collectionGroup, // ADICIONADO: Exportação para uso no DashPage
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
-  onAuthStateChanged, signOut, sendEmailVerification 
+  onAuthStateChanged, signOut, sendEmailVerification,
+  deleteUser // EXPORTADO: Para uso no authService no fluxo de erro de cadastro
 };

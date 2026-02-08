@@ -2,68 +2,87 @@ import {
   auth, db, doc, setDoc, getDoc,
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut, sendEmailVerification 
+  signOut, sendEmailVerification,
+  deleteUser // v2.4 - Agora importado do config centralizado
 } from '../config/firebase';
 
 /**
  * Serviço de Autenticação e Gestão de Usuários
- * Saneado para Escalabilidade Nacional (Removido Resquícios de Jundiaí)
- * Atualizado para Matriz de Competências v2.1
+ * v2.4 - Sincronização de Importações e Rollback de Segurança Consolidado.
  */
 export const authService = {
   
   // Realiza o login do usuário com Trava de Segurança em Camadas
   login: async (email, password) => {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    
-    // TRAVA 1: Verificação de E-mail
-    // Se o e-mail não estiver verificado, reenvia o link, desloga e mata o processo.
-    // Isso impede que sessões pendentes fiquem "sincronizando" ou entrem após aprovação manual.
-    if (!cred.user.emailVerified) {
-      await sendEmailVerification(cred.user);
-      await signOut(auth); // Limpa a sessão pendente no Firebase para evitar "piscadas"
-      throw new Error("ACESSO BLOQUEADO: E-mail não verificado. Verifique sua caixa de entrada e SPAM.");
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      
+      // TRAVA 1: Verificação de E-mail
+      if (!cred.user.emailVerified) {
+        await sendEmailVerification(cred.user);
+        await signOut(auth);
+        throw new Error("ACESSO BLOQUEADO: E-mail não verificado. Verifique sua caixa de entrada e SPAM.");
+      }
+      
+      return cred.user;
+    } catch (error) {
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        throw new Error("E-mail ou senha incorretos.");
+      }
+      throw error;
     }
-    
-    return cred.user;
   },
 
   // Registra um novo usuário vinculado a uma ComumId e sua Hierarquia
-  // Sistema agnóstico: exige IDs reais vindos do banco de dados
   register: async ({ email, password, name, role, comum, comumId, cidadeId, regionalId }) => {
-    // Validação de Governança: impede registros sem jurisdição definida
+    // Validação de Governança
     if (!cidadeId || !regionalId || !comumId) {
       throw new Error("Falha de jurisdição: Dados geográficos obrigatórios ausentes.");
     }
 
-    // 1. Cria o usuário no Auth
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // 2. Cria o perfil no Firestore (Lógica Multitenancy Hierárquica)
-    // Registro 100% dinâmico baseado na seleção real do usuário
-    // O nível de acesso inicia como 'basico' independente do cargo escolhido
-    await setDoc(doc(db, 'users', cred.user.uid), {
-      email,
-      name,
-      role,
-      comum,
-      comumId, 
-      cidadeId, 
-      regionalId,
-      accessLevel: 'basico', // Define nível inicial conforme Matriz de Competências
-      approved: false, // Inicia aguardando aprovação da zeladoria local/regional
-      disabled: false,
-      createdAt: Date.now(),
-      dbVersion: "2.1-matriz"
-    });
+    let cred;
+    try {
+      // 1. Cria o usuário no Auth
+      cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // 2. Tenta criar o perfil no Firestore
+      try {
+        await setDoc(doc(db, 'users', cred.user.uid), {
+          email,
+          name,
+          role,
+          comum,
+          comumId,
+          cidadeId,
+          regionalId,
+          accessLevel: 'basico',
+          approved: false, // Inicia aguardando aprovação
+          disabled: false,
+          createdAt: Date.now(),
+          dbVersion: "2.1-matriz"
+        });
 
-    // 3. Envia verificação e força Logout
-    // O usuário não deve "permanecer" logado após o registro se o e-mail não está validado.
-    // Isso garante que ele caia na tela de Login e veja a instrução de validar o e-mail.
-    await sendEmailVerification(cred.user);
-    await signOut(auth); 
+        // 3. Envia verificação e força Logout
+        await sendEmailVerification(cred.user);
+        await signOut(auth);
 
-    return cred.user;
+        return cred.user;
+
+      } catch (firestoreError) {
+        // ROLLBACK: Se falhar no banco, deleta o login para liberar o e-mail
+        if (cred.user) {
+          await deleteUser(cred.user);
+        }
+        console.error("Erro de Permissão/Banco:", firestoreError);
+        throw new Error("ERRO DE PERMISSÃO: Falha ao registrar perfil no banco. Contate o administrador.");
+      }
+
+    } catch (authError) {
+      if (authError.code === 'auth/email-already-in-use') {
+        throw new Error("Este e-mail já está em uso. Tente fazer login ou recupere sua senha.");
+      }
+      throw authError;
+    }
   },
 
   // Recupera dados detalhados do usuário logado
@@ -75,22 +94,14 @@ export const authService = {
 
   /**
    * Finaliza a sessão com limpeza profunda
-   * Necessário para evitar travamentos em níveis de acesso regionais
    */
   logout: async () => {
     try {
-      // 1. Limpa o rastro geográfico e tokens persistidos
       localStorage.clear();
-      
-      // 2. Encerra a conexão com o Firebase Auth
       await signOut(auth);
-
-      // 3. HARD RESET: Força o navegador a limpar a memória do React
-      // Isso interrompe qualquer listener (onSnapshot) pendente que causaria travamento
       window.location.href = "/";
     } catch (error) {
       console.error("Erro ao encerrar sessão:", error);
-      // Fallback de emergência
       localStorage.clear();
       window.location.reload();
     }
