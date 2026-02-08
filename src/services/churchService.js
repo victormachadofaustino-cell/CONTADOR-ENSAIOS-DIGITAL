@@ -1,4 +1,4 @@
-import { db, doc, collection, writeBatch, getDocs, query, where, addDoc } from '../config/firebase';
+import { db, doc, collection, writeBatch, getDocs, query, where, addDoc, updateDoc } from '../config/firebase';
 import { DEFAULT_INSTRUMENTS } from '../config/config';
 import toast from 'react-hot-toast';
 
@@ -92,6 +92,47 @@ export const churchService = {
     } catch (e) {
       console.error("Erro ao criar comum:", e);
       toast.error("Erro ao configurar localidade.", { id: loadingToast });
+      return false;
+    }
+  },
+
+  /**
+   * ATUALIZAÇÃO DE NOME COM PROPAGAÇÃO HISTÓRICA
+   * v5.0 - Sincroniza o novo nome com todos os ensaios já realizados
+   */
+  updateChurchName: async (comumId, novoNome) => {
+    if (!comumId || !novoNome) return;
+    
+    const nomeLimpo = novoNome.trim().toUpperCase();
+    const loadingToast = toast.loading("Sincronizando histórico...");
+
+    try {
+      const batch = writeBatch(db);
+      
+      // 1. Atualiza o cadastro principal da Comum
+      const churchRef = doc(db, 'comuns', comumId);
+      batch.update(churchRef, { 
+        comum: nomeLimpo,
+        updatedAt: Date.now()
+      });
+
+      // 2. Busca todos os ensaios vinculados a esta comum na coleção global
+      const q = query(collection(db, 'events_global'), where('comumId', '==', comumId));
+      const querySnapshot = await getDocs(q);
+
+      // 3. Adiciona cada ensaio ao lote de atualização
+      querySnapshot.forEach((eventDoc) => {
+        batch.update(doc(db, 'events_global', eventDoc.id), {
+          comumNome: nomeLimpo
+        });
+      });
+
+      await batch.commit();
+      toast.success("Nome e histórico atualizados!", { id: loadingToast });
+      return true;
+    } catch (e) {
+      console.error("Erro na propagação de nome:", e);
+      toast.error("Erro ao sincronizar nome.", { id: loadingToast });
       return false;
     }
   },

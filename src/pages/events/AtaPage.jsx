@@ -16,6 +16,8 @@ import AtaLiturgia from './components/AtaLiturgia.jsx';
 import AtaVisitantes from './components/AtaVisitantes.jsx';
 import AtaMinisterioLocal from './components/AtaMinisterioLocal.jsx';
 import AtaLacreStatus from './components/AtaLacreStatus.jsx';
+// Importação do Novo Módulo de Ocorrências
+import AtaOcorrencias from './components/AtaOcorrencias.jsx';
 
 const AtaPage = ({ eventId, comumId }) => {
   const { userData } = useAuth();
@@ -38,12 +40,14 @@ const AtaPage = ({ eventId, comumId }) => {
     ],
     presencaLocal: [],
     presencaLocalFull: [],
-    visitantes: []
+    visitantes: [],
+    ocorrencias: [] // Inicialização do campo de ocorrências
   });
   
   const [eventMeta, setEventMeta] = useState(null);
   const [localMinisterio, setLocalMinisterio] = useState([]);
   const [referenciaMinisterio, setReferenciaMinisterio] = useState([]);
+  const [instrumentsNacionais, setInstrumentsNacionais] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [showConfirmLock, setShowConfirmLock] = useState(false);
@@ -70,9 +74,11 @@ const AtaPage = ({ eventId, comumId }) => {
 
   const isInputDisabled = !temPermissaoEditar;
 
+  // PESOS ATUALIZADOS v4.8 - Harmonia com PDF
   const pesosMinisterio = {
     'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador RJM': 4,
-    'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7
+    'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7,
+    'Secretário da Música': 8, 'Instrutor': 9, 'Músico': 10
   };
 
   const ordenarLista = (lista, campoNome, campoRole) => {
@@ -115,19 +121,24 @@ const AtaPage = ({ eventId, comumId }) => {
     if (!comumId || !eventId) return;
     let isMounted = true;
     
-    const unsubRef = onSnapshot(collection(db, 'referencia_cargos'), (s) => {
+    onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
+      if (!isMounted) return;
+      setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    onSnapshot(collection(db, 'referencia_cargos'), (s) => {
       if (!isMounted) return;
       const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
       setReferenciaMinisterio(lista);
     });
 
-    const unsubLocal = onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
+    onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
       if (!isMounted) return;
       const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
       setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
     });
 
-    const unsubAta = onSnapshot(doc(db, 'events_global', eventId), (s) => {
+    onSnapshot(doc(db, 'events_global', eventId), (s) => {
       if (!isMounted) return;
       if (s.exists()) {
         const eventData = s.data();
@@ -146,19 +157,17 @@ const AtaPage = ({ eventId, comumId }) => {
       }
     });
 
-    return () => { isMounted = false; unsubRef(); unsubLocal(); unsubAta(); if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+    return () => { isMounted = false; if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [eventId, comumId]);
 
   const handleHinoChange = (pIdx, hIdx, val) => {
     if (isInputDisabled) return;
     let v = val.toUpperCase().trim();
     const np = [...ataData.partes];
-
     if (v === '') { 
       np[pIdx].hinos[hIdx] = ''; 
       return handleChange({ ...ataData, partes: np }); 
     }
-
     if (v.startsWith('C')) {
       if (/^C[1-6]?$/.test(v)) {
         np[pIdx].hinos[hIdx] = v;
@@ -166,7 +175,6 @@ const AtaPage = ({ eventId, comumId }) => {
       }
       return;
     }
-
     if (/^\d+$/.test(v)) {
       if (parseInt(v) > 480) return;
       np[pIdx].hinos[hIdx] = v;
@@ -225,6 +233,16 @@ const AtaPage = ({ eventId, comumId }) => {
           isInputDisabled={isInputDisabled} 
           referenciaMinisterio={referenciaMinisterio} 
           handleHinoChange={handleHinoChange} 
+        />
+      </Accordion>
+
+      {/* NOVO MÓDULO DE OCORRÊNCIAS */}
+      <Accordion title="Ocorrências" isOpen={openSection === 'ocorrencias'} onClick={() => setOpenSection(openSection === 'ocorrencias' ? null : 'ocorrencias')} icon="📝" badge={ataData.ocorrencias?.length || null}>
+        <AtaOcorrencias 
+          ocorrencias={ataData.ocorrencias} 
+          instruments={instrumentsNacionais}
+          onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })}
+          isClosed={isClosed}
         />
       </Accordion>
 

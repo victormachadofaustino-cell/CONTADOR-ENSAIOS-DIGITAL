@@ -10,7 +10,7 @@ const LoginPage = ({
   userName, setUserName, userRole, setUserRole, userData 
 }) => {
   const [loading, setLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false); 
+  const [emailSent, setEmailSent] = useState(false); // Controle do aviso de SPAM
   
   const [regionais, setRegionais] = useState([]);
   const [cidades, setCidades] = useState([]);
@@ -21,44 +21,51 @@ const LoginPage = ({
   const [selectedChurch, setSelectedChurch] = useState(null); 
   const [listaCargosLocal, setListaCargosLocal] = useState([]); 
 
-  // 1. CARGA DINÂMICA DE REGIONAIS
+  // 1. CARGA DINÂMICA DE REGIONAIS (Escalabilidade Total)
   useEffect(() => {
     if (authMode !== 'register') return;
-    const unsub = onSnapshot(collection(db, 'config_regional'), (snapshot) => {
-      const lista = snapshot.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-      setRegionais(lista.sort((a, b) => a.nome.localeCompare(b.nome)));
-    });
+    const unsub = onSnapshot(collection(db, 'config_regional'), 
+      (snapshot) => {
+        const lista = snapshot.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+        setRegionais(lista.sort((a, b) => a.nome.localeCompare(b.nome)));
+      },
+      (error) => { console.warn("Permissão negada: regionais"); }
+    );
     return () => unsub();
   }, [authMode]);
 
-  // 2. FILTRAGEM DINÂMICA DE CIDADES
+  // 2. FILTRAGEM DINÂMICA DE CIDADES POR REGIONAL
   useEffect(() => {
     if (!selectedRegionalId) { setCidades([]); setSelectedCityId(''); return; }
     const q = query(collection(db, 'config_cidades'), where('regionalId', '==', selectedRegionalId));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const lista = snapshot.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-      setCidades(lista.sort((a, b) => a.nome.localeCompare(b.nome)));
-    });
+    const unsub = onSnapshot(q, 
+      (snapshot) => {
+        const lista = snapshot.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+        setCidades(lista.sort((a, b) => a.nome.localeCompare(b.nome)));
+      }
+    );
     return () => unsub();
   }, [selectedRegionalId]);
 
-  // 3. FILTRAGEM DINÂMICA DE COMUNS
+  // 3. FILTRAGEM DINÂMICA DE COMUNS POR CIDADE
   useEffect(() => {
     if (!selectedCityId) { setIgrejasDisponiveis([]); setSelectedChurch(null); return; }
     const q = query(collection(db, 'comuns'), where('cidadeId', '==', selectedCityId));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const lista = snapshot.docs.map(d => ({ 
-        id: d.id, 
-        nome: d.data().comum || d.data().nome || "Localidade",
-        cidadeId: d.data().cidadeId,
-        regionalId: d.data().regionalId
-      })).sort((a, b) => a.nome.localeCompare(b.nome));
-      setIgrejasDisponiveis(lista);
-    });
+    const unsub = onSnapshot(q, 
+      (snapshot) => {
+        const lista = snapshot.docs.map(d => ({ 
+          id: d.id, 
+          nome: d.data().comum || d.data().nome || "Localidade",
+          cidadeId: d.data().cidadeId,
+          regionalId: d.data().regionalId
+        })).sort((a, b) => a.nome.localeCompare(b.nome));
+        setIgrejasDisponiveis(lista);
+      }
+    );
     return () => unsub();
   }, [selectedCityId]);
 
-  // 4. CARGA DE CARGOS
+  // 4. CARGA DE CARGOS DA BASE DE REFERÊNCIA SANEADA
   useEffect(() => {
     const q = query(collection(db, 'referencia_cargos'), orderBy('nome', 'asc'));
     const unsub = onSnapshot(q, (snapshot) => {
@@ -90,27 +97,41 @@ const LoginPage = ({
           comum: selectedChurch.nome, comumId: selectedChurch.id,
           cidadeId: selectedCityId, regionalId: selectedRegionalId
         });
+        
         setEmailSent(true);
         toast.success("Solicitação enviada!");
       }
     } catch (err) {
       const msg = err.message || "Erro ao processar solicitação";
-      toast.error(msg.includes('auth/invalid-credential') ? "E-mail ou senha incorretos." : msg);
+      if (msg.includes('auth/invalid-credential')) {
+        toast.error("E-mail ou senha incorretos.");
+      } else {
+        toast.error(msg);
+      }
     } finally { setLoading(false); }
   };
 
+  // --- LÓGICA DE AVISO INTELIGENTE DE HIERARQUIA v2.2 ---
   const getProximoPasso = () => {
     const cargo = userData?.role || '';
-    if (['Músico', 'Organista', 'Candidato', 'Instrutor'].includes(cargo)) return "Procure o GEM da sua Comum para liberar seu acesso básico.";
-    if (['Encarregado Local', 'Examinadora'].includes(cargo)) return "Contate o Encarregado Regional da sua Cidade para validar seu perfil de gestor local.";
-    if (cargo === 'Encarregado Regional') return "Sua função requer habilitação da Comissão Regional para supervisão de cidade.";
-    if (cargo.includes('Secretário') || cargo.includes('Comissão')) return "Contate o Administrador Master para liberar suas credenciais de Comissão.";
+    if (['Músico', 'Organista', 'Candidato', 'Instrutor'].includes(cargo)) {
+      return "Para liberar seu acesso básico, procure o GEM (Encarregado Local ou Examinadora) da sua Comum.";
+    }
+    if (['Encarregado Local', 'Examinadora'].includes(cargo)) {
+      return "Para validar seu perfil de gestor local, contate o Encarregado Regional da sua Cidade.";
+    }
+    if (cargo === 'Encarregado Regional') {
+      return "Sua função requer habilitação da Comissão Regional para supervisão de cidade.";
+    }
+    if (cargo.includes('Secretário') || cargo.includes('Comissão')) {
+      return "Contate o Administrador Master para liberar suas credenciais de Comissão.";
+    }
     return "Contate seu Secretário Local ou Regional para aprovar seu perfil.";
   };
 
-  // --- TELA DE BLOQUEIO DE SEGURANÇA (O CORAÇÃO DO AJUSTE) ---
-  // Se o usuário existir e não estiver aprovado, mostramos o aviso, não importa o resto.
-  if (userData && userData.approved === false) {
+  // --- TELA DE BLOQUEIO DE SEGURANÇA (AGUARDANDO APROVAÇÃO) ---
+  // Esta tela agora é tratada como um retorno independente para evitar conflitos de renderização
+  if (userData && !userData.approved && userData.emailVerified) {
     return (
       <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[3rem] p-10 shadow-2xl border border-white max-w-sm w-full space-y-8 relative overflow-hidden">
@@ -119,10 +140,12 @@ const LoginPage = ({
             <Clock size={40} className="animate-pulse" />
           </div>
           <div className="space-y-4">
-            <h3 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">Aguardando Aprovação</h3>
-            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest italic flex items-center justify-center gap-1">
-              <ShieldCheck size={10} /> Status: E-mail Validado
-            </p>
+            <div className="space-y-1">
+              <h3 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">Aguardando Aprovação</h3>
+              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest italic flex items-center justify-center gap-1">
+                <ShieldCheck size={10} /> Status: E-mail Validado
+              </p>
+            </div>
             <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed">
               Sua conta foi criada. Agora, sua solicitação deve seguir o fluxo de aprovação da <span className="text-slate-950">Zeladoria Musical</span>.
             </p>
@@ -142,29 +165,35 @@ const LoginPage = ({
     );
   }
 
+  // --- RENDERIZAÇÃO PADRÃO (LOGIN E REGISTRO) ---
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center overflow-hidden bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
       <div className="w-full max-w-md space-y-8 animate-premium relative z-10 overflow-y-auto no-scrollbar max-h-screen py-10 text-left">
+        
         <AnimatePresence>
           {emailSent && (
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-blue-600 text-white p-6 rounded-[2.5rem] shadow-xl mb-4 relative overflow-hidden">
               <div className="flex items-start gap-4">
-                <Send size={20} className="shrink-0" />
+                <div className="bg-white/20 p-2 rounded-xl">
+                  <Send size={20} className="shrink-0" />
+                </div>
                 <div className="space-y-1">
                   <p className="font-black uppercase italic text-xs leading-none">Ação Necessária</p>
                   <p className="text-[9px] font-bold uppercase opacity-90 leading-tight">
-                    Enviamos um link de validação. Verifique sua caixa de entrada e <b>OBRIGATORIAMENTE</b> a pasta de <b>SPAM</b>.
+                    Enviamos um link de validação. Verifique sua caixa de entrada e <b>OBRIGATORIAMENTE</b> a pasta de <b>SPAM / LIXO ELETRÔNICO</b>.
                   </p>
                 </div>
               </div>
-              <button onClick={() => { setEmailSent(false); setAuthMode('login'); }} className="mt-4 w-full bg-white text-blue-600 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest transition-all">Já validei o e-mail</button>
+              <button onClick={() => { setEmailSent(false); setAuthMode('login'); }} className="mt-4 w-full bg-white text-blue-600 hover:bg-slate-100 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest transition-all">Já validei o e-mail</button>
             </motion.div>
           )}
         </AnimatePresence>
 
         <div className="space-y-4 mb-12 text-center">
-          <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">Contador de</h2>
-          <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaios Musicais</h2>
+          <div className="text-center space-y-2 pt-4">
+            <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">Contador de</h2>
+            <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaios Musicais</h2>
+          </div>
         </div>
 
         <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-white/20 relative overflow-hidden">
@@ -180,6 +209,7 @@ const LoginPage = ({
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><User size={10} /> Nome Completo</label>
                   <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none uppercase" type="text" value={userName} onChange={e => setUserName(e.target.value)} required autoComplete="name" />
                 </div>
+
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Globe size={10} /> Regional</label>
                   <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase outline-none" value={selectedRegionalId} onChange={e => { setSelectedRegionalId(e.target.value); setSelectedCityId(''); setSelectedChurch(null); }} required>
@@ -187,6 +217,7 @@ const LoginPage = ({
                     {regionais.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
                   </select>
                 </div>
+
                 {selectedRegionalId && (
                   <div className="space-y-1.5 animate-in">
                     <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><MapPin size={10} /> Cidade</label>
@@ -196,6 +227,7 @@ const LoginPage = ({
                     </select>
                   </div>
                 )}
+
                 {selectedCityId && (
                   <div className="space-y-1.5 animate-in">
                     <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><ShieldCheck size={10} /> Localidade</label>
@@ -205,6 +237,7 @@ const LoginPage = ({
                     </select>
                   </div>
                 )}
+                
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Briefcase size={10} /> Função / Cargo</label>
                   <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase outline-none" value={userRole} onChange={e => setUserRole(e.target.value)} required>
@@ -214,14 +247,24 @@ const LoginPage = ({
                 </div>
               </div>
             )}
+
             <div className="space-y-1.5">
               <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Mail size={10} /> E-mail Oficial</label>
               <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
             </div>
+
             <div className="space-y-1.5">
               <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Lock size={10} /> Senha</label>
-              <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none" type="password" value={pass} onChange={e => setPass(e.target.value)} required autoComplete={authMode === 'login' ? "current-password" : "new-password"} />
+              <input 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none" 
+                type="password" 
+                value={pass} 
+                onChange={e => setPass(e.target.value)} 
+                required 
+                autoComplete={authMode === 'login' ? "current-password" : "new-password"} 
+              />
             </div>
+
             <button disabled={loading} type="submit" className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-[0.2em] shadow-xl active:scale-95 transition-all mt-6 flex justify-center items-center gap-3">
               {loading ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : (
                 <><LogIn size={16} /> {authMode === 'login' ? 'Entrar no Sistema' : 'Enviar Cadastro'}</>
@@ -229,6 +272,7 @@ const LoginPage = ({
             </button>
           </form>
 
+          {/* AJUSTE CRÍTICO: setAuthMode garantido pela verificação de tipo */}
           <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => typeof setAuthMode === 'function' && setAuthMode(authMode === 'login' ? 'register' : 'login')}>
             {authMode === 'login' ? 'Não tem conta? Solicite Acesso' : 'Já possui conta? Faça Login'}
           </button>

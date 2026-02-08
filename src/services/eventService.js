@@ -1,5 +1,5 @@
 import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
-import { deleteField, arrayUnion } from "firebase/firestore";
+import { deleteField, arrayUnion, increment } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
@@ -103,6 +103,7 @@ export const eventService = {
 
   /**
    * Atualiza a contagem na COLEÇÃO GLOBAL
+   * v4.0 - Blindagem Atômica: Implementado 'increment' para evitar perda de dados por concorrência
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
     if (!eventId || !instId) {
@@ -111,7 +112,7 @@ export const eventService = {
     }
 
     const eventRef = doc(db, 'events_global', eventId);
-    const val = Math.max(0, parseInt(value) || 0);
+    const val = parseInt(value) || 0;
     const timestamp = Date.now();
     
     const logEntry = {
@@ -124,11 +125,13 @@ export const eventService = {
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Usamos um getDoc para garantir que não sobrescrevemos a "sessão" ativa de outros
+      // Capturamos o estado atual apenas para o log de histórico (Auditoria)
       const snap = await getDoc(eventRef);
       if (!snap.exists()) return;
 
       const currentInstData = snap.data()?.counts?.[instId] || {};
+      const oldValue = parseInt(currentInstData[fieldToUpdate]) || 0;
+      const diferenca = val - oldValue; // Calculamos quanto aumentou ou diminuiu
       
       // Histórico rotativo (mantém as últimas 10 alterações para auditoria)
       let history = currentInstData.history || [];
@@ -144,12 +147,13 @@ export const eventService = {
 
       if (customName) baseUpdate.name = customName;
 
+      // BLINDAGEM CRÍTICA: O uso de increment() garante que a soma seja feita no servidor
       await updateDoc(eventRef, { 
-        [`counts.${instId}`]: { 
-          ...currentInstData,
-          ...baseUpdate,
-          [fieldToUpdate]: val 
-        } 
+        [`counts.${instId}.lastEditBy`]: baseUpdate.lastEditBy,
+        [`counts.${instId}.timestamp`]: baseUpdate.timestamp,
+        [`counts.${instId}.section`]: baseUpdate.section,
+        [`counts.${instId}.history`]: baseUpdate.history,
+        [`counts.${instId}.${fieldToUpdate}`]: increment(diferenca)
       });
     } catch (e) {
       console.error("Erro ao atualizar contagem:", e);

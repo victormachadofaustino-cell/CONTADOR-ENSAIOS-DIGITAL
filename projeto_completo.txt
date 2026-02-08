@@ -12739,7 +12739,7 @@ const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora'
 
 function App() {
   // INTEGRAÇÃO: Consumindo o GPS Global diretamente no App
-  const { userData: authContextData } = useAuth();
+  const { userData: authContextData, loading: authContextLoading } = useAuth();
   
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
@@ -12822,9 +12822,27 @@ function App() {
   useEffect(() => {
     let unsubSnap = null;
     const unsubAuth = onAuthStateChanged(auth, u => {
+      
+      // TRAVA DE SEGURANÇA v2.2: Se o e-mail não for verificado, nem tenta sincronizar jurisdição.
+      // Isso mata o estado de "loading" infinito e manda para a LoginPage.
+      if (u && !u.emailVerified) {
+        setUser(null);
+        setUserData(null);
+        setView('login');
+        return;
+      }
+
       setUser(u);
+
       if (u) {
+        // Se estiver logado, busca os "poderes" dele no banco de dados
         unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
+          // Proteção extra contra e-mail não verificado durante a escuta
+          if (!auth.currentUser || !auth.currentUser.emailVerified) {
+             setView('login');
+             return;
+          }
+
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUserData({ ...data, uid: u.uid, id: u.uid });
@@ -12859,6 +12877,7 @@ function App() {
               setActiveRegionalName(data.regionalNome || data.regional || "Regional");
             }
             
+            // Define se vai para o lobby ou para a tela de instruções de aprovação
             setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
           } else { 
             setView('login'); 
@@ -12883,7 +12902,8 @@ function App() {
   }, []); 
 
   useEffect(() => {
-    if (!user?.uid || !comumIdEfetivo || !(authContextData || userData)) return;
+    // Só sincroniza eventos se o usuário estiver aprovado e verificado
+    if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !(authContextData || userData)) return;
 
     setEvents([]); 
 
@@ -12907,15 +12927,37 @@ function App() {
     return () => unsub();
   }, [comumIdEfetivo, user?.uid, level]); 
 
-  if (view === 'loading') return <div className="h-dvh flex items-center justify-center bg-[#F1F5F9] font-black text-slate-950 animate-pulse uppercase text-[10px]">Sincronizando Jurisdição...</div>;
+  // --- TRATAMENTO VISUAL DE CARREGAMENTO ---
+  if (view === 'loading') {
+    return (
+      <div className="h-dvh flex flex-col items-center justify-center bg-[#F1F5F9] p-8 text-center space-y-4">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-950 rounded-full animate-spin" />
+        <p className="font-black text-slate-950 uppercase text-[10px] tracking-widest italic">Sincronizando Jurisdição...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left">
       <Toaster position="top-center" />
       <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
 
-      {view === 'login' ? (
-        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData || userData} />
+      {/* AJUSTE CRÍTICO: Unificação da LoginPage para Login e Espera de Aprovação */}
+      {(view === 'login' || view === 'waiting-approval') ? (
+        <LoginPage 
+          authMode={authMode} 
+          setAuthMode={setAuthMode} 
+          email={email} 
+          setEmail={setEmail} 
+          pass={pass} 
+          setPass={setPass} 
+          userName={userName} 
+          setUserName={setUserName} 
+          userRole={userRole} 
+          setUserRole={setUserRole} 
+          cargosDinamicos={cargosDinamicos} 
+          userData={authContextData || userData} 
+        />
       ) : view === 'lobby' ? (
         <>
           <Header userData={authContextData || { ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 
@@ -13036,590 +13078,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 --- FILE:  ---
 
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
-
-
---- FILE:  ---
-
-import React from 'react';
-import { Lock, RotateCcw } from 'lucide-react';
-import { Modal } from './AtaUIComponents';
-
-/**
- * AtaLacreStatus v1.0
- * Módulo de governança para fechamento e reabertura de atas.
- * Gerencia as travas de edição e modais de confirmação de segurança.
- */
-const AtaLacreStatus = ({ 
-  isClosed, 
-  isGemLocal, 
-  isComissao, 
-  loading, 
-  showConfirmLock, 
-  setShowConfirmLock, 
-  showConfirmReopen, 
-  setShowConfirmReopen, 
-  saveStatus 
-}) => {
-  return (
-    <div className="pt-12 px-2 pb-10">
-      {/* 1. ESTADO DE CARREGAMENTO (Previne cliques duplos durante a sincronização) */}
-      {loading ? (
-        <div className="w-full py-7 text-center font-black text-slate-300 uppercase text-[8px] animate-pulse italic tracking-widest">
-          Sincronizando Status do Ensaio...
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {/* 2. BOTÃO DE LACRE (Disponível para GEM Local ou Superior) */}
-          {!isClosed ? (
-            isGemLocal && (
-              <button 
-                onClick={() => setShowConfirmLock(true)} 
-                className="w-full bg-slate-950 text-white py-7 rounded-[3rem] font-black uppercase italic tracking-[0.2em] shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all border border-white/10 text-xs hover:bg-slate-900"
-              >
-                <Lock size={22} strokeWidth={2.5} /> Lacrar Ensaio
-              </button>
-            )
-          ) : (
-            /* 3. BOTÃO DE REABERTURA (Restrito ao nível Comissão ou Master) */
-            isComissao && (
-              <button 
-                onClick={() => setShowConfirmReopen(true)} 
-                className="w-full bg-blue-50 text-blue-800 py-7 rounded-[3rem] font-black uppercase italic tracking-[0.1em] flex items-center justify-center gap-4 border-2 border-blue-100 active:scale-95 transition-all shadow-md text-xs hover:bg-blue-100"
-              >
-                <RotateCcw size={22} strokeWidth={2.5} /> Reabrir Ensaio
-              </button>
-            )
-          )}
-        </div>
-      )}
-
-      {/* 4. MODAIS DE CONFIRMAÇÃO DE GOVERNANÇA */}
-      {showConfirmLock && (
-        <Modal 
-          title="Confirmar Lacre?" 
-          icon={<Lock size={40}/>} 
-          confirmLabel="Sim, Lacrar Agora" 
-          onConfirm={() => { 
-            saveStatus('closed'); 
-            setShowConfirmLock(false); 
-          }} 
-          onCancel={() => setShowConfirmLock(false)}
-        >
-          Esta ação congela os dados para o Dashboard Regional e encerra todas as sessões de contagem ativa para este ensaio.
-        </Modal>
-      )}
-
-      {showConfirmReopen && (
-        <Modal 
-          title="Reabrir Ensaio?" 
-          icon={<RotateCcw size={40}/>} 
-          confirmLabel="Sim, Reabrir" 
-          onConfirm={() => { 
-            saveStatus('open'); 
-            setShowConfirmReopen(false); 
-          }} 
-          onCancel={() => setShowConfirmReopen(false)}
-        >
-          O lacre será removido e a edição voltará a ficar disponível para os encarregados locais e examinadoras autorizadas.
-        </Modal>
-      )}
-    </div>
-  );
-};
-
-export default AtaLacreStatus;
-
-
---- FILE:  ---
-
-import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
-import { Field, Select } from './AtaUIComponents';
-
-/**
- * AtaLiturgia v1.0
- * Módulo especializado no registro dos condutores e hinos.
- * Aplica o conceito de expansão dinâmica para nomes longos.
- */
-const AtaLiturgia = ({ 
-  ataData, 
-  handleChange, 
-  isInputDisabled, 
-  referenciaMinisterio, 
-  handleHinoChange 
-}) => {
-  return (
-    <div className="space-y-6">
-      {/* BLOCO: ATENDIMENTO E ORAÇÕES */}
-      <div className="grid grid-cols-1 gap-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field 
-            label="Atendimento" 
-            val={ataData.atendimentoNome} 
-            disabled={isInputDisabled} 
-            onChange={v => handleChange({...ataData, atendimentoNome: v})} 
-          />
-          <Select 
-            label="Ministério / Cargo" 
-            val={ataData.atendimentoMin} 
-            options={referenciaMinisterio} 
-            disabled={isInputDisabled} 
-            onChange={v => handleChange({...ataData, atendimentoMin: v})} 
-          />
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
-          <Field 
-            label="Oração Abertura" 
-            val={ataData.oracaoAberturaNome} 
-            disabled={isInputDisabled} 
-            onChange={v => handleChange({...ataData, oracaoAberturaNome: v})} 
-          />
-          <Select 
-            label="Ministério / Cargo" 
-            val={ataData.oracaoAberturaMin} 
-            options={referenciaMinisterio} 
-            disabled={isInputDisabled} 
-            onChange={v => handleChange({...ataData, oracaoAberturaMin: v})} 
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
-          <Field 
-            label="Oração Encerramento" 
-            val={ataData.ultimaOracaoNome} 
-            disabled={isInputDisabled} 
-            onChange={v => handleChange({...ataData, ultimaOracaoNome: v})} 
-          />
-          <Select 
-            label="Ministério / Cargo" 
-            val={ataData.ultimaOracaoMin} 
-            options={referenciaMinisterio} 
-            disabled={isInputDisabled} 
-            onChange={v => handleChange({...ataData, ultimaOracaoMin: v})} 
-          />
-        </div>
-      </div>
-
-      {/* BLOCO: PARTES DO ENSAIO (DINÂMICO) */}
-      <div className="space-y-4">
-        {(ataData.partes || []).map((parte, pIdx) => (
-          <div key={pIdx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative animate-premium">
-            <div className="flex justify-between items-center mb-6">
-              <h4 className="font-black italic uppercase text-[10px] tracking-widest text-blue-600">
-                {parte.label}
-              </h4>
-              {!isInputDisabled && pIdx > 1 && (
-                <button 
-                  onClick={() => {
-                    const np = [...ataData.partes];
-                    np.splice(pIdx, 1);
-                    handleChange({...ataData, partes: np});
-                  }} 
-                  className="bg-red-50 text-red-500 p-2 rounded-xl active:scale-90 transition-transform"
-                >
-                  <Trash2 size={14}/>
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <Field 
-                label="Condutor" 
-                val={parte.nome} 
-                disabled={isInputDisabled} 
-                onChange={v => {
-                  const np = [...ataData.partes];
-                  np[pIdx].nome = v;
-                  handleChange({...ataData, partes: np});
-                }} 
-              />
-              <Select 
-                label="Ministério / Cargo" 
-                val={parte.min} 
-                options={referenciaMinisterio} 
-                disabled={isInputDisabled} 
-                onChange={v => {
-                  const np = [...ataData.partes];
-                  np[pIdx].min = v;
-                  handleChange({...ataData, partes: np});
-                }} 
-              />
-            </div>
-
-            {/* SELEÇÃO DE HINOS (CONCEITO CHIPS ADAPTÁVEIS) */}
-            <div className="flex flex-wrap gap-3 p-4 bg-slate-50 rounded-3xl border border-slate-100">
-              {(parte.hinos || []).map((h, hIdx) => (
-                <div key={hIdx} className="relative group">
-                  <input 
-                    type="text" 
-                    disabled={isInputDisabled} 
-                    className="w-14 h-14 bg-white rounded-2xl text-center font-black text-blue-800 text-sm outline-none border-2 border-slate-200 focus:border-blue-500 transition-all shadow-sm disabled:opacity-50" 
-                    value={h || ''} 
-                    placeholder="-" 
-                    onChange={e => handleHinoChange(pIdx, hIdx, e.target.value)} 
-                  />
-                  {!isInputDisabled && hIdx >= (pIdx < 2 ? 5 : 3) && (
-                    <button 
-                      onClick={() => {
-                        const np = [...ataData.partes];
-                        np[pIdx].hinos.splice(hIdx, 1);
-                        handleChange({...ataData, partes: np});
-                      }} 
-                      className="absolute -top-2 -right-2 bg-slate-950 text-white w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
-              
-              {!isInputDisabled && (
-                <button 
-                  onClick={() => {
-                    const np = [...ataData.partes];
-                    np[pIdx].hinos = [...(np[pIdx].hinos || []), ''];
-                    handleChange({...ataData, partes: np});
-                  }} 
-                  className="w-14 h-14 border-2 border-dashed border-slate-200 rounded-2xl text-slate-300 flex items-center justify-center active:scale-95 transition-all hover:bg-white hover:text-blue-500 hover:border-blue-200"
-                >
-                  <Plus size={20}/>
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {!isInputDisabled && (
-          <button 
-            onClick={() => {
-              const np = [...(ataData.partes || [])];
-              np.push({ 
-                label: `${np.length + 1}ª Parte`, 
-                nome: '', 
-                min: '', 
-                hinos: ['', '', ''] 
-              });
-              handleChange({ ...ataData, partes: np });
-            }} 
-            className="w-full py-5 bg-white border-2 border-dashed border-blue-100 rounded-[2.5rem] text-blue-600 font-black uppercase text-[9px] italic flex items-center justify-center gap-3 active:scale-95 transition-all hover:bg-blue-50/50"
-          >
-            <Plus size={16}/> Incluir Nova Parte
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default AtaLiturgia;
-
-
---- FILE:  ---
-
-import React from 'react';
-import { ShieldCheck } from 'lucide-react';
-
-/**
- * AtaMinisterioLocal v1.0
- * Módulo para controle de presença do ministério da comum.
- * Foco: Performance de clique e feedback visual imediato.
- */
-const AtaMinisterioLocal = ({ 
-  localMinisterio, 
-  presencaLocal, 
-  isInputDisabled, 
-  togglePresencaLocal 
-}) => {
-  return (
-    <div className="grid grid-cols-1 gap-2.5">
-      {localMinisterio.length === 0 ? (
-        <div className="p-8 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
-          <p className="text-[9px] font-black text-slate-400 uppercase italic">
-            Nenhum ministério cadastrado nesta localidade.
-          </p>
-        </div>
-      ) : (
-        localMinisterio.map((m, i) => {
-          const estaPresente = presencaLocal?.includes(m.name);
-          
-          return (
-            <button 
-              key={m.id || i} 
-              disabled={isInputDisabled} 
-              onClick={() => togglePresencaLocal(m)} 
-              className={`flex justify-between items-center p-5 rounded-3xl border transition-all duration-300 active:scale-[0.98] ${
-                estaPresente 
-                  ? 'bg-slate-900 text-white border-slate-950 shadow-lg' 
-                  : 'bg-white border-slate-100 text-slate-700 hover:border-blue-100'
-              } disabled:opacity-50`}
-            >
-              <div className="text-left leading-none">
-                {/* NOME DO IRMÃO (Sempre em destaque) */}
-                <p className="text-xs font-black uppercase italic tracking-tight leading-none">
-                  {m.name}
-                </p>
-                
-                {/* CARGO / MINISTÉRIO */}
-                <p className={`text-[9px] font-bold mt-2 uppercase tracking-widest leading-none ${
-                  estaPresente ? 'text-blue-400' : 'text-slate-400'
-                }`}>
-                  {m.role}
-                </p>
-              </div>
-
-              {/* INDICADOR VISUAL DE PRESENÇA (Escudo com Check) */}
-              <div className={`transition-all duration-500 ${estaPresente ? 'opacity-100 scale-110' : 'opacity-0 scale-50'}`}>
-                <ShieldCheck size={20} className="text-blue-400" />
-              </div>
-            </button>
-          );
-        })
-      )}
-    </div>
-  );
-};
-
-export default AtaMinisterioLocal;
-
-
---- FILE:  ---
-
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, X, User, Briefcase } from 'lucide-react';
-
-/**
- * AtaUIComponents v1.0
- * Biblioteca de componentes padronizados para o módulo de Ata.
- * Foco: Expansão vertical dinâmica para evitar corte de textos.
- */
-
-// 1. CAMPO DE TEXTO DINÂMICO (Resolve o problema de palavras cortadas)
-export const Field = ({ label, val, onChange, disabled, icon, placeholder = "Preencher..." }) => (
-  <div className="flex flex-col flex-1 text-slate-950 w-full group">
-    <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5 transition-colors group-focus-within:text-blue-600">
-      {icon || <User size={10}/>} {label}
-    </label>
-    <div className="relative flex w-full">
-      {/* CONCEITO UX: Utilizamos um textarea com altura automática simulada ou 
-          um input com padding generoso e largura total para permitir visualização.
-      */}
-      <input 
-        type="text" 
-        disabled={disabled} 
-        placeholder={placeholder}
-        className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xs outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all uppercase shadow-inner italic disabled:opacity-40 truncate focus:whitespace-normal" 
-        value={val || ''} 
-        onChange={e => onChange(e.target.value.toUpperCase())} 
-      />
-    </div>
-  </div>
-);
-
-// 2. SELETOR PADRONIZADO
-export const Select = ({ label, val, options, onChange, disabled }) => (
-  <div className="flex flex-col flex-1 text-slate-950 w-full">
-    <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5">
-      <Briefcase size={10}/> {label}
-    </label>
-    <div className="relative">
-      <select 
-        disabled={disabled} 
-        className="w-full bg-slate-50 p-4 rounded-2xl font-black text-[10px] outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all shadow-inner disabled:opacity-40 appearance-none pr-10" 
-        value={val || ''} 
-        onChange={e => onChange(e.target.value)}
-      >
-        <option value="">SELECIONAR</option>
-        {options.map((o, i) => <option key={i} value={o}>{o}</option>)}
-      </select>
-      <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-    </div>
-  </div>
-);
-
-// 3. ACORDEÃO (Container dos módulos)
-export const Accordion = ({ title, icon, badge, children, isOpen, onClick }) => (
-  <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mb-4 transition-all hover:border-slate-200">
-    <button 
-      onClick={onClick} 
-      className="w-full p-7 flex justify-between items-center active:bg-slate-50 transition-all outline-none"
-    >
-      <div className="flex items-center gap-4 text-slate-950">
-        <span className="text-2xl">{icon}</span>
-        <div className="text-left leading-none">
-          <h3 className="font-[900] italic uppercase text-sm tracking-tight">{title}</h3>
-          {badge && (
-            <span className="text-[8px] font-black text-blue-600 uppercase mt-2 inline-block tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">
-              {badge} Registros
-            </span>
-          )}
-        </div>
-      </div>
-      <ChevronDown 
-        size={18} 
-        className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180 text-blue-600' : ''}`} 
-      />
-    </button>
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div 
-          initial={{ height: 0, opacity: 0 }} 
-          animate={{ height: 'auto', opacity: 1 }} 
-          exit={{ height: 0, opacity: 0 }} 
-          className="overflow-hidden"
-        >
-          <div className="p-6 pt-0 border-t border-slate-50/50">{children}</div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  </div>
-);
-
-// 4. MODAL GENÉRICO (Para Avisos e Exclusões)
-export const Modal = ({ title, children, icon, confirmLabel, onConfirm, onCancel, danger }) => (
-  <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[300] flex items-center justify-center p-6 text-left">
-    <motion.div 
-      initial={{ scale: 0.9, opacity: 0 }} 
-      animate={{ scale: 1, opacity: 1 }} 
-      className="bg-white w-full max-w-[340px] rounded-[3rem] p-10 shadow-2xl relative border border-white/20"
-    >
-      <div className={`w-20 h-20 mx-auto mb-8 rounded-full flex items-center justify-center shadow-inner ${
-        danger ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-600'
-      }`}>
-        {icon}
-      </div>
-      <h3 className="text-xl font-[900] text-slate-950 uppercase italic mb-4 tracking-tighter leading-none text-center">
-        {title}
-      </h3>
-      <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed mb-10 text-center italic">
-        {children}
-      </p>
-      <div className="space-y-3">
-        <button 
-          onClick={onConfirm} 
-          className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg transition-all ${
-            danger ? 'bg-red-600 text-white shadow-red-100' : 'bg-slate-950 text-white'
-          }`}
-        >
-          {confirmLabel}
-        </button>
-        <button 
-          onClick={onCancel} 
-          className="w-full py-3 text-slate-300 font-black uppercase text-[9px] tracking-widest hover:text-slate-400"
-        >
-          Voltar
-        </button>
-      </div>
-    </motion.div>
-  </div>
-);
-
-
---- FILE:  ---
-
-import React from 'react';
-import { UserPlus, Trash2, MapPin, Phone, Calendar, Clock } from 'lucide-react';
-import { toTitleCase } from '../../../services/pdfEventService'; // Reaproveitando lógica de formatação
-
-/**
- * AtaVisitantes v1.0
- * Módulo de gestão de visitas com layout em Cards Individuais.
- * Resolve problemas de espaço vertical e legibilidade em dispositivos móveis.
- */
-const AtaVisitantes = ({ 
-  visitantes, 
-  isInputDisabled, 
-  isClosed, 
-  handleOpenVisitaModal, 
-  setVisitaToDelete 
-}) => {
-  return (
-    <div className="space-y-4">
-      {/* BOTÃO DE ADIÇÃO (Visível apenas para editores autorizados) */}
-      {!isInputDisabled && (
-        <button 
-          onClick={() => handleOpenVisitaModal()} 
-          className="w-full py-6 bg-slate-950 text-white rounded-[2.5rem] font-black uppercase text-[10px] italic active:scale-95 transition-all flex items-center justify-center gap-3 shadow-xl hover:bg-slate-900"
-        >
-          <UserPlus size={18}/> Adicionar Visitante
-        </button>
-      )}
-
-      {/* LISTAGEM EM CARDS (Conceito Vertical Stacking) */}
-      <div className="space-y-3">
-        {(visitantes || []).length === 0 ? (
-          <div className="py-10 text-center text-slate-300 font-black uppercase italic text-[10px] bg-white rounded-[2rem] border border-dashed border-slate-200">
-            Nenhum visitante registrado.
-          </div>
-        ) : (
-          visitantes.map((v, idx) => (
-            <div 
-              key={v.id || idx} 
-              className="flex justify-between items-center p-5 bg-white rounded-[2.2rem] border border-slate-100 shadow-sm active:scale-[0.98] transition-all group hover:border-blue-100"
-              onClick={() => handleOpenVisitaModal(v, idx)}
-            >
-              <div className="text-left flex-1">
-                {/* LINHA 1: NOME (Destaque Principal) */}
-                <p className="text-sm font-[900] uppercase text-slate-950 italic leading-tight mb-1">
-                  {v.nome}
-                </p>
-
-                {/* LINHA 2: MINISTÉRIO E INSTRUMENTO */}
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
-                  <span className="text-[10px] font-black text-blue-600 uppercase italic leading-none">
-                    {v.min}
-                  </span>
-                  <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                  <span className="text-[10px] font-black text-slate-500 uppercase italic leading-none">
-                    {v.inst || 'Instrumento N/I'}
-                  </span>
-                </div>
-
-                {/* LINHA 3: LOCALIZAÇÃO GEOGRÁFICA */}
-                <p className="text-[9px] font-bold text-slate-400 mt-2 flex items-center gap-1.5 uppercase leading-none">
-                  <MapPin size={10} className="text-slate-300 shrink-0"/> 
-                  <span className="truncate">{v.bairro} ({v.cidadeUf})</span>
-                </p>
-
-                {/* LINHA 4: METADADOS (CONTATO E ESCALA) */}
-                {(v.dataEnsaio || v.contato) && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {v.contato && (
-                      <span className="text-[7px] font-black bg-slate-100 px-2 py-1 rounded-lg text-slate-500 flex items-center gap-1 uppercase border border-slate-200/50">
-                        <Phone size={8}/> {v.contato}
-                      </span>
-                    )}
-                    {v.dataEnsaio && (
-                      <span className="text-[7px] font-black bg-blue-50 px-2 py-1 rounded-lg text-blue-400 flex items-center gap-1 uppercase border border-blue-100/50">
-                        <Calendar size={8}/> {v.dataEnsaio} {v.hora && <><span className="mx-0.5">•</span> <Clock size={8}/> {v.hora}</>}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* BOTÃO DE EXCLUSÃO (Com área de toque otimizada) */}
-              {!isInputDisabled && (
-                <button 
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    setVisitaToDelete(v.id); 
-                  }} 
-                  className="p-3 text-slate-200 hover:text-red-500 active:bg-red-50 rounded-2xl transition-all ml-2"
-                >
-                  <Trash2 size={20}/>
-                </button>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default AtaVisitantes;
 
 
 --- FILE:  ---
@@ -14325,13 +13783,27 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Fica ouvindo se o usuário está logado ou não
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      
+      // TRAVA DE SEGURANÇA v2.2: Impede a entrada reativa se o e-mail não estiver verificado
+      // Isso evita que a aprovação manual do Master "pule" a validação do e-mail.
+      // Se o e-mail não for verificado, forçamos o estado para null imediatamente.
+      if (currentUser && !currentUser.emailVerified) {
+        setUser(null);
+        setUserData(null);
+        setLoading(false);
+        return;
+      }
+
       setUser(currentUser);
       
       if (currentUser) {
-        // Se estiver logado, busca os "poderes" dele no banco de dados
+        // Se estiver logado e verificado, busca os "poderes" dele no banco de dados
         const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
-          // Proteção contra processamento de snapshot em estado de logout iminente
-          if (!auth.currentUser) return;
+          // Proteção contra processamento de snapshot em estado de logout iminente ou e-mail não verificado
+          if (!auth.currentUser || !auth.currentUser.emailVerified) {
+            setLoading(false);
+            return;
+          }
 
           if (docSnap.exists()) {
             const data = docSnap.data();
@@ -14429,7 +13901,7 @@ export const AuthProvider = ({ children }) => {
     user,
     userData,
     loading,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && user.emailVerified === true, // Só é autenticado se validou e-mail explicitamente
     setContext, 
   };
 
@@ -14946,7 +14418,6 @@ const LoginPage = ({
       if (authMode === 'login') {
         await authService.login(email, pass);
       } else {
-        // VALIDAÇÕES DE REGISTRO NEUTRO (Sem Jundiaí Fixo)
         if (!userName.trim()) throw new Error("Informe seu nome");
         if (pass.length < 6) throw new Error("Mínimo 6 caracteres na senha");
         if (!selectedRegionalId) throw new Error("Selecione sua Regional");
@@ -14961,40 +14432,61 @@ const LoginPage = ({
         });
         
         setEmailSent(true);
-        toast.success("Cadastro realizado!");
+        toast.success("Solicitação enviada!");
       }
     } catch (err) {
-      toast.error(err.message === 'auth/invalid-credential' ? "E-mail ou senha incorretos" : err.message);
+      const msg = err.message || "Erro ao processar solicitação";
+      if (msg.includes('auth/invalid-credential')) {
+        toast.error("E-mail ou senha incorretos.");
+      } else {
+        toast.error(msg);
+      }
     } finally { setLoading(false); }
   };
 
+  // --- LÓGICA DE AVISO INTELIGENTE DE HIERARQUIA v2.2 ---
+  const getProximoPasso = () => {
+    const cargo = userData?.role || '';
+    if (['Músico', 'Organista', 'Candidato', 'Instrutor'].includes(cargo)) {
+      return "Para liberar seu acesso básico, procure o GEM (Encarregado Local ou Examinadora) da sua Comum.";
+    }
+    if (['Encarregado Local', 'Examinadora'].includes(cargo)) {
+      return "Para validar seu perfil de gestor local, contate o Encarregado Regional da sua Cidade.";
+    }
+    if (cargo === 'Encarregado Regional') {
+      return "Sua função requer habilitação da Comissão Regional para supervisão de cidade.";
+    }
+    if (cargo.includes('Secretário') || cargo.includes('Comissão')) {
+      return "Contate o Administrador Master para liberar suas credenciais de Comissão.";
+    }
+    return "Contate seu Secretário Local ou Regional para aprovar seu perfil.";
+  };
+
   // --- TELA DE BLOQUEIO DE SEGURANÇA (AGUARDANDO APROVAÇÃO) ---
+  // Esta tela agora é tratada como um retorno independente para evitar conflitos de renderização
   if (userData && !userData.approved && userData.emailVerified) {
     return (
       <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[3rem] p-10 shadow-2xl border border-white max-w-sm w-full space-y-8 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-2 bg-amber-500" />
-          
           <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <Clock size={40} className="animate-pulse" />
           </div>
-
           <div className="space-y-4">
             <div className="space-y-1">
-              <h3 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950">Aguardando Aprovação</h3>
-              <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest italic">Status: E-mail Validado</p>
+              <h3 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">Aguardando Aprovação</h3>
+              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest italic flex items-center justify-center gap-1">
+                <ShieldCheck size={10} /> Status: E-mail Validado
+              </p>
             </div>
-            
             <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed">
-              Sua conta foi criada com sucesso. Agora, aguarde a liberação pela <span className="text-slate-950">Zeladoria Musical</span>.
+              Sua conta foi criada. Agora, sua solicitação deve seguir o fluxo de aprovação da <span className="text-slate-950">Zeladoria Musical</span>.
             </p>
           </div>
-
           <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col gap-2">
-            <p className="text-[10px] font-black text-slate-900 uppercase italic leading-tight">Próximo Passo:</p>
-            <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Contate seu Secretário Local ou Regional para aprovar seu perfil.</p>
+            <p className="text-[10px] font-black text-slate-950 uppercase italic leading-tight">Instrução de Acesso:</p>
+            <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight italic">{getProximoPasso()}</p>
           </div>
-
           <button 
             onClick={() => authService.logout()}
             className="flex items-center justify-center gap-2 mx-auto text-[10px] font-black text-red-500 uppercase tracking-widest hover:bg-red-50 px-6 py-3 rounded-2xl transition-all active:scale-95"
@@ -15006,6 +14498,7 @@ const LoginPage = ({
     );
   }
 
+  // --- RENDERIZAÇÃO PADRÃO (LOGIN E REGISTRO) ---
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center overflow-hidden bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
       <div className="w-full max-w-md space-y-8 animate-premium relative z-10 overflow-y-auto no-scrollbar max-h-screen py-10 text-left">
@@ -15014,18 +14507,21 @@ const LoginPage = ({
           {emailSent && (
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-blue-600 text-white p-6 rounded-[2.5rem] shadow-xl mb-4 relative overflow-hidden">
               <div className="flex items-start gap-4">
-                <Send size={24} className="shrink-0" />
+                <div className="bg-white/20 p-2 rounded-xl">
+                  <Send size={20} className="shrink-0" />
+                </div>
                 <div className="space-y-1">
-                  <p className="font-black uppercase italic text-xs leading-none">Verifique seu e-mail</p>
-                  <p className="text-[9px] font-bold uppercase opacity-80 leading-tight">Enviamos um link de validação. Olhe sua caixa de entrada e também o <b>SPAM / Lixo Eletrônico</b>.</p>
+                  <p className="font-black uppercase italic text-xs leading-none">Ação Necessária</p>
+                  <p className="text-[9px] font-bold uppercase opacity-90 leading-tight">
+                    Enviamos um link de validação. Verifique sua caixa de entrada e <b>OBRIGATORIAMENTE</b> a pasta de <b>SPAM / LIXO ELETRÔNICO</b>.
+                  </p>
                 </div>
               </div>
-              <button onClick={() => { setEmailSent(false); setAuthMode('login'); }} className="mt-4 w-full bg-white/20 hover:bg-white/30 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest transition-all">Ir para Login</button>
+              <button onClick={() => { setEmailSent(false); setAuthMode('login'); }} className="mt-4 w-full bg-white text-blue-600 hover:bg-slate-100 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest transition-all">Já validei o e-mail</button>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Cabeçalho de Títulos centralizados */}
         <div className="space-y-4 mb-12 text-center">
           <div className="text-center space-y-2 pt-4">
             <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">Contador de</h2>
@@ -15049,8 +14545,8 @@ const LoginPage = ({
 
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Globe size={10} /> Regional</label>
-                  <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase" value={selectedRegionalId} onChange={e => { setSelectedRegionalId(e.target.value); setSelectedCityId(''); setSelectedChurch(null); }} required>
-                    <option value="">Selecione a Regional...</option>
+                  <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase outline-none" value={selectedRegionalId} onChange={e => { setSelectedRegionalId(e.target.value); setSelectedCityId(''); setSelectedChurch(null); }} required>
+                    <option value="">Selecione...</option>
                     {regionais.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
                   </select>
                 </div>
@@ -15058,8 +14554,8 @@ const LoginPage = ({
                 {selectedRegionalId && (
                   <div className="space-y-1.5 animate-in">
                     <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><MapPin size={10} /> Cidade</label>
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase" value={selectedCityId} onChange={e => { setSelectedCityId(e.target.value); setSelectedChurch(null); }} required>
-                      <option value="">Selecione a Cidade...</option>
+                    <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase outline-none" value={selectedCityId} onChange={e => { setSelectedCityId(e.target.value); setSelectedChurch(null); }} required>
+                      <option value="">Selecione...</option>
                       {cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                     </select>
                   </div>
@@ -15068,8 +14564,8 @@ const LoginPage = ({
                 {selectedCityId && (
                   <div className="space-y-1.5 animate-in">
                     <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><ShieldCheck size={10} /> Localidade</label>
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase" value={selectedChurch?.id || ''} onChange={e => setSelectedChurch(igrejasDisponiveis.find(i => i.id === e.target.value))} required>
-                      <option value="">Selecione a Localidade...</option>
+                    <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase outline-none" value={selectedChurch?.id || ''} onChange={e => setSelectedChurch(igrejasDisponiveis.find(i => i.id === e.target.value))} required>
+                      <option value="">Selecione...</option>
                       {igrejasDisponiveis.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
                     </select>
                   </div>
@@ -15077,7 +14573,7 @@ const LoginPage = ({
                 
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><Briefcase size={10} /> Função / Cargo</label>
-                  <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase" value={userRole} onChange={e => setUserRole(e.target.value)} required>
+                  <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 appearance-none uppercase outline-none" value={userRole} onChange={e => setUserRole(e.target.value)} required>
                     <option value="">Selecione o cargo...</option>
                     {listaCargosLocal.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -15109,7 +14605,8 @@ const LoginPage = ({
             </button>
           </form>
 
-          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setEmailSent(false); }}>
+          {/* AJUSTE CRÍTICO: setAuthMode garantido pela verificação de tipo */}
+          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => typeof setAuthMode === 'function' && setAuthMode(authMode === 'login' ? 'register' : 'login')}>
             {authMode === 'login' ? 'Não tem conta? Solicite Acesso' : 'Já possui conta? Faça Login'}
           </button>
         </div>
@@ -15171,7 +14668,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         } 
         else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') {
           totals.organistas += valTotal;
-          totals.examinadoras += parseInt(data.enc) || 0;
+          // REMOVIDO: totals.examinadoras += parseInt(data.enc) para obedecer à regra de pegar apenas da Ata
         } 
         else {
           totals.musicos += valTotal;
@@ -15207,10 +14704,16 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
       lista.forEach(p => {
         const cargo = (p.min || p.role || "");
         if (isVisitante) totals.visitas_total++;
+        
         if (cargo === 'Encarregado Regional') totals.encRegional++;
+        
+        // CORREÇÃO: Examinadoras agora são contadas APENAS aqui (Listas nominais da Ata)
+        if (cargo === 'Examinadora') totals.examinadoras++;
+        
         if (oficio.includes(cargo)) totals.ministerio_oficio++;
       });
     };
+
     processarPessoas(ataData?.visitantes, true);
     processarPessoas(ataData?.presencaLocalFull, false);
 
@@ -15225,9 +14728,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   
   const canExport = isGemLocal;
 
-  // COMPARTILHAMENTO WHATSAPP BLINDADO v1.3
   const handleShareLanche = async () => {
-    // CORREÇÃO: Passando 'stats' como segundo argumento para garantir dados reais no WhatsApp
     const msg = whatsappService.obterTextoAlimentacao(ataData, stats);
     if (navigator.share) {
       try { await navigator.share({ text: msg }); } catch (err) { console.log("Cancelado"); }
@@ -15247,13 +14748,10 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
     }
   };
 
-  // GERAÇÃO DE PDF BLINDADA (Captura endereço real da comum)
   const handleGeneratePDF = async () => {
     const loadingToast = toast.loading("Buscando dados da localidade...");
     try {
-      // CASCATA DE BUSCA DE ID: Essencial para administradores que visualizam outras igrejas
       const comumId = ataData?.comumId || counts?.comumId || userData?.activeComumId || userData?.comumId; 
-      
       if (!comumId) throw new Error("ID da comum não identificado.");
 
       const comumRef = doc(db, 'comuns', comumId);
@@ -15889,11 +15387,11 @@ import {
 import { useAuth } from '../../context/AuthContext';
 
 // Importação dos Componentes Atômicos Refatorados
-import { Accordion, Field, Modal, Select } from './components/AtaUIComponents';
-import AtaLiturgia from './components/AtaLiturgia';
-import AtaVisitantes from './components/AtaVisitantes';
-import AtaMinisterioLocal from './components/AtaMinisterioLocal';
-import AtaLacreStatus from './components/AtaLacreStatus';
+import { Accordion, Field, Modal, Select } from './components/AtaUIComponents.jsx';
+import AtaLiturgia from './components/AtaLiturgia.jsx';
+import AtaVisitantes from './components/AtaVisitantes.jsx';
+import AtaMinisterioLocal from './components/AtaMinisterioLocal.jsx';
+import AtaLacreStatus from './components/AtaLacreStatus.jsx';
 
 const AtaPage = ({ eventId, comumId }) => {
   const { userData } = useAuth();
@@ -15929,7 +15427,7 @@ const AtaPage = ({ eventId, comumId }) => {
   const [visitaToDelete, setVisitaToDelete] = useState(null);
   const [showVisitaModal, setShowVisitaModal] = useState(false);
   
-  const [openSection, setOpenSection] = useState('liturgia'); 
+  const [openSection, setOpenSection] = useState(null); 
   const [editIndex, setEditIndex] = useState(null);
   const saveTimeoutRef = useRef(null);
 
@@ -16010,7 +15508,16 @@ const AtaPage = ({ eventId, comumId }) => {
       if (s.exists()) {
         const eventData = s.data();
         setEventMeta(eventData);
-        if (eventData.ata) setAtaData(eventData.ata);
+        if (eventData.ata) {
+          const loadedAta = { ...eventData.ata };
+          if (!loadedAta.partes || loadedAta.partes.length === 0) {
+            loadedAta.partes = [
+              { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
+              { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
+            ];
+          }
+          setAtaData(loadedAta);
+        }
         setLoading(false);
       }
     });
@@ -16022,14 +15529,25 @@ const AtaPage = ({ eventId, comumId }) => {
     if (isInputDisabled) return;
     let v = val.toUpperCase().trim();
     const np = [...ataData.partes];
+
     if (v === '') { 
       np[pIdx].hinos[hIdx] = ''; 
       return handleChange({ ...ataData, partes: np }); 
     }
-    if (!/^C[1-6]$/.test(v) && !/^\d{1,3}$/.test(v)) return;
-    if (/^\d{1,3}$/.test(v) && parseInt(v) > 480) v = '480';
-    np[pIdx].hinos[hIdx] = v;
-    handleChange({ ...ataData, partes: np });
+
+    if (v.startsWith('C')) {
+      if (/^C[1-6]?$/.test(v)) {
+        np[pIdx].hinos[hIdx] = v;
+        return handleChange({ ...ataData, partes: np });
+      }
+      return;
+    }
+
+    if (/^\d+$/.test(v)) {
+      if (parseInt(v) > 480) return;
+      np[pIdx].hinos[hIdx] = v;
+      return handleChange({ ...ataData, partes: np });
+    }
   };
 
   const handleOpenVisitaModal = (v = null, idx = null) => {
@@ -16059,24 +15577,23 @@ const AtaPage = ({ eventId, comumId }) => {
   if (loading) return <div className="p-20 text-center font-black text-slate-400 animate-pulse text-[10px] uppercase italic tracking-[0.3em]">Sincronizando Ata...</div>;
 
   return (
-    <div className="space-y-4 pb-40 px-2 font-sans text-left bg-gray-50 pt-4 animate-premium">
+    <div className="space-y-3 pb-40 px-2 font-sans text-left bg-gray-50 pt-3 animate-premium">
       
-      {/* 1. STATUS DE AUTORIDADE */}
-      <div className="mx-2 mb-6 flex items-center justify-between bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden text-left">
-        <div className={`absolute left-0 top-0 h-full w-1.5 ${temPermissaoEditar ? 'bg-blue-600' : 'bg-slate-300'}`} />
-        <div className="flex items-center gap-4">
-          <div className={`p-3 rounded-2xl ${temPermissaoEditar ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
-            {isClosed ? <Lock size={20} /> : temPermissaoEditar ? <ShieldCheck size={20} /> : <Info size={20} />}
+      <div className="mx-2 mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden text-left">
+        <div className={`absolute left-0 top-0 h-full w-1 ${temPermissaoEditar ? 'bg-blue-600' : 'bg-slate-300'}`} />
+        <div className="flex items-center gap-3">
+          <div className={`${temPermissaoEditar ? 'text-blue-600' : 'text-slate-400'}`}>
+            {isClosed ? <Lock size={14} /> : temPermissaoEditar ? <ShieldCheck size={14} /> : <Info size={14} />}
           </div>
-          <div className="leading-tight text-left">
-            <p className="text-[7px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1 italic">Governança da Ata</p>
-            <p className="text-xs font-[900] text-slate-950 uppercase italic leading-none">{isClosed ? 'Ata Lacrada' : temPermissaoEditar ? 'Modo de Edição' : 'Visualização'}</p>
-            <p className="text-[8px] font-bold text-blue-600 uppercase mt-1">Localidade: {eventMeta?.comumNome || '---'}</p>
+          <div className="leading-none text-left">
+            <p className="text-[9px] font-black text-slate-950 uppercase italic tracking-tighter">
+              {isClosed ? 'Ata Lacrada' : temPermissaoEditar ? 'Modo de Edição' : 'Visualização'}
+            </p>
+            <p className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">{eventMeta?.comumNome || '---'}</p>
           </div>
         </div>
       </div>
 
-      {/* 2. MÓDULO LITURGIA */}
       <Accordion title="Liturgia do Ensaio" isOpen={openSection === 'liturgia'} onClick={() => setOpenSection(openSection === 'liturgia' ? null : 'liturgia')} icon="🎼">
         <AtaLiturgia 
           ataData={ataData} 
@@ -16087,7 +15604,6 @@ const AtaPage = ({ eventId, comumId }) => {
         />
       </Accordion>
 
-      {/* 3. MÓDULO VISITANTES */}
       <Accordion title="Visitantes" isOpen={openSection === 'visitantes'} onClick={() => setOpenSection(openSection === 'visitantes' ? null : 'visitantes')} icon="🌍" badge={ataData.visitantes?.length || null}>
         <AtaVisitantes 
           visitantes={ataData.visitantes} 
@@ -16098,7 +15614,6 @@ const AtaPage = ({ eventId, comumId }) => {
         />
       </Accordion>
 
-      {/* 4. MÓDULO MINISTÉRIO LOCAL */}
       <Accordion title="Ministério Local" isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={ataData.presencaLocal?.length || null}>
         <AtaMinisterioLocal 
           localMinisterio={localMinisterio} 
@@ -16108,20 +15623,20 @@ const AtaPage = ({ eventId, comumId }) => {
         />
       </Accordion>
 
-      {/* 5. MÓDULO DE LACRE E SEGURANÇA */}
-      <AtaLacreStatus 
-        isClosed={isClosed} 
-        isGemLocal={isGemLocal} 
-        isComissao={isComissao} 
-        loading={loading} 
-        showConfirmLock={showConfirmLock} 
-        setShowConfirmLock={setShowConfirmLock} 
-        showConfirmReopen={showConfirmReopen} 
-        setShowConfirmReopen={setShowConfirmReopen} 
-        saveStatus={saveStatus} 
-      />
+      <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
+        <AtaLacreStatus 
+          isClosed={isClosed} 
+          isGemLocal={isGemLocal} 
+          isComissao={isComissao} 
+          loading={loading} 
+          showConfirmLock={showConfirmLock} 
+          setShowConfirmLock={setShowConfirmLock} 
+          showConfirmReopen={showConfirmReopen} 
+          setShowConfirmReopen={setShowConfirmReopen} 
+          saveStatus={saveStatus} 
+        />
+      </div>
 
-      {/* MODAIS DE APOIO */}
       <AnimatePresence>
         {showVisitaModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">
@@ -18436,13 +17951,19 @@ import {
  */
 export const authService = {
   
-  // Realiza o login do usuário
+  // Realiza o login do usuário com Trava de Segurança em Camadas
   login: async (email, password) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
+    
+    // TRAVA 1: Verificação de E-mail
+    // Se o e-mail não estiver verificado, reenvia o link, desloga e mata o processo.
+    // Isso impede que sessões pendentes fiquem "sincronizando" ou entrem após aprovação manual.
     if (!cred.user.emailVerified) {
       await sendEmailVerification(cred.user);
-      throw new Error("E-mail não verificado. Verifique sua caixa de entrada.");
+      await signOut(auth); // Limpa a sessão pendente no Firebase para evitar "piscadas"
+      throw new Error("ACESSO BLOQUEADO: E-mail não verificado. Verifique sua caixa de entrada e SPAM.");
     }
+    
     return cred.user;
   },
 
@@ -18475,7 +17996,12 @@ export const authService = {
       dbVersion: "2.1-matriz"
     });
 
+    // 3. Envia verificação e força Logout
+    // O usuário não deve "permanecer" logado após o registro se o e-mail não está validado.
+    // Isso garante que ele caia na tela de Login e veja a instrução de validar o e-mail.
     await sendEmailVerification(cred.user);
+    await signOut(auth); 
+
     return cred.user;
   },
 

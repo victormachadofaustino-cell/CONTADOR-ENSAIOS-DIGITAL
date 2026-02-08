@@ -50,9 +50,11 @@ const DashPage = ({ userData }) => {
     if (userData?.activeComumId) setActiveComumId(userData.activeComumId);
   }, [userData?.activeCityId, userData?.activeComumId]);
 
+  // FAXINA DE MEMÓRIA v4.2: Listeners independentes com limpeza obrigatória para evitar aquecimento do dispositivo
   useEffect(() => {
     if (!activeRegionalId) return;
 
+    // 1. Definição do Listener de Igrejas
     const qIgr = (isComissao)
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
       : query(collection(db, 'comuns'), where('cidadeId', '==', userData?.cidadeId));
@@ -60,20 +62,26 @@ const DashPage = ({ userData }) => {
     const unsubIgr = onSnapshot(qIgr, (sIgs) => {
       const igs = sIgs.docs.map(d => ({ id: d.id, nome: d.data().comum, cidadeId: d.data().cidadeId }));
       setListaIgrejas(igs.sort((a, b) => a.nome.localeCompare(b.nome)));
-
-      const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
-      onSnapshot(qCid, (sCids) => {
-        const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-        if (isComissao) {
-          setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
-        } else {
-          const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
-          setListaCidades(filtradas);
-          setSelectedCityId(userData?.cidadeId);
-        }
-      });
     });
-    return () => unsubIgr();
+
+    // 2. Definição do Listener de Cidades (Removido do aninhamento para evitar leak)
+    const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
+    const unsubCid = onSnapshot(qCid, (sCids) => {
+      const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+      if (isComissao) {
+        setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
+      } else {
+        const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
+        setListaCidades(filtradas);
+        setSelectedCityId(userData?.cidadeId);
+      }
+    });
+
+    // LIMPEZA CRÍTICA: Desliga os sensores ao desmontar o componente
+    return () => {
+      unsubIgr();
+      unsubCid();
+    };
   }, [activeRegionalId, isComissao, userData?.cidadeId]);
 
   // 2. BUSCA DE EVENTOS (MOTOR UNIFICADO v3.0 - COLEÇÃO GLOBAL)
@@ -81,7 +89,6 @@ const DashPage = ({ userData }) => {
     if (!activeRegionalId) return;
     setLoading(true);
 
-    // MUDANÇA CRÍTICA: DashPage agora escuta a events_global para enxergar novos ensaios [cite: 1825, 1832]
     const qEvents = query(
       collection(db, 'events_global'), 
       where('regionalId', '==', activeRegionalId)
@@ -93,7 +100,7 @@ const DashPage = ({ userData }) => {
         ...d.data() 
       }));
 
-      // Filtros de interface respeitando a Matriz de Competências [cite: 1153, 1163]
+      // Filtros de interface respeitando a Matriz de Competências
       if (isComissao) {
         if (activeComumId !== 'consolidated') {
           data = data.filter(e => e.comumId === activeComumId);
@@ -160,7 +167,6 @@ const DashPage = ({ userData }) => {
         const vis = Math.max(0, tot - com);
         const saneId = legacyMap[id] || id.toLowerCase();
 
-        // LÓGICA DE SOMA UNIFICADA (CORAL / ORQUESTRA / ORGANISTAS) [cite: 1113, 1174]
         if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { 
           const soma = (Number(data.irmaos) || 0) + (Number(data.irmas) || 0) || tot;
           g.irmandade += soma; tI += soma; 

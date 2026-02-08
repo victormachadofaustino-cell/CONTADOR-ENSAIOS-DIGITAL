@@ -108,7 +108,6 @@ function App() {
     const unsubAuth = onAuthStateChanged(auth, u => {
       
       // TRAVA DE SEGURANÇA v2.2: Se o e-mail não for verificado, nem tenta sincronizar jurisdição.
-      // Isso mata o estado de "loading" infinito e manda para a LoginPage.
       if (u && !u.emailVerified) {
         setUser(null);
         setUserData(null);
@@ -119,9 +118,7 @@ function App() {
       setUser(u);
 
       if (u) {
-        // Se estiver logado, busca os "poderes" dele no banco de dados
         unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
-          // Proteção extra contra e-mail não verificado durante a escuta
           if (!auth.currentUser || !auth.currentUser.emailVerified) {
              setView('login');
              return;
@@ -161,7 +158,6 @@ function App() {
               setActiveRegionalName(data.regionalNome || data.regional || "Regional");
             }
             
-            // Define se vai para o lobby ou para a tela de instruções de aprovação
             setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
           } else { 
             setView('login'); 
@@ -186,7 +182,7 @@ function App() {
   }, []); 
 
   useEffect(() => {
-    // Só sincroniza eventos se o usuário estiver aprovado e verificado
+    // FAXINA DE MEMÓRIA v4.2: Bloqueio de sincronização fantasma e limpeza obrigatória
     if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !(authContextData || userData)) return;
 
     setEvents([]); 
@@ -205,11 +201,12 @@ function App() {
       }));
       setEvents(data);
     }, (err) => {
-      console.warn("Snapshot de eventos finalizado:", err.message);
+      console.warn("Snapshot de eventos interrompido:", err.message);
     });
 
+    // LIMPEZA CRÍTICA: Desliga o sensor de eventos ao sair da tela ou mudar de comum
     return () => unsub();
-  }, [comumIdEfetivo, user?.uid, level]); 
+  }, [comumIdEfetivo, user?.uid, user?.emailVerified, level]); 
 
   // --- TRATAMENTO VISUAL DE CARREGAMENTO ---
   if (view === 'loading') {
@@ -226,7 +223,6 @@ function App() {
       <Toaster position="top-center" />
       <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
 
-      {/* AJUSTE CRÍTICO: Unificação da LoginPage para Login e Espera de Aprovação */}
       {(view === 'login' || view === 'waiting-approval') ? (
         <LoginPage 
           authMode={authMode} 
