@@ -80,14 +80,18 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      {/* FORMULÁRIO DE ADIÇÃO - AJUSTE DE LAYOUT E PLACEHOLDER */}
+      <div className="flex gap-2 items-stretch">
         <input 
           className="flex-1 bg-white p-4 rounded-2xl text-xs font-black text-slate-950 outline-none border border-slate-100 uppercase italic shadow-inner" 
-          placeholder="NOVA COMUM EM CP..." 
+          placeholder={`NOVA COMUM EM ${selectedCity.nome.toUpperCase()}...`} 
           value={newChurchName} 
           onChange={e => setNewChurchName(e.target.value)} 
         />
-        <button onClick={handleAdd} className="bg-slate-950 text-white px-5 rounded-2xl active:scale-90 shadow-lg">
+        <button 
+          onClick={handleAdd} 
+          className="bg-slate-950 text-white min-w-[60px] rounded-2xl active:scale-90 shadow-lg flex items-center justify-center transition-all"
+        >
           <Send size={18} />
         </button>
       </div>
@@ -110,8 +114,8 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
                     <span className="text-[10px] font-black text-slate-700 uppercase">{c.comum}</span>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => { setEditingId(c.id); setEditValue(c.comum); }} className="p-2 text-slate-300 hover:text-blue-500"><Edit3 size={14}/></button>
-                    <button onClick={() => handleDelete(c.id, c.comum)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                    <button onClick={() => { setEditingId(c.id); setEditValue(c.comum); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14}/></button>
+                    <button onClick={() => handleDelete(c.id, c.comum)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                   </div>
                 </>
               )}

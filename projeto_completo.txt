@@ -12824,7 +12824,6 @@ function App() {
     const unsubAuth = onAuthStateChanged(auth, u => {
       
       // TRAVA DE SEGURANÇA v2.2: Se o e-mail não for verificado, nem tenta sincronizar jurisdição.
-      // Isso mata o estado de "loading" infinito e manda para a LoginPage.
       if (u && !u.emailVerified) {
         setUser(null);
         setUserData(null);
@@ -12835,9 +12834,7 @@ function App() {
       setUser(u);
 
       if (u) {
-        // Se estiver logado, busca os "poderes" dele no banco de dados
         unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
-          // Proteção extra contra e-mail não verificado durante a escuta
           if (!auth.currentUser || !auth.currentUser.emailVerified) {
              setView('login');
              return;
@@ -12877,7 +12874,6 @@ function App() {
               setActiveRegionalName(data.regionalNome || data.regional || "Regional");
             }
             
-            // Define se vai para o lobby ou para a tela de instruções de aprovação
             setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
           } else { 
             setView('login'); 
@@ -12902,7 +12898,7 @@ function App() {
   }, []); 
 
   useEffect(() => {
-    // Só sincroniza eventos se o usuário estiver aprovado e verificado
+    // FAXINA DE MEMÓRIA v4.2: Bloqueio de sincronização fantasma e limpeza obrigatória
     if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !(authContextData || userData)) return;
 
     setEvents([]); 
@@ -12921,11 +12917,12 @@ function App() {
       }));
       setEvents(data);
     }, (err) => {
-      console.warn("Snapshot de eventos finalizado:", err.message);
+      console.warn("Snapshot de eventos interrompido:", err.message);
     });
 
+    // LIMPEZA CRÍTICA: Desliga o sensor de eventos ao sair da tela ou mudar de comum
     return () => unsub();
-  }, [comumIdEfetivo, user?.uid, level]); 
+  }, [comumIdEfetivo, user?.uid, user?.emailVerified, level]); 
 
   // --- TRATAMENTO VISUAL DE CARREGAMENTO ---
   if (view === 'loading') {
@@ -12942,7 +12939,6 @@ function App() {
       <Toaster position="top-center" />
       <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
 
-      {/* AJUSTE CRÍTICO: Unificação da LoginPage para Login e Espera de Aprovação */}
       {(view === 'login' || view === 'waiting-approval') ? (
         <LoginPage 
           authMode={authMode} 
@@ -13724,7 +13720,8 @@ import {
 import { 
   getAuth, signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, onAuthStateChanged, signOut,
-  sendEmailVerification 
+  sendEmailVerification,
+  deleteUser // ADICIONADO: Essencial para o sistema de Rollback v2.2
 } from "firebase/auth";
 
 const firebaseConfig = {
@@ -13757,7 +13754,8 @@ export {
   writeBatch,
   collectionGroup, // ADICIONADO: Exportação para uso no DashPage
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
-  onAuthStateChanged, signOut, sendEmailVerification 
+  onAuthStateChanged, signOut, sendEmailVerification,
+  deleteUser // EXPORTADO: Para uso no authService no fluxo de erro de cadastro
 };
 
 
@@ -13838,7 +13836,8 @@ export const AuthProvider = ({ children }) => {
               ...permissions,
               activeRegionalId: validRegionalId, 
               activeCityId: validCityId,
-              activeComumId: validComumId
+              activeComumId: validComumId,
+              emailVerified: currentUser.emailVerified // v2.3: Injetado para facilitar leitura no Login
             });
           }
           setLoading(false);
@@ -13901,7 +13900,8 @@ export const AuthProvider = ({ children }) => {
     user,
     userData,
     loading,
-    isAuthenticated: !!user && user.emailVerified === true, // Só é autenticado se validou e-mail explicitamente
+    // v2.3: Autenticação agora exige e-mail verificado E aprovação do administrador
+    isAuthenticated: !!user && user.emailVerified === true && userData?.approved === true, 
     setContext, 
   };
 
@@ -14463,7 +14463,6 @@ const LoginPage = ({
   };
 
   // --- TELA DE BLOQUEIO DE SEGURANÇA (AGUARDANDO APROVAÇÃO) ---
-  // Esta tela agora é tratada como um retorno independente para evitar conflitos de renderização
   if (userData && !userData.approved && userData.emailVerified) {
     return (
       <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
@@ -14488,7 +14487,7 @@ const LoginPage = ({
             <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight italic">{getProximoPasso()}</p>
           </div>
           <button 
-            onClick={() => authService.logout()}
+            onClick={() => { setEmailSent(false); authService.logout(); }}
             className="flex items-center justify-center gap-2 mx-auto text-[10px] font-black text-red-500 uppercase tracking-widest hover:bg-red-50 px-6 py-3 rounded-2xl transition-all active:scale-95"
           >
             <LogOut size={14} /> Sair da Conta
@@ -14605,8 +14604,7 @@ const LoginPage = ({
             </button>
           </form>
 
-          {/* AJUSTE CRÍTICO: setAuthMode garantido pela verificação de tipo */}
-          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => typeof setAuthMode === 'function' && setAuthMode(authMode === 'login' ? 'register' : 'login')}>
+          <button className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center" onClick={() => { setEmailSent(false); typeof setAuthMode === 'function' && setAuthMode(authMode === 'login' ? 'register' : 'login'); }}>
             {authMode === 'login' ? 'Não tem conta? Solicite Acesso' : 'Já possui conta? Faça Login'}
           </button>
         </div>
@@ -14969,9 +14967,11 @@ const DashPage = ({ userData }) => {
     if (userData?.activeComumId) setActiveComumId(userData.activeComumId);
   }, [userData?.activeCityId, userData?.activeComumId]);
 
+  // FAXINA DE MEMÓRIA v4.2: Listeners independentes com limpeza obrigatória para evitar aquecimento do dispositivo
   useEffect(() => {
     if (!activeRegionalId) return;
 
+    // 1. Definição do Listener de Igrejas
     const qIgr = (isComissao)
       ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
       : query(collection(db, 'comuns'), where('cidadeId', '==', userData?.cidadeId));
@@ -14979,20 +14979,26 @@ const DashPage = ({ userData }) => {
     const unsubIgr = onSnapshot(qIgr, (sIgs) => {
       const igs = sIgs.docs.map(d => ({ id: d.id, nome: d.data().comum, cidadeId: d.data().cidadeId }));
       setListaIgrejas(igs.sort((a, b) => a.nome.localeCompare(b.nome)));
-
-      const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
-      onSnapshot(qCid, (sCids) => {
-        const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-        if (isComissao) {
-          setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
-        } else {
-          const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
-          setListaCidades(filtradas);
-          setSelectedCityId(userData?.cidadeId);
-        }
-      });
     });
-    return () => unsubIgr();
+
+    // 2. Definição do Listener de Cidades (Removido do aninhamento para evitar leak)
+    const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
+    const unsubCid = onSnapshot(qCid, (sCids) => {
+      const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+      if (isComissao) {
+        setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
+      } else {
+        const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
+        setListaCidades(filtradas);
+        setSelectedCityId(userData?.cidadeId);
+      }
+    });
+
+    // LIMPEZA CRÍTICA: Desliga os sensores ao desmontar o componente
+    return () => {
+      unsubIgr();
+      unsubCid();
+    };
   }, [activeRegionalId, isComissao, userData?.cidadeId]);
 
   // 2. BUSCA DE EVENTOS (MOTOR UNIFICADO v3.0 - COLEÇÃO GLOBAL)
@@ -15000,7 +15006,6 @@ const DashPage = ({ userData }) => {
     if (!activeRegionalId) return;
     setLoading(true);
 
-    // MUDANÇA CRÍTICA: DashPage agora escuta a events_global para enxergar novos ensaios [cite: 1825, 1832]
     const qEvents = query(
       collection(db, 'events_global'), 
       where('regionalId', '==', activeRegionalId)
@@ -15012,7 +15017,7 @@ const DashPage = ({ userData }) => {
         ...d.data() 
       }));
 
-      // Filtros de interface respeitando a Matriz de Competências [cite: 1153, 1163]
+      // Filtros de interface respeitando a Matriz de Competências
       if (isComissao) {
         if (activeComumId !== 'consolidated') {
           data = data.filter(e => e.comumId === activeComumId);
@@ -15079,7 +15084,6 @@ const DashPage = ({ userData }) => {
         const vis = Math.max(0, tot - com);
         const saneId = legacyMap[id] || id.toLowerCase();
 
-        // LÓGICA DE SOMA UNIFICADA (CORAL / ORQUESTRA / ORGANISTAS) [cite: 1113, 1174]
         if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { 
           const soma = (Number(data.irmaos) || 0) + (Number(data.irmas) || 0) || tot;
           g.irmandade += soma; tI += soma; 
@@ -15392,6 +15396,8 @@ import AtaLiturgia from './components/AtaLiturgia.jsx';
 import AtaVisitantes from './components/AtaVisitantes.jsx';
 import AtaMinisterioLocal from './components/AtaMinisterioLocal.jsx';
 import AtaLacreStatus from './components/AtaLacreStatus.jsx';
+// Importação do Novo Módulo de Ocorrências
+import AtaOcorrencias from './components/AtaOcorrencias.jsx';
 
 const AtaPage = ({ eventId, comumId }) => {
   const { userData } = useAuth();
@@ -15414,12 +15420,14 @@ const AtaPage = ({ eventId, comumId }) => {
     ],
     presencaLocal: [],
     presencaLocalFull: [],
-    visitantes: []
+    visitantes: [],
+    ocorrencias: [] // Inicialização do campo de ocorrências
   });
   
   const [eventMeta, setEventMeta] = useState(null);
   const [localMinisterio, setLocalMinisterio] = useState([]);
   const [referenciaMinisterio, setReferenciaMinisterio] = useState([]);
+  const [instrumentsNacionais, setInstrumentsNacionais] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [showConfirmLock, setShowConfirmLock] = useState(false);
@@ -15446,9 +15454,11 @@ const AtaPage = ({ eventId, comumId }) => {
 
   const isInputDisabled = !temPermissaoEditar;
 
+  // PESOS ATUALIZADOS v4.8 - Harmonia com PDF
   const pesosMinisterio = {
     'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador RJM': 4,
-    'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7
+    'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7,
+    'Secretário da Música': 8, 'Instrutor': 9, 'Músico': 10
   };
 
   const ordenarLista = (lista, campoNome, campoRole) => {
@@ -15491,19 +15501,24 @@ const AtaPage = ({ eventId, comumId }) => {
     if (!comumId || !eventId) return;
     let isMounted = true;
     
-    const unsubRef = onSnapshot(collection(db, 'referencia_cargos'), (s) => {
+    onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
+      if (!isMounted) return;
+      setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    onSnapshot(collection(db, 'referencia_cargos'), (s) => {
       if (!isMounted) return;
       const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
       setReferenciaMinisterio(lista);
     });
 
-    const unsubLocal = onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
+    onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
       if (!isMounted) return;
       const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
       setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
     });
 
-    const unsubAta = onSnapshot(doc(db, 'events_global', eventId), (s) => {
+    onSnapshot(doc(db, 'events_global', eventId), (s) => {
       if (!isMounted) return;
       if (s.exists()) {
         const eventData = s.data();
@@ -15522,19 +15537,17 @@ const AtaPage = ({ eventId, comumId }) => {
       }
     });
 
-    return () => { isMounted = false; unsubRef(); unsubLocal(); unsubAta(); if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+    return () => { isMounted = false; if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [eventId, comumId]);
 
   const handleHinoChange = (pIdx, hIdx, val) => {
     if (isInputDisabled) return;
     let v = val.toUpperCase().trim();
     const np = [...ataData.partes];
-
     if (v === '') { 
       np[pIdx].hinos[hIdx] = ''; 
       return handleChange({ ...ataData, partes: np }); 
     }
-
     if (v.startsWith('C')) {
       if (/^C[1-6]?$/.test(v)) {
         np[pIdx].hinos[hIdx] = v;
@@ -15542,7 +15555,6 @@ const AtaPage = ({ eventId, comumId }) => {
       }
       return;
     }
-
     if (/^\d+$/.test(v)) {
       if (parseInt(v) > 480) return;
       np[pIdx].hinos[hIdx] = v;
@@ -15601,6 +15613,16 @@ const AtaPage = ({ eventId, comumId }) => {
           isInputDisabled={isInputDisabled} 
           referenciaMinisterio={referenciaMinisterio} 
           handleHinoChange={handleHinoChange} 
+        />
+      </Accordion>
+
+      {/* NOVO MÓDULO DE OCORRÊNCIAS */}
+      <Accordion title="Ocorrências" isOpen={openSection === 'ocorrencias'} onClick={() => setOpenSection(openSection === 'ocorrencias' ? null : 'ocorrencias')} icon="📝" badge={ataData.ocorrencias?.length || null}>
+        <AtaOcorrencias 
+          ocorrencias={ataData.ocorrencias} 
+          instruments={instrumentsNacionais}
+          onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })}
+          isClosed={isClosed}
         />
       </Accordion>
 
@@ -15680,17 +15702,23 @@ export default AtaPage;
 --- FILE:  ---
 
 import React, { useState, useEffect, useMemo } from 'react';
+// PRESERVAÇÃO: Importações originais mantidas
 import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, getDoc } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
 import AtaPage from './AtaPage';
 import DashEventPage from '../dashboard/DashEventPage';
 import toast from 'react-hot-toast';
 import { 
-  ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3, 
-  ChevronDown, Minus, Plus, ShieldCheck, Eye, UserCheck, PlusCircle, X, Music, AlertCircle, Users
+  ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
+
+// IMPORTAÇÃO DOS COMPONENTES MODULARES
+import CounterSection from './components/CounterSection';
+import OwnershipModal from './components/OwnershipModal';
+// Importação do novo modal de extras
+import ExtraInstrumentModal from './components/ExtraInstrumentModal';
 
 let debounceTimers = {};
 
@@ -15714,8 +15742,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const [eventDateRaw, setEventDateRaw] = useState('');
   const [eventComumId, setEventComumId] = useState(null);
   const [showOwnershipModal, setShowOwnershipModal] = useState(null);
-  const [showExtraModal, setShowExtraModal] = useState(null); 
-  const [extraName, setExtraName] = useState('');
+  
+  // ESTADOS PARA INSTRUMENTOS EXTRAS v5.0
+  const [extraInstrumentSection, setExtraInstrumentSection] = useState(null);
   const [localCounts, setLocalCounts] = useState({});
 
   const isClosed = ataData?.status === 'closed';
@@ -15799,7 +15828,12 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       const override = instrumentsConfig.find(local => local.id === instBase.id);
       return override ? { ...instBase, ...override } : instBase;
     });
-    const extras = Object.keys(localCounts).filter(key => !key.startsWith('meta_') && !ordemOficial.includes(key)).map(key => ({ id: key, name: localCounts[key].name || key.toUpperCase(), section: (localCounts[key].section || 'GERAL').toUpperCase() }));
+    // Herança Dinâmica: Mapeia instrumentos que existem no evento mas não no cadastro da igreja
+    const extras = Object.keys(localCounts).filter(key => !key.startsWith('meta_') && !ordemOficial.includes(key)).map(key => ({ 
+      id: key, 
+      name: localCounts[key].name || key.toUpperCase(), 
+      section: (localCounts[key].section || 'GERAL').toUpperCase() 
+    }));
     return [...base, ...extras].sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
 
@@ -15810,11 +15844,35 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   const handleUpdateInstrument = (id, field, value, section) => {
     if (isClosed) return;
+    // Atualização local para feedback instantâneo (UX)
     setLocalCounts(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+    
     if (debounceTimers[id + field]) clearTimeout(debounceTimers[id + field]);
     debounceTimers[id + field] = setTimeout(async () => {
       await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section });
     }, 450);
+  };
+
+  // Função para criar o instrumento extra no banco do evento
+  const handleAddExtraInstrument = async (nome) => {
+    if (!nome.trim() || !extraInstrumentSection) return;
+    
+    const idSaneado = `extra_${nome.toLowerCase().replace(/\s/g, '')}_${Date.now()}`;
+    
+    try {
+      await eventService.updateInstrumentCount(eventComumId, currentEventId, {
+        instId: idSaneado,
+        field: 'total',
+        value: 0,
+        userData,
+        section: extraInstrumentSection,
+        customName: nome.toUpperCase().trim()
+      });
+      setExtraInstrumentSection(null);
+      toast.success("Instrumento adicionado ao ensaio!");
+    } catch (e) {
+      toast.error("Erro ao adicionar extra.");
+    }
   };
 
   const handleToggleGroup = (sec) => {
@@ -15876,89 +15934,46 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
       <main className="flex-1 overflow-y-auto p-4 pb-52 no-scrollbar">
         <div className="max-w-md mx-auto">
-          {activeTab === 'contador' && sections.map((sec, sIdx) => {
-            const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
-            const responsibleName = localCounts?.[metaKey]?.responsibleName;
-            const isOwner = localCounts?.[metaKey]?.responsibleId === myUID;
-            const inUse = localCounts?.[metaKey]?.isActive;
-            
-            const sectionTotal = allInstruments.filter(i => (i.section || "GERAL").toUpperCase() === sec).reduce((acc, inst) => {
-                const c = localCounts?.[inst.id];
-                return acc + (['irmandade', 'Coral'].includes(inst.id) ? (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0) : (parseInt(c?.total) || 0));
-            }, 0);
-
-            const isLastIrmandade = sec === 'IRMANDADE' || sec === 'CORAL';
-            const isOrganistas = sec === 'ORGANISTAS';
-            const extraSpacing = (isLastIrmandade || isOrganistas) ? "mb-10" : "mb-3";
-            
-            return (
-              <div key={sec} className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing}`}>
-                <button onClick={() => handleToggleGroup(sec)} className="w-full p-6 flex justify-between items-center active:bg-slate-50 transition-all">
-                  <div className="flex flex-col items-start text-left leading-none gap-2">
-                    <span className="font-[900] uppercase italic text-[13px] text-slate-950 tracking-tight">{sec}</span>
-                    {responsibleName && (
-                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${isOwner ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-100' : inUse ? 'bg-amber-50 border-amber-400 text-white' : 'bg-slate-900 border-slate-800 text-slate-100'}`}>
-                        {isOwner ? <UserCheck size={8} strokeWidth={4}/> : inUse ? <AlertCircle size={8} /> : <ShieldCheck size={8}/>}
-                        <span className="text-[7px] font-black uppercase tracking-widest">
-                          {isOwner ? 'Sua Seção' : inUse ? `Ocupado: ${responsibleName}` : responsibleName}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="bg-slate-950 text-white min-w-[42px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-lg border border-white/10">{sectionTotal}</div>
-                    <ChevronDown size={18} className={`text-slate-300 transition-transform duration-300 ${activeGroup === sec ? 'rotate-180' : ''}`} />
-                  </div>
-                </button>
-                {activeGroup === sec && (
-                  <div className="px-4 pb-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
-                    {allInstruments.filter(i => (i.section || "GERAL").toUpperCase() === sec).map(inst => (
-                       <InstrumentCard key={inst.id} inst={inst} data={localCounts?.[inst.id] || {total:0, comum:0, enc:0, irmaos:0, irmas:0}} onUpdate={(id, f, v) => handleUpdateInstrument(id, f, v, sec)} disabled={!isEditingEnabled(sec)} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {activeTab === 'contador' && sections.map((sec) => (
+            <CounterSection 
+              key={sec}
+              sec={sec}
+              allInstruments={allInstruments}
+              localCounts={localCounts}
+              myUID={myUID}
+              activeGroup={activeGroup}
+              handleToggleGroup={handleToggleGroup}
+              handleUpdateInstrument={handleUpdateInstrument}
+              isEditingEnabled={isEditingEnabled}
+              onAddExtra={(s) => setExtraInstrumentSection(s)}
+            />
+          ))}
           {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={canEditAta} />}
           {activeTab === 'dash' && <DashEventPage eventId={currentEventId} counts={localCounts} userData={userData} isAdmin={true} ataData={ataData} />}
         </div>
       </main>
 
       <AnimatePresence>
-        {showOwnershipModal && (() => {
-          const metaKey = `meta_${showOwnershipModal.toLowerCase().replace(/\s/g, '_')}`;
-          const currentInUse = localCounts?.[metaKey]?.isActive;
-          const currentOwner = localCounts?.[metaKey]?.responsibleName;
+        {/* MODAL DE POSSE */}
+        {showOwnershipModal && (
+          <OwnershipModal 
+            showOwnershipModal={showOwnershipModal}
+            localCounts={localCounts}
+            myUID={myUID}
+            userData={userData}
+            onConfirm={setOwnership}
+            onCancel={() => setShowOwnershipModal(null)}
+          />
+        )}
 
-          return (
-            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[200] flex items-center justify-center p-6">
-              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl">
-                <div className={`w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner ${currentInUse ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
-                  {currentInUse ? <AlertCircle size={32} /> : <ShieldCheck size={32} />}
-                </div>
-                <h3 className="font-[900] text-slate-950 uppercase italic mb-2 tracking-tighter text-xl">
-                  {currentInUse ? 'Seção em Uso' : 'Acessar Seção'}
-                </h3>
-                <p className="text-[11px] font-bold text-slate-500 uppercase mb-8 leading-relaxed px-4 italic">
-                  {currentInUse 
-                    ? `O irmão ${currentOwner} está realizando a contagem neste momento. Deseja apenas visualizar os dados em tempo real?`
-                    : currentOwner 
-                      ? `Esta seção pertence a ${currentOwner}, mas ele não está editando agora. Deseja assumir a responsabilidade ou apenas visualizar?`
-                      : "Esta seção está livre. Deseja assumir a responsabilidade da contagem?"
-                  }
-                </p>
-                <div className="flex flex-col gap-3">
-                  {!currentInUse && (
-                    <button onClick={() => setOwnership(showOwnershipModal, true)} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-xl flex items-center justify-center gap-2 shadow-blue-100"><UserCheck size={16}/> Assumir Seção</button>
-                  )}
-                  <button onClick={() => setOwnership(showOwnershipModal, false)} className="w-full bg-slate-100 text-slate-900 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 flex items-center justify-center gap-2"><Eye size={16}/> Apenas Visualizar</button>
-                  <button onClick={() => setShowOwnershipModal(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[9px] tracking-widest active:opacity-50">Cancelar</button>
-                </div>
-              </motion.div>
-            </div>
-          );
-        })()}
+        {/* MODAL DE INSTRUMENTO EXTRA */}
+        {extraInstrumentSection && (
+          <ExtraInstrumentModal 
+            section={extraInstrumentSection}
+            onConfirm={handleAddExtraInstrument}
+            onCancel={() => setExtraInstrumentSection(null)}
+          />
+        )}
       </AnimatePresence>
 
       <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] z-[50]">
@@ -15978,160 +15993,38 @@ const TabButton = ({ active, icon, label, onClick }) => (
   </button>
 );
 
-const InstrumentCard = ({ inst, data, onUpdate, disabled }) => {
-  const isIrmandade = ['irmandade', 'Coral'].includes(inst.id);
-  const isOrganista = ['orgao'].includes(inst.id);
-  
-  const total = parseInt(data?.total) || 0;
-  const comum = parseInt(data?.comum) || 0;
-  const enc = parseInt(data?.enc) || 0;
-  const irmaos = parseInt(data?.irmaos) || 0;
-  const irmas = parseInt(data?.irmas) || 0;
-  
-  const visitas = Math.max(0, total - comum);
-  const encarregadoHabilitado = total > 0;
-
-  const handleUpdate = (field, value) => {
-    if (disabled) return;
-    let finalValue = Math.max(0, parseInt(value) || 0);
-
-    if (field === 'comum' && finalValue > total) {
-      finalValue = total;
-    }
-
-    if (field === 'enc' && finalValue > total) {
-        finalValue = total;
-    }
-
-    onUpdate(inst.id, field, finalValue);
-  };
-
-  return (
-    <div className={`p-4 rounded-[2.2rem] border transition-all relative overflow-hidden ${disabled ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white border-slate-100 shadow-md'}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <h5 className="font-[900] text-[11px] italic uppercase text-slate-950 tracking-tight">{inst.name}</h5>
-        {disabled && <Eye size={12} className="text-slate-300" />}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2 h-24">
-            {isIrmandade ? (
-              <>
-                <CounterBox label="IRMÃS" color="slate" val={irmas} onChange={v => handleUpdate('irmas', v)} disabled={disabled} />
-                <CounterBox label="IRMÃOS" color="white" val={irmaos} onChange={v => handleUpdate('irmaos', v)} disabled={disabled} />
-              </>
-            ) : (
-              <>
-                <CounterBox label="TOTAL" color="slate" val={total} onChange={v => handleUpdate('total', v)} disabled={disabled} />
-                <CounterBox label="COMUM" color="white" val={comum} onChange={v => handleUpdate('comum', v)} disabled={disabled} />
-                
-                <div className="flex-1 flex flex-col items-center justify-center bg-blue-50 border border-blue-100 rounded-2xl leading-none shadow-inner">
-                  <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest mb-2 italic">Visitas</span>
-                  <span className="text-3xl font-[900] text-blue-600 italic leading-none">{visitas}</span>
-                </div>
-              </>
-            )}
-        </div>
-
-        {!isIrmandade && (
-          <div className={`flex items-center gap-2 pt-1 transition-all duration-300 ${!encarregadoHabilitado ? 'opacity-30 grayscale' : 'opacity-100'}`}>
-            <div className={`p-2 rounded-xl shrink-0 transition-colors ${encarregadoHabilitado ? 'bg-slate-900 text-amber-500 shadow-md' : 'bg-slate-100 text-slate-400'}`}>
-               {isOrganista ? <ShieldCheck size={16}/> : <UserCheck size={16}/>}
-            </div>
-            <div className="flex-1">
-              <CounterBoxSmall 
-                label={isOrganista ? "EXAMINADORAS" : "ENCARREGADOS"} 
-                val={enc} 
-                onChange={v => handleUpdate('enc', v)} 
-                disabled={disabled || !encarregadoHabilitado} 
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const CounterBox = ({ label, color, val, onChange, disabled }) => (
-  <div className={`flex-1 rounded-2xl border transition-all relative flex flex-col items-center justify-center overflow-hidden ${disabled ? 'bg-slate-100 border-slate-200' : color === 'slate' ? 'bg-slate-950 text-white border-slate-800 shadow-lg' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
-    <p className={`absolute top-2.5 text-[7px] font-[900] uppercase tracking-[0.2em] ${color === 'slate' ? 'text-white/30' : 'text-slate-400'}`}>{label}</p>
-    
-    <div className="flex items-center w-full h-full pt-4">
-        <button disabled={disabled} onClick={() => onChange(val - 1)} className="w-10 h-full flex items-center justify-center active:bg-white/10 transition-colors">
-          <Minus size={16} strokeWidth={4} className={color === 'slate' ? 'text-white/20' : 'text-slate-300'}/>
-        </button>
-
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <input 
-            disabled={disabled} 
-            type="number" 
-            className="bg-transparent w-full text-center font-[900] text-4xl outline-none italic tracking-tighter" 
-            value={val} 
-            onFocus={(e) => e.target.select()}
-            onChange={(e) => {
-              const newVal = e.target.value === "" ? 0 : parseInt(e.target.value);
-              onChange(newVal);
-            }} 
-          />
-        </div>
-
-        <button disabled={disabled} onClick={() => onChange(val + 1)} className="w-10 h-full flex items-center justify-center active:bg-white/10 transition-colors">
-          <Plus size={16} strokeWidth={4} className={color === 'slate' ? 'text-white/80' : 'text-slate-950'}/>
-        </button>
-    </div>
-  </div>
-);
-
-const CounterBoxSmall = ({ label, val, onChange, disabled }) => (
-  <div className={`h-12 px-4 rounded-[1.2rem] border transition-all flex items-center justify-between overflow-hidden ${disabled ? 'bg-slate-50 border-slate-100 opacity-50' : 'bg-white border-slate-200 shadow-sm'}`}>
-    <p className="text-[8px] font-black text-slate-400 uppercase italic tracking-widest leading-none">{label}</p>
-    <div className="flex items-center h-full">
-      <button disabled={disabled} onClick={() => onChange(val - 1)} className="w-8 h-full flex items-center justify-center text-slate-300 active:text-red-500 transition-colors">
-        <Minus size={14} strokeWidth={4}/>
-      </button>
-      
-      <span className="font-black text-slate-950 italic text-lg w-8 text-center">{val}</span>
-      
-      <button 
-        disabled={disabled} 
-        onClick={() => onChange(val + 1)} 
-        className="w-8 h-full flex items-center justify-center text-slate-950 active:text-blue-500 transition-colors"
-      >
-        <Plus size={14} strokeWidth={4}/>
-      </button>
-    </div>
-  </div>
-);
-
 export default CounterPage;
 
 
 --- FILE:  ---
 
 import React, { useState, useEffect, useMemo } from 'react';
-// Ajuste de nível: Subindo dois níveis para chegar em src/config
+// PRESERVAÇÃO: Importações originais mantidas
 import { db, collection, onSnapshot, query, where, orderBy } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
 
-// CORREÇÃO DE CAMINHO: AtaPage está na mesma pasta (/events)
-import AtaPage from './AtaPage'; 
-
 import toast from 'react-hot-toast';
-import { 
-  Calendar, User, Lock, Trash2, Plus, X, Send, ChevronDown, Clock, ShieldCheck, MapPin, Home, AlertTriangle, Settings, Building2
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-// Importação do Cérebro de Autenticação (GPS de Acessos v2.1)
+import { Plus, MapPin, Home } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-let debounceTimers = {};
+// IMPORTAÇÃO DOS NOVOS COMPONENTES MODULARES
+import EventsList from './components/EventsList';
+import EventModals from './components/EventModals';
 
 const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, onChurchChange }) => {
-  const [showModal, setShowModal] = useState(false);
-  const [showConfigError, setShowConfigError] = useState(false); // Modal de erro de conformidade
+  const { setContext } = useAuth();
   
-  // CORREÇÃO DE FUSO HORÁRIO: Garante que a data inicial seja a data local correta
+  // ESTADOS DE CONTROLE DE INTERFACE
+  const [showModal, setShowModal] = useState(false);
+  const [showConfigError, setShowConfigError] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState(null);
+  const [openYears, setOpenYears] = useState({});
+
+  // ESTADOS DE DADOS GEOGRÁFICOS
+  const [cidades, setCidades] = useState([]);
+  const [comuns, setComuns] = useState([]);
+  
+  // AUXILIAR DE DATA LOCAL
   const getLocalDate = () => {
     const now = new Date();
     const offset = now.getTimezoneOffset();
@@ -16140,60 +16033,45 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
   };
 
   const [newEventDate, setNewEventDate] = useState(getLocalDate());
-  const [newEventType, setNewEventType] = useState('Ensaio Local');
   const [responsavel, setResponsavel] = useState(userData?.name || '');
-  const [eventToDelete, setEventToDelete] = useState(null);
-  const [openYears, setOpenYears] = useState({});
 
-  const [cidades, setCidades] = useState([]);
-  const [comuns, setComuns] = useState([]);
-  
-  // --- LÓGICA DE COMPETÊNCIAS v2.1 (MATRIZ DE PODER) ---
-  const { setContext } = useAuth();
+  // --- MATRIZ DE PODER v2.1 ---
   const level = userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
   const isRegionalCidade = isComissao || level === 'regional_cidade';
+  // CORREÇÃO CRÍTICA: isGemLocal definida para o componente EventModals
   const isGemLocal = isRegionalCidade || level === 'gem_local';
   const isBasico = level === 'basico';
 
-  // REGRA DE OURO: Inicializa com os dados do perfil do usuário, mas permite alteração pelo contexto ativo (GPS Global)
   const selectedCityId = userData?.activeCityId || userData?.cidadeId || '';
   const selectedChurchId = userData?.activeComumId || userData?.comumId || '';
+  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
 
-  // Lista de IDs permitidos para este usuário (Sua comum + acessos manuais)
   const permitidasIds = useMemo(() => {
     const lista = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return [...new Set(lista.filter(id => id))];
   }, [userData]);
 
-  // DEFINE PERMISSÃO: Baseado na jurisdição ativa e no nível de acesso
+  // VALIDAÇÃO DE PERMISSÃO TERRITORIAL
   const temPermissaoAqui = useMemo(() => {
     if (isBasico) return false; 
     if (isMaster || isComissao) return true; 
-    
-    // Nível Regional de Cidade: Pode gerenciar qualquer comum que pertença à sua CIDADE cadastrada
     if (level === 'regional_cidade') {
         const comumAlvo = comuns.find(c => c.id === selectedChurchId);
         return comumAlvo && (comumAlvo.cidadeId === userData?.cidadeId);
     }
-
-    // Nível GEM Local: Apenas em suas comuns permitidas
     return permitidasIds.includes(selectedChurchId);
   }, [isMaster, isComissao, isBasico, level, selectedChurchId, userData, comuns, permitidasIds]);
 
-  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
-
-  // 1. SINCRONIZAÇÃO DE CASCATA: REGIONAL -> CIDADE
+  // 1. SINCRONIZAÇÃO: REGIONAL -> CIDADE
   useEffect(() => {
     if (!activeRegionalId) return;
     let isMounted = true;
-    
     const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
     const unsubCid = onSnapshot(qCid, (sCids) => {
       if (!isMounted) return;
       const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-      
       if (isComissao) {
         const sorted = todasCidades.sort((a, b) => a.nome.localeCompare(b.nome));
         setCidades(sorted);
@@ -16203,18 +16081,13 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         setCidades(filtradas.sort((a, b) => a.nome.localeCompare(b.nome)));
       }
     });
-
     return () => { isMounted = false; unsubCid(); };
   }, [activeRegionalId, isComissao, userData?.cidadeId]); 
 
-  // 2. SINCRONIZAÇÃO DE CASCATA: CIDADE -> COMUM (REATIVIDADE DE TROCA)
+  // 2. SINCRONIZAÇÃO: CIDADE -> COMUM
   useEffect(() => {
-    if (!selectedCityId) {
-      setComuns([]);
-      return;
-    }
+    if (!selectedCityId) { setComuns([]); return; }
     let isMounted = true;
-
     const q = query(collection(db, 'comuns'), where('cidadeId', '==', selectedCityId));
     const unsub = onSnapshot(q, (s) => {
       if (!isMounted) return;
@@ -16223,12 +16096,8 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         nome: d.data().comum || "Sem Nome",
         cidadeId: d.data().cidadeId 
       }));
-      
       const sortedList = list.sort((a, b) => a.nome.localeCompare(b.nome));
-      const filteredList = (isRegionalCidade) 
-        ? sortedList
-        : sortedList.filter(c => permitidasIds.includes(c.id));
-      
+      const filteredList = isRegionalCidade ? sortedList : sortedList.filter(c => permitidasIds.includes(c.id));
       setComuns(filteredList);
 
       if (filteredList.length === 0) {
@@ -16237,41 +16106,28 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
           if (onChurchChange) onChurchChange(null, '');
         }
       } else {
-        const comumValidaNestaCidade = filteredList.some(c => c.id === selectedChurchId);
-        if (!comumValidaNestaCidade) {
+        const comumValida = filteredList.some(c => c.id === selectedChurchId);
+        if (!comumValida) {
           const primeira = filteredList[0];
           setContext('comum', primeira.id);
           if (onChurchChange) onChurchChange(primeira.id, primeira.nome);
         }
       }
     });
-
     return () => { isMounted = false; unsub(); };
   }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
-  // 3. LÓGICA DE AGRUPAMENTO
+  // 3. LÓGICA DE AGRUPAMENTO POR ANO
   const groupedEvents = useMemo(() => {
     const isComumValida = comuns.some(c => c.id === selectedChurchId);
     if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};
-
-    const list = allEvents || []; 
-    return list.reduce((acc, event) => {
+    return (allEvents || []).reduce((acc, event) => {
       const year = event.date ? event.date.split('-')[0] : 'Sem Data';
       if (!acc[year]) acc[year] = [];
       acc[year].push(event);
       return acc;
     }, {});
   }, [allEvents, selectedChurchId, comuns]);
-
-  const years = Object.keys(groupedEvents).sort((a, b) => b - a);
-  const toggleYear = (year) => setOpenYears(prev => ({ ...prev, [year]: !prev[year] }));
-  
-  const formatMonth = (dateStr) => {
-    if (!dateStr || typeof dateStr !== 'string' || !dateStr.includes('-')) return '---';
-    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const m = parseInt(dateStr.split('-')[1]) - 1;
-    return months[m] || '---';
-  };
 
   useEffect(() => {
     const currentYear = new Date().getFullYear().toString();
@@ -16281,7 +16137,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
   const handleCreate = async () => {
     if (!selectedChurchId) return toast.error("Selecione uma comum");
     const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
-
     try {
       await eventService.createEvent(selectedChurchId, {
         type: 'Ensaio Local',
@@ -16295,49 +16150,35 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       setShowModal(false);
       toast.success("Ensaio criado!");
     } catch (error) { 
-      if (error.message === "CONFIG_REQUIRED") {
-        setShowModal(false);
-        setShowConfigError(true);
-      } else {
-        toast.error("Erro ao criar."); 
-      }
+      setShowModal(false);
+      if (error.message === "CONFIG_REQUIRED") setShowConfigError(true);
+      else toast.error("Erro ao criar."); 
     }
   };
 
   const confirmDelete = async () => {
     if (!eventToDelete || !selectedChurchId) return;
     const targetEvent = allEvents.find(ev => ev.id === eventToDelete);
-    
     if (targetEvent?.ata?.status === 'closed') {
       toast.error("Impossível excluir ensaios lacrados.");
       setEventToDelete(null);
       return;
     }
-
     try {
       await eventService.deleteEvent(selectedChurchId, eventToDelete);
-      toast.success("Agenda removida!", {
-        style: { backgroundColor: '#020617', color: '#fff', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }
-      });
+      toast.success("Agenda removida!");
       setEventToDelete(null);
-    } catch (error) { 
-      toast.error("Erro na exclusão."); 
-    }
+    } catch (error) { toast.error("Erro na exclusão."); }
   };
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] p-4 pb-32 font-sans animate-premium text-left">
       
-      {/* SELETORES HIERÁRQUICOS */}
+      {/* SELETORES HIERÁRQUICOS (GPS) */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
-          <select 
-            disabled={!isRegionalCidade || cidades.length === 0}
-            value={selectedCityId} 
-            onChange={(e) => setContext('city', e.target.value)}
-            className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
-          >
+          <select disabled={!isRegionalCidade || cidades.length === 0} value={selectedCityId} onChange={(e) => setContext('city', e.target.value)} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer">
             <option value="">{cidades.length === 0 ? "NENHUMA CIDADE" : isComissao ? "CIDADE..." : (userData?.cidadeNome || "SUA CIDADE")}</option>
             {cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
@@ -16345,26 +16186,14 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
 
         <div className={`flex-1 flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 transition-all ${(!isRegionalCidade || comuns.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <Home size={10} className="text-blue-600 shrink-0" />
-          <select 
-            disabled={!isRegionalCidade || comuns.length === 0}
-            value={selectedChurchId || ''} 
-            onChange={(e) => {
-                const com = comuns.find(c => c.id === e.target.value);
-                if (com) {
-                    setContext('comum', com.id);
-                    if (onChurchChange) onChurchChange(com.id, com.nome);
-                }
-            }}
-            className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer"
-          >
-            <option value="" className="text-slate-900">
-              {cidades.length === 0 ? "AGUARDANDO CIDADE" : comuns.length === 0 ? "VAZIO" : "LOCALIDADE..."}
-            </option>
+          <select disabled={!isRegionalCidade || comuns.length === 0} value={selectedChurchId || ''} onChange={(e) => { const com = comuns.find(c => c.id === e.target.value); if (com) { setContext('comum', com.id); if (onChurchChange) onChurchChange(com.id, com.nome); } }} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer">
+            <option value="" className="text-slate-900">{cidades.length === 0 ? "AGUARDANDO CIDADE" : comuns.length === 0 ? "VAZIO" : "LOCALIDADE..."}</option>
             {comuns.map(c => <option key={c.id} value={c.id} className="text-slate-900">{c.nome}</option>)}
           </select>
         </div>
       </div>
 
+      {/* BOTÃO DE AÇÃO PRINCIPAL */}
       {temPermissaoAqui && selectedChurchId && comuns.length > 0 && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
@@ -16373,135 +16202,27 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         </div>
       )}
 
-      <div className="space-y-8 max-w-md mx-auto">
-        {(!selectedChurchId || years.length === 0) ? (
-          <div className="text-center py-16 px-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
-            {comuns.length === 0 ? (
-              <>
-                <Building2 className="text-blue-100 mb-4" size={56} />
-                <p className="text-slate-950 font-[900] uppercase italic text-xs tracking-tight mb-2">Cidade sem Localidades</p>
-                <p className="text-slate-400 font-bold uppercase text-[8px] leading-relaxed mb-8 max-w-[200px] mx-auto">Não existem comuns cadastradas para esta cidade no banco de dados.</p>
-                {isComissao && (
-                  <button onClick={onNavigateToSettings} className="bg-blue-50 text-blue-600 px-6 py-3 rounded-xl font-black uppercase text-[9px] italic flex items-center gap-2 active:scale-95 transition-all">
-                    <Settings size={14} /> Cadastrar Comum em Ajustes
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <Calendar className="mx-auto text-slate-100 mb-4" size={48} />
-                <p className="text-slate-400 font-black uppercase italic text-[10px] tracking-[0.4em]">Agenda Vazia</p>
-              </>
-            )}
-          </div>
-        ) : (
-          years.map(year => (
-            <div key={year} className="space-y-4">
-              <button onClick={() => toggleYear(year)} className="flex items-center gap-4 w-full px-2 group active:opacity-60 transition-all">
-                <span className="text-3xl font-[900] italic text-slate-950 tracking-tighter">{year}</span>
-                <div className="h-[2px] flex-1 bg-slate-200 rounded-full opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-100">
-                    <ChevronDown size={14} className={`text-slate-300 transition-transform duration-500 ${openYears[year] ? 'rotate-180' : ''}`} />
-                </div>
-              </button>
+      {/* LISTAGEM MODULAR */}
+      <EventsList 
+        groupedEvents={groupedEvents}
+        openYears={openYears}
+        toggleYear={(y) => setOpenYears(prev => ({ ...prev, [y]: !prev[y] }))}
+        onSelectEvent={onSelectEvent}
+        setEventToDelete={setEventToDelete}
+        temPermissaoAqui={temPermissaoAqui}
+      />
 
-              {openYears[year] && (
-                <div className="space-y-4 animate-in">
-                  {groupedEvents[year].map(e => {
-                    const isClosed = e.ata?.status === 'closed';
-                    return (
-                      <div key={e.id} onClick={() => onSelectEvent(e.id)} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 flex justify-between items-center shadow-sm active:scale-95 transition-all relative overflow-hidden group">
-                        <div className={`absolute left-0 top-0 h-full w-1.5 ${isClosed ? 'bg-slate-300' : 'bg-amber-50'}`} />
-                        <div className="flex items-center gap-5">
-                          <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-[1.8rem] border-2 ${isClosed ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-950 text-slate-950 shadow-md'}`}>
-                            <span className="text-2xl font-[900] italic">{e.date?.split('-')[2] || '--'}</span>
-                            <span className="text-[8px] font-black uppercase mt-1 tracking-widest">{formatMonth(e.date)}</span>
-                          </div>
-                          <div className="text-left leading-none">
-                            <p className={`text-[8px] font-black uppercase italic tracking-[0.2em] mb-1.5 ${isClosed ? 'text-slate-300' : 'text-amber-500'}`}>{e.type || 'Ensaio Local'}</p>
-                            <h4 className={`text-[13px] font-[900] uppercase italic tracking-tighter ${isClosed ? 'text-slate-400' : 'text-slate-950'}`}>Resp: {e.responsavel}</h4>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isClosed ? <Lock size={16} className="text-slate-200" /> : <ShieldCheck size={16} className="text-emerald-500 animate-pulse" />}
-                          
-                          {/* CORREÇÃO DO BUG: GEM, Regional e Comissão agora podem excluir se não estiver lacrado */}
-                          {temPermissaoAqui && !isClosed && (
-                            <button onClick={(ex) => { ex.stopPropagation(); setEventToDelete(e.id); }} className="bg-red-50 text-red-400 p-3 rounded-2xl active:bg-red-500 active:text-white transition-all shadow-sm">
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-
-      <AnimatePresence>
-        {showModal && (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-[340px] rounded-[3rem] p-8 shadow-2xl relative text-left overflow-hidden border border-white/20">
-              <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
-              <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8 leading-none tracking-tighter">Novo Registro</h3>
-              <div className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Data Agendada</label>
-                  <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-base font-black outline-none" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Responsável / Encarregado</label>
-                  <input type="text" placeholder="Nome completo" className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-base font-black outline-none uppercase placeholder:text-slate-300 shadow-inner" value={responsavel} onChange={e => setResponsavel(e.target.value)} />
-                </div>
-              </div>
-              <button onClick={handleCreate} className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-10 transition-all border border-white/10"><Send size={16}/> Confirmar Agenda</button>
-            </div>
-          </div>
-        )}
-
-        {showConfigError && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in zoom-in duration-200">
-            <div className="bg-white w-full max-w-[320px] rounded-[3rem] p-10 text-center shadow-2xl relative border border-slate-100">
-              <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner"><AlertTriangle size={40} /></div>
-              <h3 className="text-xl font-[900] text-slate-950 uppercase italic mb-4 tracking-tighter leading-none">Orquestra Ausente</h3>
-              <p className="text-[11px] font-bold text-slate-400 uppercase leading-relaxed mb-10">Esta localidade ainda não possui uma orquestra configurada. É necessário definir os instrumentos antes de agendar ensaios.</p>
-              
-              <div className="space-y-3">
-                {isGemLocal && (
-                  <button 
-                    onClick={() => { setShowConfigError(false); onNavigateToSettings(); }} 
-                    className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg flex items-center justify-center gap-3"
-                  >
-                    <Settings size={16} /> Configurar Agora
-                  </button>
-                )}
-                <button onClick={() => setShowConfigError(false)} className="w-full py-3 text-slate-300 font-black uppercase text-[9px] tracking-widest">Entendido</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL DE EXCLUSÃO NATIVO PADRONIZADO */}
-      <AnimatePresence>
-        {eventToDelete && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6 animate-in zoom-in duration-200">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl relative border border-slate-100">
-              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6"><Trash2 size={24} strokeWidth={3} /></div>
-              <h3 className="text-lg font-[900] uppercase italic text-slate-950 tracking-tighter leading-tight">Remover Agenda?</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase mt-4 mb-8 leading-relaxed">Todos os dados e contagens deste ensaio serão permanentemente excluídos da jurisdição.</p>
-              <div className="flex flex-col gap-2">
-                <button onClick={confirmDelete} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg shadow-red-100">Sim, Remover Agora</button>
-                <button onClick={() => setEventToDelete(null)} className="w-full py-3 font-black uppercase text-[9px] text-slate-300 tracking-widest">Manter Registro</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* MODAIS MODULARES */}
+      <EventModals 
+        showModal={showModal} setShowModal={setShowModal}
+        newEventDate={newEventDate} setNewEventDate={setNewEventDate}
+        responsavel={responsavel} setResponsavel={setResponsavel}
+        handleCreate={handleCreate}
+        showConfigError={showConfigError} setShowConfigError={setShowConfigError}
+        isGemLocal={isGemLocal} onNavigateToSettings={onNavigateToSettings}
+        eventToDelete={eventToDelete} setEventToDelete={setEventToDelete}
+        confirmDelete={confirmDelete}
+      />
     </div>
   );
 };
@@ -17941,68 +17662,87 @@ import {
   auth, db, doc, setDoc, getDoc,
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut, sendEmailVerification 
+  signOut, sendEmailVerification,
+  deleteUser // v2.4 - Agora importado do config centralizado
 } from '../config/firebase';
 
 /**
  * Serviço de Autenticação e Gestão de Usuários
- * Saneado para Escalabilidade Nacional (Removido Resquícios de Jundiaí)
- * Atualizado para Matriz de Competências v2.1
+ * v2.4 - Sincronização de Importações e Rollback de Segurança Consolidado.
  */
 export const authService = {
   
   // Realiza o login do usuário com Trava de Segurança em Camadas
   login: async (email, password) => {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    
-    // TRAVA 1: Verificação de E-mail
-    // Se o e-mail não estiver verificado, reenvia o link, desloga e mata o processo.
-    // Isso impede que sessões pendentes fiquem "sincronizando" ou entrem após aprovação manual.
-    if (!cred.user.emailVerified) {
-      await sendEmailVerification(cred.user);
-      await signOut(auth); // Limpa a sessão pendente no Firebase para evitar "piscadas"
-      throw new Error("ACESSO BLOQUEADO: E-mail não verificado. Verifique sua caixa de entrada e SPAM.");
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      
+      // TRAVA 1: Verificação de E-mail
+      if (!cred.user.emailVerified) {
+        await sendEmailVerification(cred.user);
+        await signOut(auth);
+        throw new Error("ACESSO BLOQUEADO: E-mail não verificado. Verifique sua caixa de entrada e SPAM.");
+      }
+      
+      return cred.user;
+    } catch (error) {
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        throw new Error("E-mail ou senha incorretos.");
+      }
+      throw error;
     }
-    
-    return cred.user;
   },
 
   // Registra um novo usuário vinculado a uma ComumId e sua Hierarquia
-  // Sistema agnóstico: exige IDs reais vindos do banco de dados
   register: async ({ email, password, name, role, comum, comumId, cidadeId, regionalId }) => {
-    // Validação de Governança: impede registros sem jurisdição definida
+    // Validação de Governança
     if (!cidadeId || !regionalId || !comumId) {
       throw new Error("Falha de jurisdição: Dados geográficos obrigatórios ausentes.");
     }
 
-    // 1. Cria o usuário no Auth
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // 2. Cria o perfil no Firestore (Lógica Multitenancy Hierárquica)
-    // Registro 100% dinâmico baseado na seleção real do usuário
-    // O nível de acesso inicia como 'basico' independente do cargo escolhido
-    await setDoc(doc(db, 'users', cred.user.uid), {
-      email,
-      name,
-      role,
-      comum,
-      comumId, 
-      cidadeId, 
-      regionalId,
-      accessLevel: 'basico', // Define nível inicial conforme Matriz de Competências
-      approved: false, // Inicia aguardando aprovação da zeladoria local/regional
-      disabled: false,
-      createdAt: Date.now(),
-      dbVersion: "2.1-matriz"
-    });
+    let cred;
+    try {
+      // 1. Cria o usuário no Auth
+      cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // 2. Tenta criar o perfil no Firestore
+      try {
+        await setDoc(doc(db, 'users', cred.user.uid), {
+          email,
+          name,
+          role,
+          comum,
+          comumId,
+          cidadeId,
+          regionalId,
+          accessLevel: 'basico',
+          approved: false, // Inicia aguardando aprovação
+          disabled: false,
+          createdAt: Date.now(),
+          dbVersion: "2.1-matriz"
+        });
 
-    // 3. Envia verificação e força Logout
-    // O usuário não deve "permanecer" logado após o registro se o e-mail não está validado.
-    // Isso garante que ele caia na tela de Login e veja a instrução de validar o e-mail.
-    await sendEmailVerification(cred.user);
-    await signOut(auth); 
+        // 3. Envia verificação e força Logout
+        await sendEmailVerification(cred.user);
+        await signOut(auth);
 
-    return cred.user;
+        return cred.user;
+
+      } catch (firestoreError) {
+        // ROLLBACK: Se falhar no banco, deleta o login para liberar o e-mail
+        if (cred.user) {
+          await deleteUser(cred.user);
+        }
+        console.error("Erro de Permissão/Banco:", firestoreError);
+        throw new Error("ERRO DE PERMISSÃO: Falha ao registrar perfil no banco. Contate o administrador.");
+      }
+
+    } catch (authError) {
+      if (authError.code === 'auth/email-already-in-use') {
+        throw new Error("Este e-mail já está em uso. Tente fazer login ou recupere sua senha.");
+      }
+      throw authError;
+    }
   },
 
   // Recupera dados detalhados do usuário logado
@@ -18014,22 +17754,14 @@ export const authService = {
 
   /**
    * Finaliza a sessão com limpeza profunda
-   * Necessário para evitar travamentos em níveis de acesso regionais
    */
   logout: async () => {
     try {
-      // 1. Limpa o rastro geográfico e tokens persistidos
       localStorage.clear();
-      
-      // 2. Encerra a conexão com o Firebase Auth
       await signOut(auth);
-
-      // 3. HARD RESET: Força o navegador a limpar a memória do React
-      // Isso interrompe qualquer listener (onSnapshot) pendente que causaria travamento
       window.location.href = "/";
     } catch (error) {
       console.error("Erro ao encerrar sessão:", error);
-      // Fallback de emergência
       localStorage.clear();
       window.location.reload();
     }
@@ -18039,7 +17771,7 @@ export const authService = {
 
 --- FILE:  ---
 
-import { db, doc, collection, writeBatch, getDocs, query, where, addDoc } from '../config/firebase';
+import { db, doc, collection, writeBatch, getDocs, query, where, addDoc, updateDoc } from '../config/firebase';
 import { DEFAULT_INSTRUMENTS } from '../config/config';
 import toast from 'react-hot-toast';
 
@@ -18138,6 +17870,47 @@ export const churchService = {
   },
 
   /**
+   * ATUALIZAÇÃO DE NOME COM PROPAGAÇÃO HISTÓRICA
+   * v5.0 - Sincroniza o novo nome com todos os ensaios já realizados
+   */
+  updateChurchName: async (comumId, novoNome) => {
+    if (!comumId || !novoNome) return;
+    
+    const nomeLimpo = novoNome.trim().toUpperCase();
+    const loadingToast = toast.loading("Sincronizando histórico...");
+
+    try {
+      const batch = writeBatch(db);
+      
+      // 1. Atualiza o cadastro principal da Comum
+      const churchRef = doc(db, 'comuns', comumId);
+      batch.update(churchRef, { 
+        comum: nomeLimpo,
+        updatedAt: Date.now()
+      });
+
+      // 2. Busca todos os ensaios vinculados a esta comum na coleção global
+      const q = query(collection(db, 'events_global'), where('comumId', '==', comumId));
+      const querySnapshot = await getDocs(q);
+
+      // 3. Adiciona cada ensaio ao lote de atualização
+      querySnapshot.forEach((eventDoc) => {
+        batch.update(doc(db, 'events_global', eventDoc.id), {
+          comumNome: nomeLimpo
+        });
+      });
+
+      await batch.commit();
+      toast.success("Nome e histórico atualizados!", { id: loadingToast });
+      return true;
+    } catch (e) {
+      console.error("Erro na propagação de nome:", e);
+      toast.error("Erro ao sincronizar nome.", { id: loadingToast });
+      return false;
+    }
+  },
+
+  /**
    * Busca todas as comuns de uma cidade específica para filtros de interface
    */
   getChurchesByCity: async (cidadeId) => {
@@ -18151,7 +17924,7 @@ export const churchService = {
 --- FILE:  ---
 
 import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
-import { deleteField, arrayUnion } from "firebase/firestore";
+import { deleteField, arrayUnion, increment } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
@@ -18255,6 +18028,7 @@ export const eventService = {
 
   /**
    * Atualiza a contagem na COLEÇÃO GLOBAL
+   * v4.0 - Blindagem Atômica: Implementado 'increment' para evitar perda de dados por concorrência
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
     if (!eventId || !instId) {
@@ -18263,7 +18037,7 @@ export const eventService = {
     }
 
     const eventRef = doc(db, 'events_global', eventId);
-    const val = Math.max(0, parseInt(value) || 0);
+    const val = parseInt(value) || 0;
     const timestamp = Date.now();
     
     const logEntry = {
@@ -18276,11 +18050,13 @@ export const eventService = {
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Usamos um getDoc para garantir que não sobrescrevemos a "sessão" ativa de outros
+      // Capturamos o estado atual apenas para o log de histórico (Auditoria)
       const snap = await getDoc(eventRef);
       if (!snap.exists()) return;
 
       const currentInstData = snap.data()?.counts?.[instId] || {};
+      const oldValue = parseInt(currentInstData[fieldToUpdate]) || 0;
+      const diferenca = val - oldValue; // Calculamos quanto aumentou ou diminuiu
       
       // Histórico rotativo (mantém as últimas 10 alterações para auditoria)
       let history = currentInstData.history || [];
@@ -18296,12 +18072,13 @@ export const eventService = {
 
       if (customName) baseUpdate.name = customName;
 
+      // BLINDAGEM CRÍTICA: O uso de increment() garante que a soma seja feita no servidor
       await updateDoc(eventRef, { 
-        [`counts.${instId}`]: { 
-          ...currentInstData,
-          ...baseUpdate,
-          [fieldToUpdate]: val 
-        } 
+        [`counts.${instId}.lastEditBy`]: baseUpdate.lastEditBy,
+        [`counts.${instId}.timestamp`]: baseUpdate.timestamp,
+        [`counts.${instId}.section`]: baseUpdate.section,
+        [`counts.${instId}.history`]: baseUpdate.history,
+        [`counts.${instId}.${fieldToUpdate}`]: increment(diferenca)
       });
     } catch (e) {
       console.error("Erro ao atualizar contagem:", e);
@@ -18430,12 +18207,7 @@ export const toTitleCase = (str) => {
 export const pdfEventService = {
   /**
    * Gera o PDF da Ata de Ensaio
-   * v4.4 - Correção de Estabilidade: Remoção de variáveis não declaradas e ajuste de link
-   * @param {Object} stats - Estatísticas calculadas no useMemo
-   * @param {Object} ataData - Dados da Ata + Raiz do Evento (date, comumId)
-   * @param {Object} userData - Dados do usuário logado (para Regional)
-   * @param {Object} counts - Mapa completo de contagens
-   * @param {Object} comumFullData - Dados vindos da coleção 'comuns' (Endereço/Agenda)
+   * v5.3 - Nota MOO fixada às estatísticas e Ocorrências dinâmicas.
    */
   generateAtaEnsaio: async (stats, ataData, userData, counts, comumFullData) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -18443,6 +18215,9 @@ export const pdfEventService = {
     const pageHeight = doc.internal.pageSize.height;
     const margin = 10;
     const rightColX = pageWidth / 2 + 2;
+
+    // PRESERVAÇÃO: Declaração de variável para evitar ReferenceError no didDrawPage
+    let qrImageData = null;
 
     // --- FUNÇÕES AUXILIARES ---
     const translateDay = (dayNum) => {
@@ -18464,53 +18239,47 @@ export const pdfEventService = {
     const dateParts = rawDate.split('-'); 
     const dataFormatada = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
 
-    // --- 2. CABEÇALHO OFICIAL REESTRUTURADO ---
+    // --- 1.1 GERAÇÃO DO QR CODE ---
+    const rua = toTitleCase(comumFullData?.endereco?.rua || "");
+    const num = comumFullData?.endereco?.numero || "";
+    const bairro = toTitleCase(comumFullData?.endereco?.bairro || "");
+    const mapsUrl = `http://googleusercontent.com/maps.google.com/maps?q=${encodeURIComponent(`${rua}, ${num} - ${bairro} ${cidadeNome} CCB`)}`;
+    
+    try {
+      qrImageData = await QRCode.toDataURL(mapsUrl, { margin: 1, width: 120 });
+    } catch (e) {
+      console.error("Falha ao gerar QR:", e);
+    }
+
+    // --- 2. CABEÇALHO OFICIAL ---
     doc.setFont("times", "bold");
     doc.setFontSize(14);
     doc.text("Relatório do Serviço de Ensaio Local", pageWidth / 2, 15, { align: "center" });
-    
     doc.setFontSize(12);
     doc.text("CONGREGAÇÃO CRISTÃ NO BRASIL", pageWidth / 2, 21, { align: "center" });
-    
     doc.setFont("times", "normal");
     doc.setFontSize(10);
     doc.text(`${comumNomeFormatado} - ${cidadeNome}`, pageWidth / 2, 27, { align: "center" });
     doc.text(regionalNome, pageWidth / 2, 32, { align: "center" });
-
     doc.setFontSize(9);
     doc.setFont("times", "bold");
     doc.text(`DATA: ${dataFormatada}`, pageWidth - margin, 38, { align: "right" });
     doc.line(margin, 39, pageWidth - margin, 39);
 
     // --- 3. TABELA DE INSTRUMENTOS ---
-    const officialKeys = [
-      'violino','viola','violoncelo','flauta','oboe','corneingles','corne_ingles','fagote','clarinete',
-      'claronealto','clarone_alto','claronebaixo','clarone_baixo','saxsoprano','sax_soprano',
-      'saxalto','sax_alto','saxtenor','sax_tenor','saxbaritono','sax_baritono',
-      'trompete','flugelhorn','trompa','trombone','eufonio','tuba','acordeon'
-    ];
-
-    const extraKeys = Object.keys(counts || {}).filter(key => 
-      !officialKeys.includes(key.toLowerCase()) && 
-      !key.startsWith('meta_') && 
-      !['orgao', 'irmandade', 'Coral'].includes(key)
-    );
-
-    const printedKeys = [];
-    const fullInstOrder = [...officialKeys, ...extraKeys].filter(key => {
-      const normalized = key.replace(/_/g, '').toLowerCase();
-      if (counts?.[key] && !printedKeys.includes(normalized)) {
-        printedKeys.push(normalized);
-        return true;
-      }
-      return false;
+    const officialKeys = ['violino','viola','violoncelo','flauta','oboe','corneingles','corne_ingles','fagote','clarinete','claronealto','clarone_alto','claronebaixo','clarone_baixo','saxsoprano','sax_soprano','saxalto','sax_alto','saxtenor','sax_tenor','saxbaritono','sax_baritono','trompete','flugelhorn','trompa','trombone','eufonio','tuba','acordeon'];
+    const presentKeys = Object.keys(counts || {}).filter(key => !key.startsWith('meta_') && !['orgao', 'irmandade', 'Coral', 'date'].includes(key));
+    const sortedKeys = presentKeys.sort((a, b) => {
+      const idxA = officialKeys.indexOf(a.replace(/_/g, '').toLowerCase());
+      const idxB = officialKeys.indexOf(b.replace(/_/g, '').toLowerCase());
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
     });
 
-    const orqBody = fullInstOrder.map((key, idx) => {
-      const d = counts?.[key] || { total: 0, comum: 0 };
-      const label = d.name || key.replace(/_/g, ' ').toUpperCase();
-      const vis = Math.max(0, (parseInt(d.total) || 0) - (parseInt(d.comum) || 0));
-      return [(idx + 1).toString().padStart(2, '0'), label, d.comum || 0, vis, d.total || 0];
+    const orqBody = sortedKeys.map((key, idx) => {
+      const d = counts[key] || {};
+      const total = Number(d.total) || 0;
+      const comum = Number(d.comum) || 0;
+      return [(idx + 1).toString().padStart(2, '0'), d.name || key.replace(/_/g, ' ').toUpperCase(), comum, Math.max(0, total - comum), total];
     });
 
     autoTable(doc, {
@@ -18528,7 +18297,7 @@ export const pdfEventService = {
       head: [['Nº', 'ORGANISTAS', 'COMUM', 'VISITAS', 'TOTAL']],
       body: [['27', 'ORGANISTAS', Number(counts?.orgao?.comum) || 0, Math.max(0, stats.organistas - (counts?.orgao?.comum || 0)), stats.organistas]],
       theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center' },
-      headStyles: { fillColor: [60, 60, 60], textColor: 255, halign: 'center' },
+      headStyles: { fillColor: [60, 60, 60], textColor: 255 },
       columnStyles: { 1: { halign: 'left', fontStyle: 'bold' } }
     });
 
@@ -18537,47 +18306,40 @@ export const pdfEventService = {
       head: [['Nº', 'CORAL', 'IRMÃOS', 'IRMÃS', 'TOTAL']],
       body: [['23', 'IRMANDADE', stats.irmaos, stats.irmas, stats.irmandade]],
       theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center' },
-      headStyles: { fillColor: [80, 80, 80], textColor: 255, halign: 'center' },
+      headStyles: { fillColor: [80, 80, 80], textColor: 255 },
       columnStyles: { 1: { halign: 'left', fontStyle: 'bold' } }
     });
 
     // --- 4. PIRÂMIDE DE TOTAIS ---
     let totalsY = doc.lastAutoTable.finalY + 8;
-    doc.setFontSize(8); 
-    doc.setFont("times", "normal");
+    doc.setFontSize(8); doc.setFont("times", "normal");
     doc.text(`MÚSICOS: ${stats.musicos} | ORGANISTAS: ${stats.organistas} | CORAL: ${stats.irmandade}`, margin, totalsY);
-
     totalsY += 5;
     doc.setFont("times", "bold");
     doc.text(`TOTAL ORQUESTRA: ${stats.musicos + stats.organistas}`, margin, totalsY);
-
     totalsY += 6;
     doc.setFontSize(10);
     doc.text(`TOTAL GERAL DE PRESENTES: ${stats.geral}`, margin, totalsY);
 
-    // --- 5. COLUNA DIREITA ---
+    // --- 5. COLUNA DIREITA (Atendimento e Hinos) ---
     doc.setFont("times", "bold"); doc.setFontSize(9);
     doc.text("ATENDIMENTO", rightColX, 45);
     doc.setFont("times", "normal"); doc.setFontSize(8);
     doc.text(`Nome: ${toTitleCase(ataData?.atendimentoNome) || "---"}`, rightColX, 50);
     doc.text(`Ministério: ${toTitleCase(ataData?.atendimentoMin) || "---"}`, rightColX, 54);
 
+    doc.setFont("times", "bold"); doc.setFontSize(9);
+    doc.text("HINOS TOCADOS", rightColX, 62);
+    const todosHinos = (ataData?.partes || []).flatMap(p => p.hinos || []).filter(h => h && h.trim() !== "");
+    doc.setFont("times", "normal"); doc.setFontSize(8);
+    const hinosTxt = doc.splitTextToSize(todosHinos.join(" - ") || "---", 85);
+    doc.text(hinosTxt, rightColX, 67);
+    const posHinosY = 67 + (hinosTxt.length * 4);
     doc.setFont("times", "bold");
-    doc.text("ANDAMENTO DO ENSAIO", rightColX, 62);
-    const partesBody = (ataData?.partes || []).map(p => [
-      p.label, toTitleCase(p.nome) || "---", p.hinos?.filter(h => h).join("-") || "---", p.hinos?.filter(h => h).length || 0
-    ]);
-    autoTable(doc, {
-      startY: 64, margin: { left: rightColX },
-      head: [['PARTE', 'CONDUTOR', 'HINOS', 'TOT.']],
-      body: partesBody,
-      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center' },
-      headStyles: { fillColor: [240, 240, 240], textColor: 0, halign: 'center' },
-      columnStyles: { 3: { fontStyle: 'bold' } }
-    });
+    doc.text(`TOTAL DE HINOS: ${todosHinos.length}`, rightColX, posHinosY);
 
     // --- 6. ESTATÍSTICA MOO + NOTA MADEIRAS ---
-    const mooY = doc.lastAutoTable.finalY + 8;
+    const mooY = posHinosY + 10;
     doc.setFont("times", "bold"); doc.setFontSize(9);
     doc.text("ESTATÍSTICA REF. MOO", rightColX, mooY);
     const totalM = Math.max(1, stats.musicos);
@@ -18589,8 +18351,7 @@ export const pdfEventService = {
     mooNaipes.forEach((n, i) => {
       const rowY = mooY + 6 + (i * 12);
       const percReal = (n.val / totalM) * 100;
-      doc.setFontSize(7); 
-      doc.setFont("times", "bold");
+      doc.setFontSize(7); doc.setFont("times", "bold");
       doc.text(`${n.label.toUpperCase()} [${n.val}/${totalM}]`, rightColX, rowY);
       doc.setFont("times", "normal");
       doc.text(`${percReal.toFixed(0)}% / Meta ${n.ref}%`, pageWidth - margin, rowY, { align: 'right' });
@@ -18599,67 +18360,94 @@ export const pdfEventService = {
       doc.rect(rightColX, rowY + 2, Math.min(85, (percReal / 100) * 85), 3, 'F');
     });
 
-    const notaY = mooY + (mooNaipes.length * 12) + 8;
-    doc.setFontSize(6.5);
-    doc.setFont("times", "italic");
-    doc.text("* Nota: A seção de Madeiras contempla a família dos Saxofones.", rightColX, notaY);
+    const finalMooY = mooY + (mooNaipes.length * 12) + 2;
+    doc.setFontSize(6.5); doc.setFont("times", "italic");
+    doc.text("* Nota: A seção de Madeiras contempla a família dos Saxofones.", rightColX, finalMooY + 4);
 
-    // --- 7. TABELA MINISTERIAL E RODAPÉ ---
-    const pesos = { 'Encarregado Regional': 1, 'Encarregado Local': 2, 'Examinadora': 3, 'Ancião': 4, 'Diácono': 5, 'Cooperador do Ofício': 6, 'Cooperador RJM': 7 };
-    const minRows = [];
-    ataData?.presencaLocalFull?.forEach(p => minRows.push({ cargo: p.role, nome: toTitleCase(p.nome), comum: comumNomeFormatado, cidade: cidadeNome, data: "-", hora: "-", peso: pesos[p.role] || 99 }));
-    ataData?.visitantes?.forEach(v => minRows.push({ cargo: v.min, nome: toTitleCase(v.nome), comum: toTitleCase(v.bairro || v.comum || "Outra"), cidade: toTitleCase(v.cidadeUf), data: v.dataEnsaio || "", hora: v.hora || "", peso: pesos[v.min] || 99 }));
-    minRows.sort((a, b) => a.peso - b.peso || a.nome.localeCompare(b.nome));
+    // --- 7. OCORRÊNCIAS DO ENSAIO (Condicional e Agrupada) ---
+    const rawOcorrencias = ataData?.ocorrencias || [];
+    const listaFinalOcorr = [];
+    const mapA = {}; 
 
-    const rua = toTitleCase(comumFullData?.endereco?.rua || "");
-    const num = comumFullData?.endereco?.numero || "";
-    const bairro = toTitleCase(comumFullData?.endereco?.bairro || "");
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${rua}, ${num} - ${bairro} ${cidadeNome} CCB`)}`;
-    
-    let qrImageData = null;
-    try {
-      qrImageData = await QRCode.toDataURL(mapsUrl, { margin: 1, width: 120 });
-    } catch (e) { console.error("Falha ao gerar QR:", e); }
+    rawOcorrencias.forEach(o => {
+      if (o.tipo === 'A' && o.instrumento && o.etapa) {
+        const key = `${o.instrumento}|${o.etapa}`;
+        if (!mapA[key]) mapA[key] = [];
+        mapA[key].push(o.nome);
+      } else {
+        listaFinalOcorr.push(o.texto);
+      }
+    });
+
+    Object.entries(mapA).forEach(([key, nomes]) => {
+      const [inst, etapa] = key.split('|');
+      const plural = nomes.length > 1;
+      const frase = `${plural ? 'Apresentados' : 'Apresentado(a)'} para início nos ensaios ${plural ? 'os irmãos' : 'o(a) irmão(ã)'} ${nomes.join(" e ")}, executando o instrumento ${inst}, na etapa de ${etapa}, a partir desta data.`;
+      listaFinalOcorr.push(frase);
+    });
+
+    // Variável para controlar o fluxo de altura da coluna direita
+    let lastRightColY = finalMooY + 8;
+
+    if (listaFinalOcorr.length > 0) {
+      const ocorrenciasY = finalMooY + 14; // Espaçamento após a nota dos saxofones
+      doc.setFont("times", "bold"); doc.setFontSize(9);
+      doc.text("OCORRÊNCIAS DO ENSAIO", rightColX, ocorrenciasY);
+      
+      doc.setFont("times", "italic"); doc.setFontSize(7.5);
+      let currentOcorrY = ocorrenciasY + 5;
+      listaFinalOcorr.forEach(txt => {
+        const lines = doc.splitTextToSize(`• ${txt}`, 85);
+        doc.text(lines, rightColX, currentOcorrY);
+        currentOcorrY += (lines.length * 3.5) + 1;
+      });
+      lastRightColY = currentOcorrY;
+    }
+
+    // --- 8. TABELA MINISTERIAL (Hierarquia Completa) ---
+    const pesos = { 'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador do Oficio': 3, 'Cooperador de Jovens e Menores': 4, 'Cooperador RJM': 4, 'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7, 'Secretário da Música': 8, 'Secretario da Musica': 8, 'Instrutor': 9, 'Músico': 10, 'Musico': 10 };
+    const localRows = [];
+    const visitorRows = [];
+
+    ataData?.presencaLocalFull?.forEach(p => {
+      localRows.push({ cargo: p.role, nome: toTitleCase(p.nome), comum: comumNomeFormatado, cidade: cidadeNome, data: "—", hora: "—", peso: pesos[p.role] || 99 });
+    });
+    ataData?.visitantes?.forEach(v => {
+      visitorRows.push({ cargo: v.min, nome: toTitleCase(v.nome), comum: toTitleCase(v.bairro || v.comum), cidade: toTitleCase(v.cidadeUf), data: v.dataEnsaio || "—", hora: v.hora || "—", peso: pesos[v.min] || 99 });
+    });
+
+    localRows.sort((a, b) => a.peso - b.peso || a.nome.localeCompare(b.nome));
+    visitorRows.sort((a, b) => a.cidade.localeCompare(b.cidade) || a.peso - b.peso || a.nome.localeCompare(b.nome));
+
+    const finalMinBody = [];
+    if (localRows.length > 0) {
+      finalMinBody.push([{ content: 'LOCAL', colSpan: 6, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', textColor: [0, 0, 0] } }]);
+      localRows.forEach(r => finalMinBody.push([r.cargo, r.nome, r.comum, r.cidade, r.data, r.hora]));
+    }
+    if (visitorRows.length > 0) {
+      finalMinBody.push([{ content: 'VISITAS', colSpan: 6, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', textColor: [0, 0, 0] } }]);
+      visitorRows.forEach(r => finalMinBody.push([r.cargo, r.nome, r.comum, r.cidade, r.data, r.hora]));
+    }
 
     autoTable(doc, {
-      startY: Math.max(totalsY + 12, doc.lastAutoTable.finalY + 12, notaY + 5),
+      startY: Math.max(totalsY + 12, doc.lastAutoTable.finalY + 12, lastRightColY + 8),
       head: [['MINISTÉRIO', 'NOME', 'COMUM/BAIRRO', 'CIDADE/UF', 'DATA ENS.', 'HORA']],
-      body: minRows.map(r => [r.cargo, r.nome, r.comum, r.cidade, r.data, r.hora]),
-      theme: 'grid', 
-      styles: { fontSize: 6, font: "times", cellPadding: 1, halign: 'center' },
-      headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
+      body: finalMinBody,
+      theme: 'grid', styles: { fontSize: 6, font: "times", cellPadding: 1, halign: 'center' },
+      headStyles: { fillColor: [40, 40, 40], textColor: 255, fontStyle: 'bold' },
       columnStyles: { 1: { halign: 'left' } },
       margin: { bottom: 35 }, 
       didDrawPage: (data) => {
         const footerY = pageHeight - 18;
-        const qrSize = 12; 
-        const qrMarginX = margin + 2;
-        
         if (qrImageData) {
-            doc.addImage(qrImageData, 'PNG', qrMarginX, footerY - 5, qrSize, qrSize);
-            doc.link(qrMarginX, footerY - 5, qrSize, qrSize, { url: mapsUrl });
+          doc.addImage(qrImageData, 'PNG', margin + 2, footerY - 5, 12, 12);
         }
-
-        const infoX = qrMarginX + qrSize + 5;
-        const agendaDias = comumFullData?.diasSelecao ? comumFullData.diasSelecao.map(d => translateDay(d)).join(' e ') : "---";
-        const enderecoLine = `${rua}, ${num} - ${bairro} • ${cidadeNome}`;
-        
-        doc.setFontSize(7); 
-        doc.setFont("times", "bold");
-        doc.text(comumNomeFormatado.toUpperCase(), infoX, footerY - 2);
-        
-        doc.setFontSize(6.5);
-        doc.setFont("times", "normal");
-        doc.text(enderecoLine, infoX, footerY + 1);
-        doc.text(`Culto: ${agendaDias} às ${comumFullData?.horaCulto || '---'} | Ensaio Local: ${comumFullData?.ensaioLocal || '---'} às ${comumFullData?.horaEnsaio || '---'}`, infoX, footerY + 4);
-        
-        doc.setFontSize(6);
-        doc.setFont("times", "italic");
-        doc.text("Escaneie ou toque no código ao lado para abrir a localização.", infoX, footerY + 7);
-
-        doc.setFontSize(6.5);
-        doc.setFont("times", "normal");
-        doc.text(`Secretaria de Música ${regionalNome} • Sistema de Gestão Digital`, pageWidth / 2, pageHeight - 5, { align: "center" });
+        doc.setFontSize(7); doc.setFont("times", "bold");
+        doc.text(comumNomeFormatado.toUpperCase(), margin + 17, footerY - 2);
+        doc.setFontSize(6.5); doc.setFont("times", "normal");
+        doc.text(`${rua}, ${num} - ${bairro} • ${cidadeNome}`, margin + 17, footerY + 1);
+        doc.text(`Culto: ${comumFullData?.diasSelecao?.map(d => translateDay(d)).join(' e ') || "---"} às ${comumFullData?.horaCulto || '---'} | Ensaio Local: ${comumFullData?.ensaioLocal || '---'} às ${comumFullData?.horaEnsaio || '---'}`, margin + 17, footerY + 4);
+        doc.setFontSize(6.5); doc.text(`Secretaria de Música ${regionalNome} • Sistema de Gestão Digital`, pageWidth / 2, pageHeight - 5, { align: "center" });
       }
     });
 
@@ -18778,277 +18566,95 @@ Deus abençoe grandemente!`;
 
 --- FILE:  ---
 
-import { useState, useEffect, useMemo } from 'react'
-import { 
-  auth, db, doc, onSnapshot, collection, query, orderBy, where, onAuthStateChanged 
-} from './config/firebase'
-import { authService } from './services/authService' 
-import { LOCALIDADE_PADRAO } from './config/config'
-import toast, { Toaster } from 'react-hot-toast'
-import { motion, AnimatePresence } from 'framer-motion'
-
-import DashPage from './pages/dashboard/DashPage'
-import SettingsPage from './pages/SettingsPage'
-import CounterPage from './pages/events/CounterPage'
-import EventsPage from './pages/events/EventsPage' 
-import LoginPage from './pages/auth/LoginPage'
-import CapaEntrada from './pages/CapaEntrada'
-import Header from './components/Header' 
-import Tickets from './components/Tickets' // Importação do sistema de suporte
-
-// Importação do Contexto para unificar a fonte de verdade
-import { useAuth } from './context/AuthContext';
-
-const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretário da Música', 'Secretario da Música'];
-
-function App() {
-  // INTEGRAÇÃO: Consumindo o GPS Global diretamente no App
-  const { userData: authContextData } = useAuth();
-  
-  const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [view, setView] = useState('loading');
-  const [showSplash, setShowSplash] = useState(true); 
-  const [lobbyTab, setLobbyTab] = useState('ensaios');
-  const [currentEventId, setCurrentEventId] = useState(null);
-  const [counts, setCounts] = useState({});
-  const [direcao, setDirecao] = useState(0);
-  const [events, setEvents] = useState([]);
-
-  // Inicialização robusta via localStorage - MANTÉM A ÚLTIMA COMUM VISITADA
-  const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId') || null);
-  const [activeComumName, setActiveComumName] = useState(localStorage.getItem('activeComumName') || '');
-  const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId') || null);
-  const [activeRegionalName, setActiveRegionalName] = useState(localStorage.getItem('activeRegionalName') || 'Navegar...');
-
-  const [email, setEmail] = useState('');
-  const [pass, setPass] = useState('');
-  const [userName, setUserName] = useState('');
-  const [userRole, setUserRole] = useState(''); 
-  const [authMode, setAuthMode] = useState('login');
-  const [cargosDinamicos, setCargosDinamicos] = useState([]);
-
-  // --- MATRIZ DE COMPETÊNCIAS v2.1 (CONEXÃO DIRETA COM ACCESSLEVEL) ---
-  // CORREÇÃO: Usando authContextData como fonte primária para evitar atrasos de estado
-  const level = authContextData?.accessLevel || userData?.accessLevel;
-  const isMaster = level === 'master';
-  const isComissao = isMaster || level === 'comissao';
-  const isRegionalCidade = isComissao || level === 'regional_cidade';
-  const isGemLocal = isRegionalCidade || level === 'gem_local';
-  const isBasico = level === 'basico';
-  
-  const isAdmin = isGemLocal;
-  
-  // PRIORIDADE: Sincronia com o contexto global
-  const comumIdEfetivo = authContextData?.activeComumId || activeComumId || userData?.comumId;
-
-  const currentEventData = useMemo(() => {
-    return events.find(ev => ev.id === currentEventId);
-  }, [events, currentEventId]);
-
-  const ORDEM_TABS = useMemo(() => {
-    const temAcessoAjustes = isGemLocal; 
-    return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
-  }, [isGemLocal]);
-
-  useEffect(() => {
-    if ((authContextData || userData) && !ORDEM_TABS.includes(lobbyTab)) {
-      setLobbyTab('ensaios');
-    }
-  }, [authContextData, userData, lobbyTab, ORDEM_TABS]);
-
-  const mudarTab = (novaTab) => {
-    const idxAntigo = ORDEM_TABS.indexOf(lobbyTab);
-    const idxNovo = ORDEM_TABS.indexOf(novaTab);
-    if (idxAntigo === idxNovo) return;
-    setDirecao(idxNovo > idxAntigo ? 1 : -1);
-    setLobbyTab(novaTab);
-  };
-
-  // SINCRONIZAÇÃO DE ESTADO COM CONTEXTO
-  useEffect(() => {
-    if (authContextData?.activeComumId !== undefined) {
-      setActiveComumId(authContextData.activeComumId);
-    }
-    if (authContextData?.activeRegionalId !== undefined) {
-      setActiveRegionalId(authContextData.activeRegionalId);
-    }
-  }, [authContextData?.activeComumId, authContextData?.activeRegionalId]);
-
-  useEffect(() => {
-    let unsubSnap = null;
-    const unsubAuth = onAuthStateChanged(auth, u => {
-      setUser(u);
-      if (u) {
-        unsubSnap = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setUserData({ ...data, uid: u.uid, id: u.uid });
-
-            const podeNavegar = data.accessLevel === 'master' || data.accessLevel === 'comissao' || data.accessLevel === 'regional_cidade';
-            
-            if (podeNavegar) {
-              const savedComumId = localStorage.getItem('activeComumId');
-              const savedComumName = localStorage.getItem('activeComumName');
-              const savedRegionalId = localStorage.getItem('activeRegionalId');
-              const savedRegionalName = localStorage.getItem('activeRegionalName');
-
-              if (!activeComumId && !savedComumId) {
-                setActiveComumId(data.comumId);
-                setActiveComumName(data.comum);
-              } else if (savedComumId && !activeComumId) {
-                setActiveComumId(savedComumId);
-                setActiveComumName(savedComumName);
-              }
-
-              if (!activeRegionalId && !savedRegionalId) {
-                setActiveRegionalId(data.regionalId);
-                setActiveRegionalName(data.regionalNome || data.regional);
-              } else if (savedRegionalId && !activeRegionalId) {
-                setActiveRegionalId(savedRegionalId);
-                setActiveRegionalName(savedRegionalName);
-              }
-            } else {
-              setActiveComumId(data.comumId);
-              setActiveComumName(data.comum || "Localidade");
-              setActiveRegionalId(data.regionalId);
-              setActiveRegionalName(data.regionalNome || data.regional || "Regional");
-            }
-            
-            setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
-          } else { 
-            setView('login'); 
-          }
-        }, (err) => { 
-          console.error("Erro no Snapshot de Usuário:", err);
-          setView('login'); 
-        });
-      } else { 
-        if (unsubSnap) unsubSnap();
-        setUserData(null);
-        setEvents([]); 
-        setActiveComumId(null);
-        setActiveComumName('');
-        setActiveRegionalId(null);
-        setActiveRegionalName('Navegar...');
-        localStorage.removeItem('activeComumId');
-        localStorage.removeItem('activeComumName');
-        localStorage.removeItem('activeRegionalId');
-        localStorage.removeItem('activeRegionalName');
-        setView('login'); 
-      }
-    });
-    return () => { unsubAuth(); if (unsubSnap) unsubSnap(); };
-  }, []); 
-
-  useEffect(() => {
-    setEvents([]); 
-    if (!user?.uid || !comumIdEfetivo || !(authContextData || userData)) return;
-
-    const q = query(
-      collection(db, 'events_global'), 
-      where('comumId', '==', comumIdEfetivo), 
-      orderBy('date', 'desc')
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data(),
-        comumId: d.data().comumId || comumIdEfetivo 
-      }));
-      setEvents(data);
-    }, (err) => {
-      console.warn("Snapshot de eventos finalizado:", err.message);
-    });
-
-    return () => unsub();
-  }, [comumIdEfetivo, user?.uid, level, authContextData?.activeComumId]); 
-
-  if (view === 'loading') return <div className="h-dvh flex items-center justify-center bg-[#F1F5F9] font-black text-slate-950 animate-pulse uppercase text-[10px]">Sincronizando Jurisdição...</div>;
-
-  return (
-    <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left">
-      <Toaster position="top-center" />
-      <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
-
-      {view === 'login' ? (
-        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData || userData} />
-      ) : view === 'lobby' ? (
-        <>
-          <Header userData={authContextData || { ...userData, activeRegionalId, activeRegionalName, isComissao, isRegional: isComissao, isCidade: isRegionalCidade }} 
-            onChurchChange={(id, nome) => { 
-              setActiveComumId(id); setActiveComumName(nome); 
-              localStorage.setItem('activeComumId', id); localStorage.setItem('activeComumName', nome); 
-            }}
-            onRegionalChange={(id, nome) => { 
-              setActiveRegionalId(id); setActiveRegionalName(nome); 
-              localStorage.setItem('activeRegionalId', id); localStorage.setItem('activeRegionalName', nome); 
-            }}
-          />
-          <main className="flex-1 relative overflow-hidden">
-            <AnimatePresence mode="popLayout" custom={direcao}>
-              <motion.div key={lobbyTab} custom={direcao} initial={{ opacity: 0, x: direcao * 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: direcao * -100 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="w-full h-full overflow-y-auto no-scrollbar pt-4 pb-32 px-4">
-                <div className="max-w-md mx-auto">
-                  {lobbyTab === 'ensaios' && (
-                    <EventsPage 
-                      key={authContextData?.activeCityId || 'default'} 
-                      allEvents={events}
-                      userData={authContextData || { ...userData, activeCityId: userData?.activeCityId || userData?.cidadeId, activeComumId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId, isMaster, isComissao, isCidade: isRegionalCidade }} 
-                      isAdmin={isAdmin} 
-                      onSelectEvent={(id) => { 
-                        setCurrentEventId(id); 
-                        setView('app'); 
-                      }} 
-                      onChurchChange={(id, nome) => {
-                        setActiveComumId(id);
-                        setActiveComumName(nome);
-                        localStorage.setItem('activeComumId', id);
-                        localStorage.setItem('activeComumName', nome);
-                      }}
-                    />
-                  )}
-                  {lobbyTab === 'dash' && <DashPage userData={authContextData || { ...userData, activeCityId: userData?.activeCityId || userData?.cidadeId, activeComumId: activeComumId, comumId: comumIdEfetivo, comum: activeComumName, activeRegionalId, activeRegionalName, regionalId: activeRegionalId }} />}
-                  {lobbyTab === 'config' && <SettingsPage />}
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </main>
-          <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-slate-950 text-white rounded-[2.2rem] flex justify-around p-1.5 z-50 shadow-2xl border border-white/5">
-            {ORDEM_TABS.map(tab => (
-              <button key={tab} onClick={() => mudarTab(tab)} className={`relative flex-1 py-3 rounded-[1.8rem] transition-all duration-300 ${lobbyTab === tab ? 'bg-white text-slate-950 shadow-lg scale-105 font-black' : 'text-slate-500'}`}>
-                <span className="text-[9px] font-black uppercase italic tracking-widest">{tab === 'ensaios' ? 'Ensaios' : tab === 'dash' ? 'Geral' : 'Ajustes'}</span>
-              </button>
-            ))}
-          </nav>
-        </>
-      ) : (
-        <CounterPage 
-          currentEventId={currentEventId} 
-          counts={counts} 
-          onBack={() => setView('lobby')} 
-          isAdmin={isAdmin} 
-          isMaster={isMaster} 
-          userData={authContextData || { 
-            ...userData, 
-            comumId: currentEventData?.comumId || comumIdEfetivo, 
-            comum: activeComumName, 
-            activeRegionalId, 
-            activeRegionalName, 
-            regionalId: activeRegionalId, 
-            isBasico, isAdmin, isRegional: isComissao, isComissao, isCidade: isRegionalCidade 
-          }} 
-          allEvents={events} 
-        />
-      )}
-
-      {/* SISTEMA DE TICKETS (Floating Support) - Trava de segurança para não aparecer na Capa */}
-      {!showSplash && <Tickets moduloAtual={lobbyTab} />}
-    </div>
-  );
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  text-align: center;
 }
 
-export default App;
+/* Estilização Base */
+body {
+  margin: 0;
+  background-color: #f9fafb; /* gray-50 */
+  color: #1f2937; /* gray-800 */
+}
+
+/* Logos e Animações Originais Preservadas */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* --- NOVAS REGRAS PARA CARDS DE INSTRUMENTOS --- */
+
+/* Borda lateral esquerda fixa que sobe até o topo */
+.card-section {
+  position: relative;
+  overflow: hidden;
+  border-left-width: 12px !important; /* Borda grossa lateral */
+  transition: all 300ms ease;
+}
+
+/* Cores por Família (Classes que aplicaremos no CounterPage) */
+.border-cordas {
+  border-left-color: #fcd34d !important; /* Amber-300 (Amarelo) */
+}
+
+.border-madeiras {
+  border-left-color: #6ee7b7 !important; /* Emerald-300 (Verde) */
+}
+
+.border-metais {
+  border-left-color: #fca5a5 !important; /* Rose-300 (Vermelho) */
+}
+
+.border-orgao {
+  border-left-color: #d8b4fe !important; /* Purple-300 (Roxo) */
+}
+
+/* Efeito de Ring ao focar no card aberto */
+.card-active {
+  ring: 2px;
+  ring-color: rgba(59, 130, 246, 0.2);
+}
+
+/* Ajuste para inputs do Chrome para não mostrar setas de número */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
 
 
 --- FILE:  ---
@@ -19209,3 +18815,32 @@ input[type=number] {
 
 --- FILE:  ---
 
+/**
+ * Script de Extração Profunda de Documentos Firestore
+ * Gera um arquivo .txt com a estrutura real do banco
+ */
+export const extrairEstruturaDocumento = (nomeDocumento, dados) => {
+  const formatarValor = (valor, recuo = 0) => {
+    const espaço = "  ".repeat(recuo);
+    if (Array.isArray(valor)) {
+      return `[\n${valor.map(v => espaço + "  " + formatarValor(v, recuo + 1)).join(",\n")}\n${espaço}]`;
+    } else if (typeof valor === 'object' && valor !== null) {
+      return `{\n${Object.entries(valor)
+        .map(([k, v]) => `${espaço}  ${k}: ${formatarValor(v, recuo + 1)}`)
+        .join(",\n")}\n${espaço}}`;
+    }
+    return typeof valor === 'string' ? `"${valor}"` : valor;
+  };
+
+  const conteudo = `==========================================
+EXTRAÇÃO DE DADOS: ${nomeDocumento.toUpperCase()}
+GERADO EM: ${new Date().toLocaleString()}
+==========================================\n\n` + formatarValor(dados);
+
+  const blob = new Blob([conteudo], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `debug_${nomeDocumento}_${Date.now()}.txt`;
+  link.click();
+};

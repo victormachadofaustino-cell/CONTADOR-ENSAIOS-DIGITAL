@@ -216,7 +216,7 @@ const SettingsPage = () => {
       {/* BLOCO 2: DIVISOR DE CONTEXTO (Os Pills) */}
       {isRegionalCidade && (
         <div key={`pills-container-${activeRegionalId}`} className="flex items-center gap-2 px-1 py-4 border-y border-slate-100">
-          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
               className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
@@ -263,7 +263,8 @@ const SettingsPage = () => {
 
       {/* BLOCO 3: GESTÃO OPERACIONAL */}
       <div className="space-y-3">
-        {isComissao && (
+        {/* LIBERADO PARA REGIONAL DE CIDADE: isRegionalCidade engloba Regional, Comissão e Master */}
+        {isRegionalCidade && (
           <MenuCard id="churches_mgr" active={activeMenu} setActive={setActiveMenu} icon={<Building2 size={18}/>} module="Infraestrutura" title="Manutenção de Comuns">
             <ModuleChurchesManager 
               selectedCity={selectedCity} 
