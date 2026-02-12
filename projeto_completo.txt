@@ -14203,7 +14203,7 @@ const SettingsPage = () => {
       {/* BLOCO 2: DIVISOR DE CONTEXTO (Os Pills) */}
       {isRegionalCidade && (
         <div key={`pills-container-${activeRegionalId}`} className="flex items-center gap-2 px-1 py-4 border-y border-slate-100">
-          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-white shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
               className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
@@ -14250,7 +14250,8 @@ const SettingsPage = () => {
 
       {/* BLOCO 3: GESTÃO OPERACIONAL */}
       <div className="space-y-3">
-        {isComissao && (
+        {/* LIBERADO PARA REGIONAL DE CIDADE: isRegionalCidade engloba Regional, Comissão e Master */}
+        {isRegionalCidade && (
           <MenuCard id="churches_mgr" active={activeMenu} setActive={setActiveMenu} icon={<Building2 size={18}/>} module="Infraestrutura" title="Manutenção de Comuns">
             <ModuleChurchesManager 
               selectedCity={selectedCity} 
@@ -14949,7 +14950,7 @@ const DashPage = ({ userData }) => {
   const level = userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
-  const isRegionalCidade = level === 'regional_cidade'; 
+  const isRegionalCidade = isComissao || level === 'regional_cidade'; 
   const isGemLocal = level === 'gem_local';
   const isBasico = level === 'basico';
 
@@ -15379,12 +15380,13 @@ export default DashPage;
 --- FILE:  ---
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { db, doc, onSnapshot, collection, query, where, orderBy } from '../../config/firebase';
+// PRESERVAÇÃO: Importações originais mantidas
+import { db, doc, onSnapshot, collection, query, where, orderBy, getDocs } from '../../config/firebase';
 import { eventService } from '../../services/eventService'; 
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Lock, ShieldCheck, Info, X, User, Music, MapPin, Phone, Calendar, Clock, Trash2
+  Lock, ShieldCheck, Info, X, User, Music, MapPin, Phone, Calendar, Clock, Trash2, Users, ShieldAlert
 } from 'lucide-react';
 
 // Importação do Cérebro de Autenticação v2.1
@@ -15398,6 +15400,11 @@ import AtaMinisterioLocal from './components/AtaMinisterioLocal.jsx';
 import AtaLacreStatus from './components/AtaLacreStatus.jsx';
 // Importação do Novo Módulo de Ocorrências
 import AtaOcorrencias from './components/AtaOcorrencias.jsx';
+// Importação do Módulo de Palavra Pregada (v1.0 Regional)
+import AtaPalavra from './components/AtaPalavra.jsx';
+// Importação dos Módulos de Gestão Regional v4.0
+import GuestManager from './components/GuestManager.jsx';
+import MinistryAccordion from './components/MinistryAccordion.jsx';
 
 const AtaPage = ({ eventId, comumId }) => {
   const { userData } = useAuth();
@@ -15418,10 +15425,11 @@ const AtaPage = ({ eventId, comumId }) => {
       { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
       { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
     ],
+    palavra: { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' },
     presencaLocal: [],
     presencaLocalFull: [],
     visitantes: [],
-    ocorrencias: [] // Inicialização do campo de ocorrências
+    ocorrencias: [] 
   });
   
   const [eventMeta, setEventMeta] = useState(null);
@@ -15440,11 +15448,13 @@ const AtaPage = ({ eventId, comumId }) => {
   const saveTimeoutRef = useRef(null);
 
   const [newVisita, setNewVisita] = useState({ 
-    nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
+    nome: '', min: '', inst: '', bairro: '', city: '', state: '', dataEnsaio: '', hora: '', contato: '' 
   });
 
   const isClosed = ataData?.status === 'closed';
+  const isRegionalScope = eventMeta?.scope === 'regional';
   
+  // MATRIZ DE PODER v2.4: Básico nunca edita. GEM Local edita apenas na própria comum.
   const temPermissaoEditar = useMemo(() => {
     if (isBasico || isClosed) return false;
     if (isMaster || isComissao) return true;
@@ -15454,7 +15464,6 @@ const AtaPage = ({ eventId, comumId }) => {
 
   const isInputDisabled = !temPermissaoEditar;
 
-  // PESOS ATUALIZADOS v4.8 - Harmonia com PDF
   const pesosMinisterio = {
     'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador RJM': 4,
     'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7,
@@ -15484,11 +15493,13 @@ const AtaPage = ({ eventId, comumId }) => {
   }, [comumId, eventId, eventMeta, userData, isInputDisabled]);
 
   const handleChange = (newData) => {
+    if (isInputDisabled) return;
     setAtaData(newData);
     debouncedSave(newData);
   };
 
   const saveStatus = async (newStatus) => {
+    if (isBasico) return;
     const updated = { ...ataData, status: newStatus, comumNome: eventMeta?.comumNome || userData?.comum || "LOCALIDADE" };
     setAtaData(updated);
     try {
@@ -15501,44 +15512,53 @@ const AtaPage = ({ eventId, comumId }) => {
     if (!comumId || !eventId) return;
     let isMounted = true;
     
-    onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
-      if (!isMounted) return;
-      setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    // BLINDAGEM DE LISTENERS: Se for básico, não tenta ler tabelas de infraestrutura protegidas
+    if (!isBasico) {
+      onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
+        if (!isMounted) return;
+        setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
 
-    onSnapshot(collection(db, 'referencia_cargos'), (s) => {
-      if (!isMounted) return;
-      const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
-      setReferenciaMinisterio(lista);
-    });
+      onSnapshot(collection(db, 'referencia_cargos'), (s) => {
+        if (!isMounted) return;
+        const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
+        setReferenciaMinisterio(lista);
+      });
 
-    onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
-      if (!isMounted) return;
-      const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
-      setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
-    });
+      onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
+        if (!isMounted) return;
+        const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
+        setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
+      });
+    }
 
-    onSnapshot(doc(db, 'events_global', eventId), (s) => {
-      if (!isMounted) return;
-      if (s.exists()) {
-        const eventData = s.data();
-        setEventMeta(eventData);
-        if (eventData.ata) {
-          const loadedAta = { ...eventData.ata };
-          if (!loadedAta.partes || loadedAta.partes.length === 0) {
-            loadedAta.partes = [
-              { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
-              { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
-            ];
+    // MONITOR DO EVENTO GLOBAL (Acesso permitido ao Básico)
+    const unsubEvent = onSnapshot(doc(db, 'events_global', eventId), 
+      (s) => {
+        if (s.exists() && isMounted) {
+          const eventData = s.data();
+          setEventMeta(eventData);
+          if (eventData.ata) {
+            const loadedAta = { ...eventData.ata };
+            if (!loadedAta.partes || loadedAta.partes.length === 0) {
+              loadedAta.partes = [
+                { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
+                { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
+              ];
+            }
+            if (!loadedAta.palavra) {
+              loadedAta.palavra = { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' };
+            }
+            setAtaData(loadedAta);
           }
-          setAtaData(loadedAta);
+          setLoading(false);
         }
-        setLoading(false);
-      }
-    });
+      },
+      (err) => console.warn("Listener de Ata restrito.")
+    );
 
-    return () => { isMounted = false; if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [eventId, comumId]);
+    return () => { isMounted = false; unsubEvent(); if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+  }, [eventId, comumId, isBasico]);
 
   const handleHinoChange = (pIdx, hIdx, val) => {
     if (isInputDisabled) return;
@@ -15563,9 +15583,9 @@ const AtaPage = ({ eventId, comumId }) => {
   };
 
   const handleOpenVisitaModal = (v = null, idx = null) => {
-    if (isInputDisabled && !isClosed) return; 
+    if (isInputDisabled) return; 
     if (v) { setNewVisita(v); setEditIndex(idx); } 
-    else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
+    else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', city: '', state: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
     setShowVisitaModal(true);
   };
 
@@ -15591,79 +15611,137 @@ const AtaPage = ({ eventId, comumId }) => {
   return (
     <div className="space-y-3 pb-40 px-2 font-sans text-left bg-gray-50 pt-3 animate-premium">
       
+      {/* STATUS DE EDIÇÃO (Blindado para Básico) */}
       <div className="mx-2 mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden text-left">
         <div className={`absolute left-0 top-0 h-full w-1 ${temPermissaoEditar ? 'bg-blue-600' : 'bg-slate-300'}`} />
         <div className="flex items-center gap-3">
           <div className={`${temPermissaoEditar ? 'text-blue-600' : 'text-slate-400'}`}>
-            {isClosed ? <Lock size={14} /> : temPermissaoEditar ? <ShieldCheck size={14} /> : <Info size={14} />}
+            {isClosed ? <Lock size={14} /> : temPermissaoEditar ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
           </div>
           <div className="leading-none text-left">
             <p className="text-[9px] font-black text-slate-950 uppercase italic tracking-tighter">
-              {isClosed ? 'Ata Lacrada' : temPermissaoEditar ? 'Modo de Edição' : 'Visualização'}
+              {isClosed ? 'Ata Lacrada' : isBasico ? 'Modo de Leitura' : temPermissaoEditar ? 'Modo de Edição' : 'Visualização'}
             </p>
             <p className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">{eventMeta?.comumNome || '---'}</p>
           </div>
         </div>
       </div>
 
+      {/* GESTÃO DE EQUIPE (Apenas GEM Local+ em Regional) */}
+      {isRegionalScope && isGemLocal && (
+        <Accordion title="Equipe de Contagem" isOpen={openSection === 'guests'} onClick={() => setOpenSection(openSection === 'guests' ? null : 'guests')} icon="👥">
+          <GuestManager 
+            eventId={eventId} 
+            invitedUsersIds={eventMeta?.invitedUsers || []} 
+            userData={userData} 
+            isClosed={isClosed || isBasico} 
+          />
+        </Accordion>
+      )}
+
+      {/* LITURGIA DO ENSAIO */}
       <Accordion title="Liturgia do Ensaio" isOpen={openSection === 'liturgia'} onClick={() => setOpenSection(openSection === 'liturgia' ? null : 'liturgia')} icon="🎼">
-        <AtaLiturgia 
-          ataData={ataData} 
-          handleChange={handleChange} 
-          isInputDisabled={isInputDisabled} 
-          referenciaMinisterio={referenciaMinisterio} 
-          handleHinoChange={handleHinoChange} 
-        />
+        <div className="space-y-6">
+          <AtaLiturgia 
+            ataData={ataData} 
+            handleChange={handleChange} 
+            isInputDisabled={isInputDisabled} 
+            referenciaMinisterio={referenciaMinisterio} 
+            handleHinoChange={handleHinoChange}
+            hidePartes={true} 
+          />
+
+          {isRegionalScope && (
+            <div className="pt-4 border-t border-slate-100">
+              <div className="px-2 mb-4">
+                <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none mb-1">Liturgia Regional</p>
+                <h4 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter">Palavra Pregada</h4>
+              </div>
+              <AtaPalavra 
+                ataData={ataData} 
+                handleChange={handleChange} 
+                isInputDisabled={isInputDisabled} 
+              />
+            </div>
+          )}
+
+          <AtaLiturgia 
+            ataData={ataData} 
+            handleChange={handleChange} 
+            isInputDisabled={isInputDisabled} 
+            referenciaMinisterio={referenciaMinisterio} 
+            handleHinoChange={handleHinoChange}
+            onlyPartes={true} 
+          />
+        </div>
       </Accordion>
 
-      {/* NOVO MÓDULO DE OCORRÊNCIAS */}
+      {/* OCORRÊNCIAS */}
       <Accordion title="Ocorrências" isOpen={openSection === 'ocorrencias'} onClick={() => setOpenSection(openSection === 'ocorrencias' ? null : 'ocorrencias')} icon="📝" badge={ataData.ocorrencias?.length || null}>
         <AtaOcorrencias 
           ocorrencias={ataData.ocorrencias} 
           instruments={instrumentsNacionais}
           onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })}
-          isClosed={isClosed}
+          isClosed={isClosed || isBasico}
+          isRegional={isRegionalScope}
         />
       </Accordion>
 
+      {/* VISITANTES */}
       <Accordion title="Visitantes" isOpen={openSection === 'visitantes'} onClick={() => setOpenSection(openSection === 'visitantes' ? null : 'visitantes')} icon="🌍" badge={ataData.visitantes?.length || null}>
         <AtaVisitantes 
           visitantes={ataData.visitantes} 
           isInputDisabled={isInputDisabled} 
-          isClosed={isClosed} 
+          isClosed={isClosed || isBasico} 
           handleOpenVisitaModal={handleOpenVisitaModal} 
           setVisitaToDelete={setVisitaToDelete} 
         />
       </Accordion>
 
-      <Accordion title="Ministério Local" isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={ataData.presencaLocal?.length || null}>
-        <AtaMinisterioLocal 
-          localMinisterio={localMinisterio} 
-          presencaLocal={ataData.presencaLocal} 
-          isInputDisabled={isInputDisabled} 
-          togglePresencaLocal={togglePresencaLocal} 
-        />
+      {/* MINISTÉRIO */}
+      <Accordion title={isRegionalScope ? "Ministério Regional" : "Ministério Local"} isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={isRegionalScope ? (ataData.presencaLocalFull?.length || null) : (ataData.presencaLocal?.length || null)}>
+        {isRegionalScope ? (
+          <MinistryAccordion 
+            eventId={eventId} 
+            regionalId={eventMeta?.regionalId} 
+            presencaAtual={ataData.presencaLocalFull || []} 
+            onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })}
+            isInputDisabled={isInputDisabled}
+            userData={userData}
+          />
+        ) : (
+          <AtaMinisterioLocal 
+            localMinisterio={localMinisterio} 
+            presencaLocal={ataData.presencaLocal} 
+            isInputDisabled={isInputDisabled} 
+            togglePresencaLocal={togglePresencaLocal} 
+          />
+        )}
       </Accordion>
 
-      <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
-        <AtaLacreStatus 
-          isClosed={isClosed} 
-          isGemLocal={isGemLocal} 
-          isComissao={isComissao} 
-          loading={loading} 
-          showConfirmLock={showConfirmLock} 
-          setShowConfirmLock={setShowConfirmLock} 
-          showConfirmReopen={showConfirmReopen} 
-          setShowConfirmReopen={setShowConfirmReopen} 
-          saveStatus={saveStatus} 
-        />
-      </div>
+      {/* BOTÃO DE LACRE (Oculto para nível Básico) */}
+      {!isBasico && (
+        <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
+          <AtaLacreStatus 
+            isClosed={isClosed} 
+            isGemLocal={isGemLocal} 
+            isComissao={isComissao} 
+            loading={loading} 
+            showConfirmLock={showConfirmLock} 
+            setShowConfirmLock={setShowConfirmLock} 
+            showConfirmReopen={showConfirmReopen} 
+            setShowConfirmReopen={setShowConfirmReopen} 
+            saveStatus={saveStatus} 
+          />
+        </div>
+      )}
 
+      {/* MODAL DE VISITA (Apenas Visualização para Básico) */}
       <AnimatePresence>
         {showVisitaModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar text-left relative">
-              <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:text-slate-950"><X size={24}/></button>
+              <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:scale-95 transition-all"><X size={24}/></button>
               <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">Dados da Visita</h3>
               <div className="space-y-5">
                 <Field label="Nome Completo" val={newVisita.nome} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, nome: v})} />
@@ -15671,25 +15749,10 @@ const AtaPage = ({ eventId, comumId }) => {
                   <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, min: v})} />
                   <Field label="Instrumento" val={newVisita.inst} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Bairro" val={newVisita.bairro} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
-                  <Field label="Cidade / UF" val={newVisita.cidadeUf} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} icon={<MapPin size={10}/>} />
-                </div>
-                <Field label="Contato (Telefone/Cel)" val={newVisita.contato} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Escala (Ex: 3º Sábado)" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} />
-                  <Field label="Horário Ensaio" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} />
-                </div>
                 {!isInputDisabled && <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">Salvar Registro</button>}
               </div>
             </motion.div>
           </div>
-        )}
-
-        {visitaToDelete && (
-          <Modal title="Excluir Visita?" icon={<Trash2 size={40}/>} confirmLabel="Sim, Excluir" onConfirm={() => { const nv = ataData.visitantes.filter(x => x.id !== visitaToDelete); handleChange({...ataData, visitantes: nv}); setVisitaToDelete(null); }} onCancel={() => setVisitaToDelete(null)} danger>
-            O visitante será removido permanentemente deste relatório.
-          </Modal>
         )}
       </AnimatePresence>
     </div>
@@ -15701,7 +15764,7 @@ export default AtaPage;
 
 --- FILE:  ---
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
 import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, getDoc } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
@@ -15719,6 +15782,8 @@ import CounterSection from './components/CounterSection';
 import OwnershipModal from './components/OwnershipModal';
 // Importação do novo modal de extras
 import ExtraInstrumentModal from './components/ExtraInstrumentModal';
+// Importação do Modo Regional (v1.0 Flat-List)
+import CounterRegional from './components/CounterRegional';
 
 let debounceTimers = {};
 
@@ -15730,7 +15795,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const isComissao = isMaster || level === 'comissao';
   const isRegionalCidade = isComissao || level === 'regional_cidade';
   const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
   
+  // Conforme Matriz: Básico visualiza Dash/Ata, mas GEM+ edita a Ata
   const canEditAta = isGemLocal; 
 
   const [activeTab, setActiveTab] = useState('contador');
@@ -15752,6 +15819,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   useEffect(() => { if (counts) setLocalCounts(counts); }, [counts]);
 
+  // HEARTBEAT DE SESSÃO: Blindado para evitar crash por permission-denied
   useEffect(() => {
     if (!activeGroup || !currentEventId || isClosed) return;
     
@@ -15765,17 +15833,26 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             [`counts.${metaKey}.isActive`]: status,
             [`counts.${metaKey}.lastHeartbeat`]: Date.now()
           });
-        } catch (e) { console.error("Erro sessão:", e); }
+        } catch (e) {
+          // Silent catch para evitar crash do SDK no log de Heartbeat
+        }
       };
 
       setSession(true);
       return () => setSession(false);
     }
-  }, [activeGroup, currentEventId, isClosed, myUID]);
+  }, [activeGroup, currentEventId, isClosed, myUID, localCounts]);
 
+  // CARREGAMENTO DE INSTRUMENTOS: Blindagem contra acesso negado (Crash do SDK)
   useEffect(() => {
     let isMounted = true;
     const loadInstruments = async () => {
+      // Bloqueio Preventivo: Básico não tem permissão nestas coleções de config nacional
+      if (isBasico) {
+        if (isMounted) setLoading(false);
+        return;
+      }
+
       try {
         const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc')));
         if (isMounted) setInstrumentsNacionais(nacSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -15784,57 +15861,72 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           const locSnap = await getDocs(collection(db, 'comuns', eventComumId, 'instrumentos_config'));
           if (isMounted) setInstrumentsConfig(locSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+        console.warn("Aviso de Jurisdição: Configurações globais não carregadas para seu nível.");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     };
     loadInstruments();
     return () => { isMounted = false; };
-  }, [eventComumId]);
+  }, [eventComumId, isBasico]);
 
+  // MONITOR REATIVO DO EVENTO (Tratamento de erro robusto)
   useEffect(() => {
     if (!currentEventId) return;
     let isMounted = true;
 
-    const loadData = async () => {
-      const eventRef = doc(db, 'events_global', currentEventId);
-      
-      const unsubEvent = onSnapshot(eventRef, (s) => {
+    const eventRef = doc(db, 'events_global', currentEventId);
+    
+    const unsubEvent = onSnapshot(eventRef, 
+      (s) => {
         if (s.exists() && isMounted) {
           const data = s.data();
-          
           const ataConsolidada = {
             ...data.ata,
             date: data.date, 
             comumId: data.comumId,
             comumNome: data.comumNome,
-            status: data.ata?.status || 'open'
+            status: data.ata?.status || 'open',
+            scope: data.scope || 'local'
           };
 
           setAtaData(ataConsolidada);
           setEventComumId(data.comumId);
           setEventDateRaw(data.date || '');
           if (data.counts) setLocalCounts(data.counts);
-          setLoading(false);
         }
-      });
-      return () => unsubEvent();
-    };
-    loadData();
-    return () => { isMounted = false; };
+      },
+      (err) => {
+        // Impede o crash do SDK capturando a negação de permissão
+        console.error("Firestore Sync Error:", err);
+      }
+    );
+    return () => { isMounted = false; unsubEvent(); };
   }, [currentEventId]);
 
   const allInstruments = useMemo(() => {
     const ordemOficial = ['Coral', 'irmandade', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
-    const base = instrumentsNacionais.map(instBase => {
-      const override = instrumentsConfig.find(local => local.id === instBase.id);
-      return override ? { ...instBase, ...override } : instBase;
-    });
-    // Herança Dinâmica: Mapeia instrumentos que existem no evento mas não no cadastro da igreja
-    const extras = Object.keys(localCounts).filter(key => !key.startsWith('meta_') && !ordemOficial.includes(key)).map(key => ({ 
-      id: key, 
-      name: localCounts[key].name || key.toUpperCase(), 
-      section: (localCounts[key].section || 'GERAL').toUpperCase() 
-    }));
-    return [...base, ...extras].sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
+    
+    let base = [];
+    
+    // Fallback Inteligente: Se as configs nacionais falharem (Básico), monta via localCounts
+    if (instrumentsNacionais.length > 0) {
+      base = instrumentsNacionais.map(instBase => {
+        const override = instrumentsConfig.find(local => local.id === instBase.id);
+        return override ? { ...instBase, ...override } : instBase;
+      });
+    } else {
+      base = Object.keys(localCounts)
+        .filter(k => !k.startsWith('meta_'))
+        .map(k => ({
+          id: k,
+          name: localCounts[k].name || k.toUpperCase(),
+          section: (localCounts[k].section || 'GERAL').toUpperCase()
+        }));
+    }
+
+    return base.sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
 
   const sections = useMemo(() => {
@@ -15844,32 +15936,27 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   const handleUpdateInstrument = (id, field, value, section) => {
     if (isClosed) return;
-    // Atualização local para feedback instantâneo (UX)
     setLocalCounts(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
     
     if (debounceTimers[id + field]) clearTimeout(debounceTimers[id + field]);
     debounceTimers[id + field] = setTimeout(async () => {
-      await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section });
+      try {
+        await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section });
+      } catch (e) {
+        toast.error("Sem permissão para gravar no banco.");
+      }
     }, 450);
   };
 
-  // Função para criar o instrumento extra no banco do evento
   const handleAddExtraInstrument = async (nome) => {
-    if (!nome.trim() || !extraInstrumentSection) return;
-    
+    if (!nome.trim() || !extraInstrumentSection || !isGemLocal) return;
     const idSaneado = `extra_${nome.toLowerCase().replace(/\s/g, '')}_${Date.now()}`;
-    
     try {
       await eventService.updateInstrumentCount(eventComumId, currentEventId, {
-        instId: idSaneado,
-        field: 'total',
-        value: 0,
-        userData,
-        section: extraInstrumentSection,
-        customName: nome.toUpperCase().trim()
+        instId: idSaneado, field: 'total', value: 0, userData, section: extraInstrumentSection, customName: nome.toUpperCase().trim()
       });
       setExtraInstrumentSection(null);
-      toast.success("Instrumento adicionado ao ensaio!");
+      toast.success("Instrumento adicionado!");
     } catch (e) {
       toast.error("Erro ao adicionar extra.");
     }
@@ -15889,22 +15976,27 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
-  const setOwnership = async (sec, wantsToOwn) => {
+  const setOwnership = async (id, currentOwnerStatus) => {
     if (!eventComumId || isClosed) return;
-    const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
+    const wantsToOwn = !currentOwnerStatus;
     
-    if (wantsToOwn) {
-      try {
-        await updateDoc(doc(db, 'events_global', currentEventId), {
-          [`counts.${metaKey}.responsibleId`]: myUID,
-          [`counts.${metaKey}.responsibleName`]: userData?.name || "Colaborador",
-          [`counts.${metaKey}.isActive`]: true,
-          [`counts.${metaKey}.updatedAt`]: Date.now()
-        });
-      } catch (e) { toast.error("Erro ao assumir seção."); return; }
+    try {
+      await updateDoc(doc(db, 'events_global', currentEventId), {
+        [`counts.${id}.responsibleId`]: wantsToOwn ? myUID : null,
+        [`counts.${id}.responsibleName`]: wantsToOwn ? (userData?.name || "Colaborador") : null,
+        [`counts.${id}.isActive`]: wantsToOwn,
+        [`counts.${id}.updatedAt`]: Date.now()
+      });
+      
+      if (id.startsWith('meta_')) {
+        setActiveGroup(wantsToOwn ? id.replace('meta_', '').toUpperCase() : null);
+      }
+      if (wantsToOwn) toast.success("Você assumiu esta contagem.");
+    } catch (e) { 
+      toast.error("Banco: Falha na permissão de posse."); 
     }
-    setActiveGroup(sec);
-    setShowOwnershipModal(null);
+    
+    if (showOwnershipModal) setShowOwnershipModal(null);
   };
 
   const isEditingEnabled = (sec) => isMaster || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
@@ -15922,9 +16014,12 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             <p className="text-[14px] font-bold text-slate-900 leading-none">
               {eventDateRaw ? `${eventDateRaw.split('-')[2]}/${eventDateRaw.split('-')[1]}/${eventDateRaw.split('-')[0]}` : '---'}
             </p>
-            <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-[180px]">
-              {ataData?.comumNome || "Localidade"}
-            </h2>
+            <div className="flex items-center justify-center gap-1.5 mt-1">
+               {ataData?.scope === 'regional' && <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"/>}
+               <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-[180px]">
+                 {ataData?.comumNome || "Localidade"}
+               </h2>
+            </div>
           </div>
           <button onClick={onBack} className="bg-red-50 text-red-500 p-3 rounded-2xl active:scale-90 transition-all border border-red-100">
             <LogOut size={18} strokeWidth={3} />
@@ -15934,39 +16029,52 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
       <main className="flex-1 overflow-y-auto p-4 pb-52 no-scrollbar">
         <div className="max-w-md mx-auto">
-          {activeTab === 'contador' && sections.map((sec) => (
-            <CounterSection 
-              key={sec}
-              sec={sec}
-              allInstruments={allInstruments}
-              localCounts={localCounts}
-              myUID={myUID}
-              activeGroup={activeGroup}
-              handleToggleGroup={handleToggleGroup}
-              handleUpdateInstrument={handleUpdateInstrument}
-              isEditingEnabled={isEditingEnabled}
-              onAddExtra={(s) => setExtraInstrumentSection(s)}
-            />
-          ))}
+          {activeTab === 'contador' && (
+            ataData?.scope === 'regional' ? (
+              <CounterRegional 
+                instruments={allInstruments}
+                localCounts={localCounts}
+                sections={sections}
+                onUpdate={handleUpdateInstrument}
+                onToggleSection={setOwnership} 
+                onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
+                userData={userData}
+                isClosed={isClosed}
+                currentEventId={currentEventId}
+              />
+            ) : (
+              sections.map((sec) => (
+                <CounterSection 
+                  key={sec}
+                  sec={sec}
+                  allInstruments={allInstruments}
+                  localCounts={localCounts}
+                  myUID={myUID}
+                  activeGroup={activeGroup}
+                  handleToggleGroup={handleToggleGroup}
+                  handleUpdateInstrument={handleUpdateInstrument}
+                  isEditingEnabled={isEditingEnabled}
+                  onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)}
+                />
+              ))
+            )
+          )}
           {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={canEditAta} />}
           {activeTab === 'dash' && <DashEventPage eventId={currentEventId} counts={localCounts} userData={userData} isAdmin={true} ataData={ataData} />}
         </div>
       </main>
 
       <AnimatePresence>
-        {/* MODAL DE POSSE */}
         {showOwnershipModal && (
           <OwnershipModal 
             showOwnershipModal={showOwnershipModal}
             localCounts={localCounts}
             myUID={myUID}
             userData={userData}
-            onConfirm={setOwnership}
+            onConfirm={(sec, wantsToOwn) => setOwnership(`meta_${sec.toLowerCase().replace(/\s/g, '_')}`, !wantsToOwn)}
             onCancel={() => setShowOwnershipModal(null)}
           />
         )}
-
-        {/* MODAL DE INSTRUMENTO EXTRA */}
         {extraInstrumentSection && (
           <ExtraInstrumentModal 
             section={extraInstrumentSection}
@@ -15988,7 +16096,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 };
 
 const TabButton = ({ active, icon, label, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center justify-center py-3 px-6 rounded-[2rem] transition-all duration-300 ${active ? 'bg-white text-slate-950 shadow-xl scale-105 font-[900]' : 'text-slate-500'}`}>
+  <button onClick={onClick} className={`flex flex-col items-center justify-center py-3 px-6 rounded-[2rem] transition-all duration-300 ${active ? 'bg-white text-slate-950 shadow-xl scale-105 font-[900]' : 'text-slate-50'}`}>
     {icon}<span className="text-[8px] font-black uppercase italic mt-1 tracking-[0.2em] leading-none">{label}</span>
   </button>
 );
@@ -16000,11 +16108,11 @@ export default CounterPage;
 
 import React, { useState, useEffect, useMemo } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
-import { db, collection, onSnapshot, query, where, orderBy } from '../../config/firebase';
+import { db, collection, onSnapshot, query, where, orderBy, auth } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
 
 import toast from 'react-hot-toast';
-import { Plus, MapPin, Home } from 'lucide-react';
+import { Plus, MapPin, Home, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 // IMPORTAÇÃO DOS NOVOS COMPONENTES MODULARES
@@ -16012,13 +16120,16 @@ import EventsList from './components/EventsList';
 import EventModals from './components/EventModals';
 
 const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, onChurchChange }) => {
-  const { setContext } = useAuth();
+  const { setContext, user } = useAuth();
   
   // ESTADOS DE CONTROLE DE INTERFACE
   const [showModal, setShowModal] = useState(false);
   const [showConfigError, setShowConfigError] = useState(false);
   const [eventToDelete, setEventToDelete] = useState(null);
   const [openYears, setOpenYears] = useState({});
+  
+  // ESTADO PARA EVENTOS ONDE O USUÁRIO É CONVIDADO (REGIONAL)
+  const [invitedEvents, setInvitedEvents] = useState([]);
 
   // ESTADOS DE DADOS GEOGRÁFICOS
   const [cidades, setCidades] = useState([]);
@@ -16117,36 +16228,70 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     return () => { isMounted = false; unsub(); };
   }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
-  // 3. LÓGICA DE AGRUPAMENTO POR ANO
+  // 3. MONITOR DE CONVITES REGIONAIS (v3.5)
+  // Busca eventos onde o UID do usuário está na whitelist de convidados
+  useEffect(() => {
+    if (!user?.uid) return;
+    const qInvited = query(
+      collection(db, 'events_global'),
+      where('invitedUsers', 'array-contains', user.uid),
+      orderBy('date', 'desc')
+    );
+
+    const unsubInvited = onSnapshot(qInvited, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setInvitedEvents(data);
+    });
+
+    return () => unsubInvited();
+  }, [user?.uid]);
+
+  // 4. LÓGICA DE AGRUPAMENTO POR ANO (MESCLADA COM CONVITES)
   const groupedEvents = useMemo(() => {
     const isComumValida = comuns.some(c => c.id === selectedChurchId);
     if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};
-    return (allEvents || []).reduce((acc, event) => {
+
+    // Mescla eventos locais com eventos onde foi convidado
+    const combined = [...(allEvents || [])];
+    const existingIds = new Set(combined.map(e => e.id));
+
+    invitedEvents.forEach(invited => {
+      if (!existingIds.has(invited.id)) {
+        combined.push(invited);
+      }
+    });
+
+    return combined.reduce((acc, event) => {
       const year = event.date ? event.date.split('-')[0] : 'Sem Data';
       if (!acc[year]) acc[year] = [];
       acc[year].push(event);
       return acc;
     }, {});
-  }, [allEvents, selectedChurchId, comuns]);
+  }, [allEvents, invitedEvents, selectedChurchId, comuns]);
 
   useEffect(() => {
     const currentYear = new Date().getFullYear().toString();
     setOpenYears(prev => ({ ...prev, [currentYear]: true }));
   }, []);
 
-  const handleCreate = async () => {
+  const handleCreate = async (extendedData = {}) => {
     if (!selectedChurchId) return toast.error("Selecione uma comum");
     const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
+    
+    // Unifica dados básicos com dados de escopo regional vindos do modal
+    const finalEventData = {
+      type: extendedData.scope === 'regional' ? 'Ensaio Regional' : 'Ensaio Local',
+      date: newEventDate,
+      responsavel: responsavel || 'Pendente',
+      regionalId: activeRegionalId,
+      comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
+      comumId: selectedChurchId,
+      cidadeId: selectedCityId,
+      ...extendedData // Inclui scope e invitedUsers
+    };
+
     try {
-      await eventService.createEvent(selectedChurchId, {
-        type: 'Ensaio Local',
-        date: newEventDate,
-        responsavel: responsavel || 'Pendente',
-        regionalId: activeRegionalId,
-        comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
-        comumId: selectedChurchId,
-        cidadeId: selectedCityId
-      });
+      await eventService.createEvent(selectedChurchId, finalEventData);
       setShowModal(false);
       toast.success("Ensaio criado!");
     } catch (error) { 
@@ -16158,7 +16303,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
 
   const confirmDelete = async () => {
     if (!eventToDelete || !selectedChurchId) return;
-    const targetEvent = allEvents.find(ev => ev.id === eventToDelete);
+    const targetEvent = (allEvents || []).find(ev => ev.id === eventToDelete);
     if (targetEvent?.ata?.status === 'closed') {
       toast.error("Impossível excluir ensaios lacrados.");
       setEventToDelete(null);
@@ -16202,7 +16347,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         </div>
       )}
 
-      {/* LISTAGEM MODULAR */}
+      {/* LISTAGEM MODULAR - Propriedade invitedEvents injetada para destaque visual */}
       <EventsList 
         groupedEvents={groupedEvents}
         openYears={openYears}
@@ -16210,6 +16355,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         onSelectEvent={onSelectEvent}
         setEventToDelete={setEventToDelete}
         temPermissaoAqui={temPermissaoAqui}
+        invitedEvents={invitedEvents} 
       />
 
       {/* MODAIS MODULARES */}
@@ -16222,6 +16368,8 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         isGemLocal={isGemLocal} onNavigateToSettings={onNavigateToSettings}
         eventToDelete={eventToDelete} setEventToDelete={setEventToDelete}
         confirmDelete={confirmDelete}
+        isRegionalCidade={isRegionalCidade} 
+        userData={userData}
       />
     </div>
   );
@@ -16256,7 +16404,6 @@ const ModuleAccess = ({ comumId, cargos }) => {
   const isGemLocal = isRegionalCidade || level === 'gem_local';
 
   const [users, setUsers] = useState([]);
-  const [comunsDaRegional, setComunsDaRegional] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [openSections, setOpenSections] = useState({}); 
 
@@ -16341,7 +16488,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
     // Comissão pode aprovar qualquer um na regional (exceto Master)
     if (isComissao && u.accessLevel !== 'master') return true;
     
-    // Regional de Cidade: Só edita quem pertence à MESMA cidade [cite: 1732]
+    [cite_start]// Regional de Cidade: Só edita quem pertence à MESMA cidade [cite: 1732]
     if (isRegionalCidade && u.cidadeId === userData.cidadeId) {
       return u.accessLevel === 'gem_local' || u.accessLevel === 'basico';
     }
@@ -16359,6 +16506,13 @@ const ModuleAccess = ({ comumId, cargos }) => {
       await updateDoc(doc(db, 'users', userId), data);
       toast.success("Zeladoria atualizada");
     } catch (e) { toast.error("Erro na sincronização"); }
+  };
+
+  // Função para ofuscar e-mail para usuários sem permissão administrativa
+  const ofuscarEmail = (email) => {
+    if (!email) return "";
+    const [user, domain] = email.split('@');
+    return `${user.charAt(0)}******@${domain}`;
   };
 
   if (authLoading) return <div className="p-10 text-center animate-pulse text-[10px] font-black uppercase text-slate-400 tracking-widest">Acessando Portaria...</div>;
@@ -16432,7 +16586,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
                   <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1 italic leading-none">Perfil de Acesso</p>
                   <h3 className="text-xl font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight">{selectedUser.name}</h3>
                   <div className="flex items-center gap-2 mt-2 text-slate-400 text-[9px] font-bold lowercase">
-                    <Mail size={10} /> {selectedUser.email}
+                    <Mail size={10} /> {podeEditarEstePerfil(selectedUser) || selectedUser.id === user?.uid ? selectedUser.email : ofuscarEmail(selectedUser.email)}
                     {selectedUser.emailVerified ? (
                       <span className="text-[7px] font-black text-emerald-500 uppercase bg-emerald-50 px-1.5 py-0.5 rounded">Validado</span>
                     ) : (
@@ -16916,14 +17070,18 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      {/* FORMULÁRIO DE ADIÇÃO - AJUSTE DE LAYOUT E PLACEHOLDER */}
+      <div className="flex gap-2 items-stretch">
         <input 
           className="flex-1 bg-white p-4 rounded-2xl text-xs font-black text-slate-950 outline-none border border-slate-100 uppercase italic shadow-inner" 
-          placeholder="NOVA COMUM EM CP..." 
+          placeholder={`NOVA COMUM EM ${selectedCity.nome.toUpperCase()}...`} 
           value={newChurchName} 
           onChange={e => setNewChurchName(e.target.value)} 
         />
-        <button onClick={handleAdd} className="bg-slate-950 text-white px-5 rounded-2xl active:scale-90 shadow-lg">
+        <button 
+          onClick={handleAdd} 
+          className="bg-slate-950 text-white min-w-[60px] rounded-2xl active:scale-90 shadow-lg flex items-center justify-center transition-all"
+        >
           <Send size={18} />
         </button>
       </div>
@@ -16946,8 +17104,8 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
                     <span className="text-[10px] font-black text-slate-700 uppercase">{c.comum}</span>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => { setEditingId(c.id); setEditValue(c.comum); }} className="p-2 text-slate-300 hover:text-blue-500"><Edit3 size={14}/></button>
-                    <button onClick={() => handleDelete(c.id, c.comum)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                    <button onClick={() => { setEditingId(c.id); setEditValue(c.comum); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14}/></button>
+                    <button onClick={() => handleDelete(c.id, c.comum)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                   </div>
                 </>
               )}
@@ -17282,11 +17440,11 @@ export default ModuleGlobal;
 
 --- FILE:  ---
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // CORREÇÃO: Caminho do Firebase e uso de setDoc para IDs amigáveis
-import { db, collection, doc, setDoc, deleteDoc, writeBatch, getDocs } from '../../config/firebase';
+import { db, collection, doc, setDoc, deleteDoc, writeBatch, getDocs, onSnapshot, query, where } from '../../config/firebase';
 import toast from 'react-hot-toast';
-import { Activity, Plus, Trash2, LayoutGrid, Ban, X, Edit3, Settings2 } from 'lucide-react';
+import { Activity, Plus, Trash2, LayoutGrid, Ban, X, Edit3, Settings2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 // Importação do Cérebro de Autenticação para validação de poder
 import { useAuth } from '../../context/AuthContext';
@@ -17303,6 +17461,26 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
 
   const [showModal, setShowModal] = useState(null); // 'NAIPE' | 'INST' | 'EDIT'
   const [formData, setFormData] = useState({ name: '', section: '', evalType: 'Sem', id: '' });
+  
+  // ESTADO DA TRAVA DE SEGURANÇA: Bloqueia Reset se houver ensaio aberto
+  const [isEnsaioAberto, setIsEnsaioAberto] = useState(false);
+
+  // Monitora se há ensaio aberto para esta comum específica
+  useEffect(() => {
+    if (!comumId) return;
+    
+    const q = query(
+      collection(db, 'events_global'),
+      where('comumId', '==', comumId),
+      where('ata.status', '==', 'open')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setIsEnsaioAberto(!snapshot.empty);
+    });
+
+    return () => unsub();
+  }, [comumId]);
 
   // 1. DEFINIÇÃO DA HIERARQUIA VISUAL
   const ordemSessoes = ['IRMANDADE', 'ORGANISTAS', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS', 'GERAL'];
@@ -17336,6 +17514,15 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
   const handleInsertPattern = async () => {
     if (!comumId) return toast.error("Localidade não identificada");
     if (!podeGerenciar) return toast.error("Sem privilégios de gestão");
+    
+    // TRAVA DE SEGURANÇA: Impede reset durante contagem ativa
+    if (isEnsaioAberto) {
+      return toast.error("Ação Bloqueada: Existe um ensaio aberto nesta comum. Encerre o ensaio antes de resetar a orquestra.", {
+        duration: 5000,
+        icon: <AlertTriangle className="text-amber-500" />
+      });
+    }
+
     if (!confirm("Deseja aplicar o RESET DE FÁBRICA? Isso apagará a lista atual e instalará o Padrão CCB saneado diretamente do banco.")) return;
     
     const loadingToast = toast.loading("Sincronizando com a Matriz Nacional...");
@@ -17421,11 +17608,17 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
           <div className="flex flex-col gap-2">
             <button 
               onClick={handleInsertPattern} 
-              className="w-full bg-slate-950 text-white py-3.5 rounded-2xl font-black uppercase italic text-[10px] tracking-widest flex justify-center items-center gap-3 active:scale-95 transition-all shadow-lg border border-white/5"
+              className={`w-full py-3.5 rounded-2xl font-black uppercase italic text-[10px] tracking-widest flex justify-center items-center gap-3 active:scale-95 transition-all shadow-lg border ${isEnsaioAberto ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-slate-950 text-white border-white/5'}`}
             >
-              <LayoutGrid size={14} className="text-amber-500" /> 
+              <LayoutGrid size={14} className={isEnsaioAberto ? 'text-slate-400' : 'text-amber-500'} /> 
               Reset Padrão CCB
             </button>
+            
+            {isEnsaioAberto && (
+              <p className="text-[7px] font-black text-amber-600 uppercase italic text-center px-4 leading-tight">
+                O Reset de Fábrica está desabilitado enquanto houver um ensaio aberto nesta localidade.
+              </p>
+            )}
             
             <div className="grid grid-cols-2 gap-2">
               <button 
@@ -17924,11 +18117,11 @@ export const churchService = {
 --- FILE:  ---
 
 import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
-import { deleteField, arrayUnion, increment } from "firebase/firestore";
+import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v3.2 - Arquitetura Global com Blindagem de Metadados
+ * v4.0 - Suporte a Ensaios Regionais, Colaboração Individual e Whitelist Dinâmica
  * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
  */
 export const eventService = {
@@ -17953,10 +18146,11 @@ export const eventService = {
   /**
    * Cria um novo ensaio na Coleção Global
    * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local e inicializa metadados de sessão.
+   * v4.0: Inicialização de posse individual por instrumento e campos litúrgicos.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
-    const { type, date, responsavel, regionalId, comumNome, cidadeId } = eventData;
+    const { type, date, responsavel, regionalId, comumNome, cidadeId, scope, invitedUsers } = eventData;
     
     let initialCounts = {};
 
@@ -17970,7 +18164,7 @@ export const eventService = {
         throw new Error("CONFIG_REQUIRED"); 
       }
 
-      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL + METADADOS DE SEÇÃO
+      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL + METADADOS DE POSSE INDIVIDUAL
       const sessoesDetectadas = new Set();
 
       localSnap.docs.forEach(docInst => {
@@ -17983,11 +18177,15 @@ export const eventService = {
           total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0,  
           name: inst.name || id.toUpperCase(),
           section: sectionName,
-          evalType: inst.evalType || 'Sem'
+          evalType: inst.evalType || 'Sem',
+          // v4.0: Metadados de posse por instrumento para colaboração picada
+          responsibleId: null,
+          responsibleName: null,
+          updatedAt: Date.now()
         };
       });
 
-      // INICIALIZAÇÃO INTELIGENTE: Cria os metadados para cada seção da orquestra
+      // INICIALIZAÇÃO DE SEÇÕES: Cria os metadados para controle de naipe completo
       sessoesDetectadas.forEach(sec => {
         const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
         initialCounts[metaKey] = {
@@ -18004,19 +18202,51 @@ export const eventService = {
       throw new Error("Falha ao acessar configuração da localidade.");
     }
     
-    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v3.1)
+    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v4.0)
     return await addDoc(collection(db, 'events_global'), {
       type: type || 'Ensaio Local',
+      scope: scope || 'local', 
+      invitedUsers: invitedUsers || [], 
       date,
       responsavel: responsavel || 'Pendente',
       comumNome: comumNome || '',
       comumId: comumId,
       cidadeId: cidadeId || '',
       regionalId: regionalId || '',
-      ata: { status: 'open' },
+      ata: { 
+        status: 'open',
+        palavra: {
+          anciao: '',
+          livro: '',
+          capitulo: '',
+          verso: '',
+          assunto: ''
+        },
+        ocorrencias: [] // Inicializa array de ocorrências como texto livre
+      },
       counts: initialCounts, 
       createdAt: Date.now(),
-      dbVersion: "3.1-global-locking"
+      dbVersion: "4.0-global-regional-colab"
+    });
+  },
+
+  /**
+   * GESTÃO DE CONVIDADOS (Whitelist Dinâmica)
+   * Permite adicionar ou remover colaboradores com o ensaio em andamento.
+   */
+  addGuest: async (eventId, userId) => {
+    if (!eventId || !userId) return;
+    const eventRef = doc(db, 'events_global', eventId);
+    return await updateDoc(eventRef, {
+      invitedUsers: arrayUnion(userId)
+    });
+  },
+
+  removeGuest: async (eventId, userId) => {
+    if (!eventId || !userId) return;
+    const eventRef = doc(db, 'events_global', eventId);
+    return await updateDoc(eventRef, {
+      invitedUsers: arrayRemove(userId)
     });
   },
 
@@ -18050,15 +18280,13 @@ export const eventService = {
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Capturamos o estado atual apenas para o log de histórico (Auditoria)
       const snap = await getDoc(eventRef);
       if (!snap.exists()) return;
 
       const currentInstData = snap.data()?.counts?.[instId] || {};
       const oldValue = parseInt(currentInstData[fieldToUpdate]) || 0;
-      const diferenca = val - oldValue; // Calculamos quanto aumentou ou diminuiu
+      const diferenca = val - oldValue; 
       
-      // Histórico rotativo (mantém as últimas 10 alterações para auditoria)
       let history = currentInstData.history || [];
       if (history.length >= 10) history = history.slice(-9);
       history.push(logEntry);
@@ -18072,7 +18300,6 @@ export const eventService = {
 
       if (customName) baseUpdate.name = customName;
 
-      // BLINDAGEM CRÍTICA: O uso de increment() garante que a soma seja feita no servidor
       await updateDoc(eventRef, { 
         [`counts.${instId}.lastEditBy`]: baseUpdate.lastEditBy,
         [`counts.${instId}.timestamp`]: baseUpdate.timestamp,
@@ -18103,7 +18330,6 @@ export const eventService = {
     if (!eventId) throw new Error("Referência de evento inválida.");
     const eventRef = doc(db, 'events_global', eventId);
     
-    // 1. Extração de Hinos para estatística rápida
     let todosHinos = [];
     (ataData.partes || []).forEach(p => {
       if (p.hinos) {
@@ -18111,8 +18337,6 @@ export const eventService = {
       }
     });
 
-    // 2. BLINDAGEM: Removemos campos que pertencem à RAIZ para não duplicar/conflitar dentro do objeto ATA
-    // Isso evita que o PDF se confunda entre ata.date e a raiz date.
     const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData;
 
     const finalAta = {
@@ -18123,7 +18347,6 @@ export const eventService = {
     };
 
     try {
-      // Usamos updateDoc para atualizar APENAS o mapa 'ata', preservando a raiz do documento intacta
       await updateDoc(eventRef, { 
         ata: finalAta 
       });

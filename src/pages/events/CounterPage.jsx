@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
 import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, getDoc } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
@@ -16,6 +16,8 @@ import CounterSection from './components/CounterSection';
 import OwnershipModal from './components/OwnershipModal';
 // Importação do novo modal de extras
 import ExtraInstrumentModal from './components/ExtraInstrumentModal';
+// Importação do Modo Regional (v1.0 Flat-List)
+import CounterRegional from './components/CounterRegional';
 
 let debounceTimers = {};
 
@@ -27,7 +29,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const isComissao = isMaster || level === 'comissao';
   const isRegionalCidade = isComissao || level === 'regional_cidade';
   const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isBasico = level === 'basico';
   
+  // Conforme Matriz: Básico visualiza Dash/Ata, mas GEM+ edita a Ata
   const canEditAta = isGemLocal; 
 
   const [activeTab, setActiveTab] = useState('contador');
@@ -49,6 +53,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   useEffect(() => { if (counts) setLocalCounts(counts); }, [counts]);
 
+  // HEARTBEAT DE SESSÃO: Blindado para evitar crash por permission-denied
   useEffect(() => {
     if (!activeGroup || !currentEventId || isClosed) return;
     
@@ -62,17 +67,26 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             [`counts.${metaKey}.isActive`]: status,
             [`counts.${metaKey}.lastHeartbeat`]: Date.now()
           });
-        } catch (e) { console.error("Erro sessão:", e); }
+        } catch (e) {
+          // Silent catch para evitar crash do SDK no log de Heartbeat
+        }
       };
 
       setSession(true);
       return () => setSession(false);
     }
-  }, [activeGroup, currentEventId, isClosed, myUID]);
+  }, [activeGroup, currentEventId, isClosed, myUID, localCounts]);
 
+  // CARREGAMENTO DE INSTRUMENTOS: Blindagem contra acesso negado (Crash do SDK)
   useEffect(() => {
     let isMounted = true;
     const loadInstruments = async () => {
+      // Bloqueio Preventivo: Básico não tem permissão nestas coleções de config nacional
+      if (isBasico) {
+        if (isMounted) setLoading(false);
+        return;
+      }
+
       try {
         const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc')));
         if (isMounted) setInstrumentsNacionais(nacSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -81,57 +95,72 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           const locSnap = await getDocs(collection(db, 'comuns', eventComumId, 'instrumentos_config'));
           if (isMounted) setInstrumentsConfig(locSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+        console.warn("Aviso de Jurisdição: Configurações globais não carregadas para seu nível.");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     };
     loadInstruments();
     return () => { isMounted = false; };
-  }, [eventComumId]);
+  }, [eventComumId, isBasico]);
 
+  // MONITOR REATIVO DO EVENTO (Tratamento de erro robusto)
   useEffect(() => {
     if (!currentEventId) return;
     let isMounted = true;
 
-    const loadData = async () => {
-      const eventRef = doc(db, 'events_global', currentEventId);
-      
-      const unsubEvent = onSnapshot(eventRef, (s) => {
+    const eventRef = doc(db, 'events_global', currentEventId);
+    
+    const unsubEvent = onSnapshot(eventRef, 
+      (s) => {
         if (s.exists() && isMounted) {
           const data = s.data();
-          
           const ataConsolidada = {
             ...data.ata,
             date: data.date, 
             comumId: data.comumId,
             comumNome: data.comumNome,
-            status: data.ata?.status || 'open'
+            status: data.ata?.status || 'open',
+            scope: data.scope || 'local'
           };
 
           setAtaData(ataConsolidada);
           setEventComumId(data.comumId);
           setEventDateRaw(data.date || '');
           if (data.counts) setLocalCounts(data.counts);
-          setLoading(false);
         }
-      });
-      return () => unsubEvent();
-    };
-    loadData();
-    return () => { isMounted = false; };
+      },
+      (err) => {
+        // Impede o crash do SDK capturando a negação de permissão
+        console.error("Firestore Sync Error:", err);
+      }
+    );
+    return () => { isMounted = false; unsubEvent(); };
   }, [currentEventId]);
 
   const allInstruments = useMemo(() => {
     const ordemOficial = ['Coral', 'irmandade', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
-    const base = instrumentsNacionais.map(instBase => {
-      const override = instrumentsConfig.find(local => local.id === instBase.id);
-      return override ? { ...instBase, ...override } : instBase;
-    });
-    // Herança Dinâmica: Mapeia instrumentos que existem no evento mas não no cadastro da igreja
-    const extras = Object.keys(localCounts).filter(key => !key.startsWith('meta_') && !ordemOficial.includes(key)).map(key => ({ 
-      id: key, 
-      name: localCounts[key].name || key.toUpperCase(), 
-      section: (localCounts[key].section || 'GERAL').toUpperCase() 
-    }));
-    return [...base, ...extras].sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
+    
+    let base = [];
+    
+    // Fallback Inteligente: Se as configs nacionais falharem (Básico), monta via localCounts
+    if (instrumentsNacionais.length > 0) {
+      base = instrumentsNacionais.map(instBase => {
+        const override = instrumentsConfig.find(local => local.id === instBase.id);
+        return override ? { ...instBase, ...override } : instBase;
+      });
+    } else {
+      base = Object.keys(localCounts)
+        .filter(k => !k.startsWith('meta_'))
+        .map(k => ({
+          id: k,
+          name: localCounts[k].name || k.toUpperCase(),
+          section: (localCounts[k].section || 'GERAL').toUpperCase()
+        }));
+    }
+
+    return base.sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
 
   const sections = useMemo(() => {
@@ -141,32 +170,27 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   const handleUpdateInstrument = (id, field, value, section) => {
     if (isClosed) return;
-    // Atualização local para feedback instantâneo (UX)
     setLocalCounts(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
     
     if (debounceTimers[id + field]) clearTimeout(debounceTimers[id + field]);
     debounceTimers[id + field] = setTimeout(async () => {
-      await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section });
+      try {
+        await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section });
+      } catch (e) {
+        toast.error("Sem permissão para gravar no banco.");
+      }
     }, 450);
   };
 
-  // Função para criar o instrumento extra no banco do evento
   const handleAddExtraInstrument = async (nome) => {
-    if (!nome.trim() || !extraInstrumentSection) return;
-    
+    if (!nome.trim() || !extraInstrumentSection || !isGemLocal) return;
     const idSaneado = `extra_${nome.toLowerCase().replace(/\s/g, '')}_${Date.now()}`;
-    
     try {
       await eventService.updateInstrumentCount(eventComumId, currentEventId, {
-        instId: idSaneado,
-        field: 'total',
-        value: 0,
-        userData,
-        section: extraInstrumentSection,
-        customName: nome.toUpperCase().trim()
+        instId: idSaneado, field: 'total', value: 0, userData, section: extraInstrumentSection, customName: nome.toUpperCase().trim()
       });
       setExtraInstrumentSection(null);
-      toast.success("Instrumento adicionado ao ensaio!");
+      toast.success("Instrumento adicionado!");
     } catch (e) {
       toast.error("Erro ao adicionar extra.");
     }
@@ -186,22 +210,27 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
-  const setOwnership = async (sec, wantsToOwn) => {
+  const setOwnership = async (id, currentOwnerStatus) => {
     if (!eventComumId || isClosed) return;
-    const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
+    const wantsToOwn = !currentOwnerStatus;
     
-    if (wantsToOwn) {
-      try {
-        await updateDoc(doc(db, 'events_global', currentEventId), {
-          [`counts.${metaKey}.responsibleId`]: myUID,
-          [`counts.${metaKey}.responsibleName`]: userData?.name || "Colaborador",
-          [`counts.${metaKey}.isActive`]: true,
-          [`counts.${metaKey}.updatedAt`]: Date.now()
-        });
-      } catch (e) { toast.error("Erro ao assumir seção."); return; }
+    try {
+      await updateDoc(doc(db, 'events_global', currentEventId), {
+        [`counts.${id}.responsibleId`]: wantsToOwn ? myUID : null,
+        [`counts.${id}.responsibleName`]: wantsToOwn ? (userData?.name || "Colaborador") : null,
+        [`counts.${id}.isActive`]: wantsToOwn,
+        [`counts.${id}.updatedAt`]: Date.now()
+      });
+      
+      if (id.startsWith('meta_')) {
+        setActiveGroup(wantsToOwn ? id.replace('meta_', '').toUpperCase() : null);
+      }
+      if (wantsToOwn) toast.success("Você assumiu esta contagem.");
+    } catch (e) { 
+      toast.error("Banco: Falha na permissão de posse."); 
     }
-    setActiveGroup(sec);
-    setShowOwnershipModal(null);
+    
+    if (showOwnershipModal) setShowOwnershipModal(null);
   };
 
   const isEditingEnabled = (sec) => isMaster || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
@@ -219,9 +248,12 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             <p className="text-[14px] font-bold text-slate-900 leading-none">
               {eventDateRaw ? `${eventDateRaw.split('-')[2]}/${eventDateRaw.split('-')[1]}/${eventDateRaw.split('-')[0]}` : '---'}
             </p>
-            <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-[180px]">
-              {ataData?.comumNome || "Localidade"}
-            </h2>
+            <div className="flex items-center justify-center gap-1.5 mt-1">
+               {ataData?.scope === 'regional' && <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"/>}
+               <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-[180px]">
+                 {ataData?.comumNome || "Localidade"}
+               </h2>
+            </div>
           </div>
           <button onClick={onBack} className="bg-red-50 text-red-500 p-3 rounded-2xl active:scale-90 transition-all border border-red-100">
             <LogOut size={18} strokeWidth={3} />
@@ -231,39 +263,52 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
       <main className="flex-1 overflow-y-auto p-4 pb-52 no-scrollbar">
         <div className="max-w-md mx-auto">
-          {activeTab === 'contador' && sections.map((sec) => (
-            <CounterSection 
-              key={sec}
-              sec={sec}
-              allInstruments={allInstruments}
-              localCounts={localCounts}
-              myUID={myUID}
-              activeGroup={activeGroup}
-              handleToggleGroup={handleToggleGroup}
-              handleUpdateInstrument={handleUpdateInstrument}
-              isEditingEnabled={isEditingEnabled}
-              onAddExtra={(s) => setExtraInstrumentSection(s)}
-            />
-          ))}
+          {activeTab === 'contador' && (
+            ataData?.scope === 'regional' ? (
+              <CounterRegional 
+                instruments={allInstruments}
+                localCounts={localCounts}
+                sections={sections}
+                onUpdate={handleUpdateInstrument}
+                onToggleSection={setOwnership} 
+                onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
+                userData={userData}
+                isClosed={isClosed}
+                currentEventId={currentEventId}
+              />
+            ) : (
+              sections.map((sec) => (
+                <CounterSection 
+                  key={sec}
+                  sec={sec}
+                  allInstruments={allInstruments}
+                  localCounts={localCounts}
+                  myUID={myUID}
+                  activeGroup={activeGroup}
+                  handleToggleGroup={handleToggleGroup}
+                  handleUpdateInstrument={handleUpdateInstrument}
+                  isEditingEnabled={isEditingEnabled}
+                  onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)}
+                />
+              ))
+            )
+          )}
           {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={canEditAta} />}
           {activeTab === 'dash' && <DashEventPage eventId={currentEventId} counts={localCounts} userData={userData} isAdmin={true} ataData={ataData} />}
         </div>
       </main>
 
       <AnimatePresence>
-        {/* MODAL DE POSSE */}
         {showOwnershipModal && (
           <OwnershipModal 
             showOwnershipModal={showOwnershipModal}
             localCounts={localCounts}
             myUID={myUID}
             userData={userData}
-            onConfirm={setOwnership}
+            onConfirm={(sec, wantsToOwn) => setOwnership(`meta_${sec.toLowerCase().replace(/\s/g, '_')}`, !wantsToOwn)}
             onCancel={() => setShowOwnershipModal(null)}
           />
         )}
-
-        {/* MODAL DE INSTRUMENTO EXTRA */}
         {extraInstrumentSection && (
           <ExtraInstrumentModal 
             section={extraInstrumentSection}
@@ -285,7 +330,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 };
 
 const TabButton = ({ active, icon, label, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center justify-center py-3 px-6 rounded-[2rem] transition-all duration-300 ${active ? 'bg-white text-slate-950 shadow-xl scale-105 font-[900]' : 'text-slate-500'}`}>
+  <button onClick={onClick} className={`flex flex-col items-center justify-center py-3 px-6 rounded-[2rem] transition-all duration-300 ${active ? 'bg-white text-slate-950 shadow-xl scale-105 font-[900]' : 'text-slate-50'}`}>
     {icon}<span className="text-[8px] font-black uppercase italic mt-1 tracking-[0.2em] leading-none">{label}</span>
   </button>
 );

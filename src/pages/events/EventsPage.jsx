@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
-import { db, collection, onSnapshot, query, where, orderBy } from '../../config/firebase';
+import { db, collection, onSnapshot, query, where, orderBy, auth } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
 
 import toast from 'react-hot-toast';
-import { Plus, MapPin, Home } from 'lucide-react';
+import { Plus, MapPin, Home, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 // IMPORTAÇÃO DOS NOVOS COMPONENTES MODULARES
@@ -12,13 +12,16 @@ import EventsList from './components/EventsList';
 import EventModals from './components/EventModals';
 
 const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, onChurchChange }) => {
-  const { setContext } = useAuth();
+  const { setContext, user } = useAuth();
   
   // ESTADOS DE CONTROLE DE INTERFACE
   const [showModal, setShowModal] = useState(false);
   const [showConfigError, setShowConfigError] = useState(false);
   const [eventToDelete, setEventToDelete] = useState(null);
   const [openYears, setOpenYears] = useState({});
+  
+  // ESTADO PARA EVENTOS ONDE O USUÁRIO É CONVIDADO (REGIONAL)
+  const [invitedEvents, setInvitedEvents] = useState([]);
 
   // ESTADOS DE DADOS GEOGRÁFICOS
   const [cidades, setCidades] = useState([]);
@@ -117,36 +120,70 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     return () => { isMounted = false; unsub(); };
   }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
-  // 3. LÓGICA DE AGRUPAMENTO POR ANO
+  // 3. MONITOR DE CONVITES REGIONAIS (v3.5)
+  // Busca eventos onde o UID do usuário está na whitelist de convidados
+  useEffect(() => {
+    if (!user?.uid) return;
+    const qInvited = query(
+      collection(db, 'events_global'),
+      where('invitedUsers', 'array-contains', user.uid),
+      orderBy('date', 'desc')
+    );
+
+    const unsubInvited = onSnapshot(qInvited, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setInvitedEvents(data);
+    });
+
+    return () => unsubInvited();
+  }, [user?.uid]);
+
+  // 4. LÓGICA DE AGRUPAMENTO POR ANO (MESCLADA COM CONVITES)
   const groupedEvents = useMemo(() => {
     const isComumValida = comuns.some(c => c.id === selectedChurchId);
     if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};
-    return (allEvents || []).reduce((acc, event) => {
+
+    // Mescla eventos locais com eventos onde foi convidado
+    const combined = [...(allEvents || [])];
+    const existingIds = new Set(combined.map(e => e.id));
+
+    invitedEvents.forEach(invited => {
+      if (!existingIds.has(invited.id)) {
+        combined.push(invited);
+      }
+    });
+
+    return combined.reduce((acc, event) => {
       const year = event.date ? event.date.split('-')[0] : 'Sem Data';
       if (!acc[year]) acc[year] = [];
       acc[year].push(event);
       return acc;
     }, {});
-  }, [allEvents, selectedChurchId, comuns]);
+  }, [allEvents, invitedEvents, selectedChurchId, comuns]);
 
   useEffect(() => {
     const currentYear = new Date().getFullYear().toString();
     setOpenYears(prev => ({ ...prev, [currentYear]: true }));
   }, []);
 
-  const handleCreate = async () => {
+  const handleCreate = async (extendedData = {}) => {
     if (!selectedChurchId) return toast.error("Selecione uma comum");
     const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
+    
+    // Unifica dados básicos com dados de escopo regional vindos do modal
+    const finalEventData = {
+      type: extendedData.scope === 'regional' ? 'Ensaio Regional' : 'Ensaio Local',
+      date: newEventDate,
+      responsavel: responsavel || 'Pendente',
+      regionalId: activeRegionalId,
+      comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
+      comumId: selectedChurchId,
+      cidadeId: selectedCityId,
+      ...extendedData // Inclui scope e invitedUsers
+    };
+
     try {
-      await eventService.createEvent(selectedChurchId, {
-        type: 'Ensaio Local',
-        date: newEventDate,
-        responsavel: responsavel || 'Pendente',
-        regionalId: activeRegionalId,
-        comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
-        comumId: selectedChurchId,
-        cidadeId: selectedCityId
-      });
+      await eventService.createEvent(selectedChurchId, finalEventData);
       setShowModal(false);
       toast.success("Ensaio criado!");
     } catch (error) { 
@@ -158,7 +195,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
 
   const confirmDelete = async () => {
     if (!eventToDelete || !selectedChurchId) return;
-    const targetEvent = allEvents.find(ev => ev.id === eventToDelete);
+    const targetEvent = (allEvents || []).find(ev => ev.id === eventToDelete);
     if (targetEvent?.ata?.status === 'closed') {
       toast.error("Impossível excluir ensaios lacrados.");
       setEventToDelete(null);
@@ -202,7 +239,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         </div>
       )}
 
-      {/* LISTAGEM MODULAR */}
+      {/* LISTAGEM MODULAR - Propriedade invitedEvents injetada para destaque visual */}
       <EventsList 
         groupedEvents={groupedEvents}
         openYears={openYears}
@@ -210,6 +247,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         onSelectEvent={onSelectEvent}
         setEventToDelete={setEventToDelete}
         temPermissaoAqui={temPermissaoAqui}
+        invitedEvents={invitedEvents} 
       />
 
       {/* MODAIS MODULARES */}
@@ -222,6 +260,8 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         isGemLocal={isGemLocal} onNavigateToSettings={onNavigateToSettings}
         eventToDelete={eventToDelete} setEventToDelete={setEventToDelete}
         confirmDelete={confirmDelete}
+        isRegionalCidade={isRegionalCidade} 
+        userData={userData}
       />
     </div>
   );

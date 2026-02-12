@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, AlertTriangle, Settings, Trash2 } from 'lucide-react';
+import { X, Send, AlertTriangle, Settings, Trash2, Globe, UserPlus, Check, Search } from 'lucide-react';
+import { db, collection, query, where, onSnapshot } from '../../../config/firebase';
 
 /**
  * Componente que agrupa todos os modais da página de eventos.
- * v1.0 - Unificação de Diálogos: Novo Registro, Erro de Configuração e Exclusão.
+ * v1.6 - Adicionado barra de pesquisa para Whitelist de Convidados.
  */
 const EventModals = ({
   showModal,
@@ -17,30 +18,106 @@ const EventModals = ({
   showConfigError,
   setShowConfigError,
   isGemLocal,
+  isRegionalCidade, // Prop necessária para trava de hierarquia
+  userData, // Necessário para filtrar usuários da mesma cidade
   onNavigateToSettings,
   eventToDelete,
   setEventToDelete,
   confirmDelete
 }) => {
+  // ESTADOS PARA CONTROLE DO ENSAIO REGIONAL (v1.5)
+  const [scope, setScope] = useState('local');
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [invitedUsers, setInvitedUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState(''); // v1.6: Estado para busca
+
+  // MONITOR DE USUÁRIOS DA CIDADE PARA CONVITES
+  useEffect(() => {
+    if (!showModal || scope !== 'regional' || !userData?.activeCityId) return;
+
+    const q = query(
+      collection(db, 'users'),
+      where('cidadeId', '==', userData.activeCityId),
+      where('approved', '==', true)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const users = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.id !== userData.uid); // Remove o próprio criador da lista de convites
+      setAvailableUsers(users);
+    });
+
+    return () => unsub();
+  }, [showModal, scope, userData]);
+
+  // v1.6: Lógica de filtragem em tempo real
+  const filteredUsers = availableUsers.filter(u => 
+    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.comum?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // RESET DE ESTADOS AO FECHAR O MODAL
+  const closeModal = () => {
+    setShowModal(false);
+    setScope('local');
+    setInvitedUsers([]);
+    setSearchTerm('');
+  };
+
+  const toggleInvitedUser = (uid) => {
+    setInvitedUsers(prev => 
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const onConfirmAction = () => {
+    // Encaminha os novos metadados de escopo para a função de criação global
+    handleCreate({
+      scope,
+      invitedUsers: scope === 'regional' ? invitedUsers : []
+    });
+    setScope('local');
+    setInvitedUsers([]);
+    setSearchTerm('');
+  };
+
   return (
     <>
       <AnimatePresence>
-        {/* MODAL 1: NOVO REGISTRO */}
+        {/* MODAL 1: NOVO REGISTRO (ADAPTADO PARA REGIONAL) */}
         {showModal && (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 text-left">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-[340px] rounded-[3rem] p-8 shadow-2xl relative text-left overflow-hidden border border-white/20"
+              className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl relative flex flex-col max-h-[90vh] border border-white/20"
             >
-              <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90 transition-all">
+              <button onClick={closeModal} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90 transition-all">
                 <X size={18}/>
               </button>
               
               <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8 leading-none tracking-tighter">Novo Registro</h3>
               
-              <div className="space-y-5">
+              <div className="space-y-5 overflow-y-auto no-scrollbar pr-1">
+                {/* SELETOR DE ESCOPO - RESTRITO A HIERARQUIA CIDADE/REGIONAL+ */}
+                {isRegionalCidade && (
+                  <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+                    <label className="text-[8px] font-black text-blue-600 uppercase ml-2 tracking-widest italic flex items-center gap-1.5">
+                      <Globe size={10} /> Tipo de Evento
+                    </label>
+                    <select 
+                      value={scope} 
+                      onChange={(e) => setScope(e.target.value)}
+                      className="w-full bg-blue-50 border border-blue-100 text-blue-600 rounded-2xl py-4 px-4 text-xs font-black outline-none appearance-none italic uppercase shadow-sm"
+                    >
+                      <option value="local">Ensaio Local (Comum)</option>
+                      <option value="regional">Ensaio Regional (Cidade)</option>
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Data Agendada</label>
                   <input 
@@ -50,6 +127,7 @@ const EventModals = ({
                     onChange={e => setNewEventDate(e.target.value)} 
                   />
                 </div>
+
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Responsável / Encarregado</label>
                   <input 
@@ -60,11 +138,59 @@ const EventModals = ({
                     onChange={e => setResponsavel(e.target.value)} 
                   />
                 </div>
+
+                {/* WHITELIST DE CONVIDADOS - EXCLUSIVO PARA MODO REGIONAL */}
+                <AnimatePresence>
+                  {scope === 'regional' && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }} 
+                      animate={{ height: 'auto', opacity: 1 }} 
+                      exit={{ height: 0, opacity: 0 }}
+                      className="space-y-3 pt-4 border-t border-slate-100 overflow-hidden"
+                    >
+                      <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic flex items-center gap-1.5">
+                        <UserPlus size={10} /> Convidados da Cidade
+                      </label>
+
+                      {/* v1.6: Barra de Busca de Convidados */}
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
+                        <input 
+                          type="text"
+                          placeholder="PESQUISAR POR NOME OU LOCALIDADE..."
+                          className="w-full bg-slate-100 border-none rounded-xl py-2.5 pl-9 pr-4 text-[9px] font-black uppercase outline-none focus:ring-1 focus:ring-blue-200 transition-all"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
+                        {filteredUsers.length === 0 ? (
+                          <p className="text-[9px] font-bold text-slate-300 uppercase italic p-4 text-center">
+                            {searchTerm ? "Nenhum resultado encontrado" : "Nenhum colaborador encontrado na cidade."}
+                          </p>
+                        ) : filteredUsers.map(user => (
+                          <button 
+                            key={user.id} 
+                            onClick={() => toggleInvitedUser(user.id)}
+                            className={`w-full p-3 rounded-xl border flex items-center justify-between transition-all ${invitedUsers.includes(user.id) ? 'bg-slate-950 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-500'}`}
+                          >
+                            <div className="text-left leading-none">
+                              <p className="text-[10px] font-black uppercase italic">{user.name}</p>
+                              <p className={`text-[7px] font-bold uppercase mt-1 ${invitedUsers.includes(user.id) ? 'text-blue-400' : 'text-slate-300'}`}>{user.role} • {user.comum}</p>
+                            </div>
+                            {invitedUsers.includes(user.id) && <Check size={14} className="text-amber-500" />}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <button 
-                onClick={handleCreate} 
-                className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-10 transition-all border border-white/10"
+                onClick={onConfirmAction} 
+                className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl mt-8 transition-all border border-white/10 shrink-0"
               >
                 <Send size={16}/> Confirmar Agenda
               </button>
@@ -74,12 +200,12 @@ const EventModals = ({
 
         {/* MODAL 2: ORQUESTRA AUSENTE (ERRO DE CONFIGURAÇÃO) */}
         {showConfigError && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-center">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-[320px] rounded-[3rem] p-10 text-center shadow-2xl relative border border-slate-100"
+              className="bg-white w-full max-w-[320px] rounded-[3rem] p-10 shadow-2xl relative border border-slate-100"
             >
               <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
                 <AlertTriangle size={40} />
@@ -104,12 +230,12 @@ const EventModals = ({
 
         {/* MODAL 3: CONFIRMAÇÃO DE EXCLUSÃO */}
         {eventToDelete && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-6 text-center">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 text-center shadow-2xl relative border border-slate-100"
+              className="bg-white w-full max-w-[320px] rounded-[2.5rem] p-8 shadow-2xl relative border border-slate-100"
             >
               <div className="w-16 h-16 bg-red-50 text-red-500 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6">
                 <Trash2 size={24} strokeWidth={3} />

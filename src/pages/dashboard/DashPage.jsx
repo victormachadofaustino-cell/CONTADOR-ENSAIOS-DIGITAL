@@ -32,7 +32,7 @@ const DashPage = ({ userData }) => {
   const level = userData?.accessLevel;
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
-  const isRegionalCidade = level === 'regional_cidade'; 
+  const isRegionalCidade = isComissao || level === 'regional_cidade'; 
   const isGemLocal = level === 'gem_local';
   const isBasico = level === 'basico';
 

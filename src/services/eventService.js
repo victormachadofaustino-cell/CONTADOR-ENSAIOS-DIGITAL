@@ -1,9 +1,9 @@
 import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
-import { deleteField, arrayUnion, increment } from "firebase/firestore";
+import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore";
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v3.2 - Arquitetura Global com Blindagem de Metadados
+ * v4.0 - Suporte a Ensaios Regionais, Colaboração Individual e Whitelist Dinâmica
  * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
  */
 export const eventService = {
@@ -28,10 +28,11 @@ export const eventService = {
   /**
    * Cria um novo ensaio na Coleção Global
    * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local e inicializa metadados de sessão.
+   * v4.0: Inicialização de posse individual por instrumento e campos litúrgicos.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
-    const { type, date, responsavel, regionalId, comumNome, cidadeId } = eventData;
+    const { type, date, responsavel, regionalId, comumNome, cidadeId, scope, invitedUsers } = eventData;
     
     let initialCounts = {};
 
@@ -45,7 +46,7 @@ export const eventService = {
         throw new Error("CONFIG_REQUIRED"); 
       }
 
-      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL + METADADOS DE SEÇÃO
+      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL + METADADOS DE POSSE INDIVIDUAL
       const sessoesDetectadas = new Set();
 
       localSnap.docs.forEach(docInst => {
@@ -58,11 +59,15 @@ export const eventService = {
           total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0,  
           name: inst.name || id.toUpperCase(),
           section: sectionName,
-          evalType: inst.evalType || 'Sem'
+          evalType: inst.evalType || 'Sem',
+          // v4.0: Metadados de posse por instrumento para colaboração picada
+          responsibleId: null,
+          responsibleName: null,
+          updatedAt: Date.now()
         };
       });
 
-      // INICIALIZAÇÃO INTELIGENTE: Cria os metadados para cada seção da orquestra
+      // INICIALIZAÇÃO DE SEÇÕES: Cria os metadados para controle de naipe completo
       sessoesDetectadas.forEach(sec => {
         const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
         initialCounts[metaKey] = {
@@ -79,19 +84,51 @@ export const eventService = {
       throw new Error("Falha ao acessar configuração da localidade.");
     }
     
-    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v3.1)
+    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v4.0)
     return await addDoc(collection(db, 'events_global'), {
       type: type || 'Ensaio Local',
+      scope: scope || 'local', 
+      invitedUsers: invitedUsers || [], 
       date,
       responsavel: responsavel || 'Pendente',
       comumNome: comumNome || '',
       comumId: comumId,
       cidadeId: cidadeId || '',
       regionalId: regionalId || '',
-      ata: { status: 'open' },
+      ata: { 
+        status: 'open',
+        palavra: {
+          anciao: '',
+          livro: '',
+          capitulo: '',
+          verso: '',
+          assunto: ''
+        },
+        ocorrencias: [] // Inicializa array de ocorrências como texto livre
+      },
       counts: initialCounts, 
       createdAt: Date.now(),
-      dbVersion: "3.1-global-locking"
+      dbVersion: "4.0-global-regional-colab"
+    });
+  },
+
+  /**
+   * GESTÃO DE CONVIDADOS (Whitelist Dinâmica)
+   * Permite adicionar ou remover colaboradores com o ensaio em andamento.
+   */
+  addGuest: async (eventId, userId) => {
+    if (!eventId || !userId) return;
+    const eventRef = doc(db, 'events_global', eventId);
+    return await updateDoc(eventRef, {
+      invitedUsers: arrayUnion(userId)
+    });
+  },
+
+  removeGuest: async (eventId, userId) => {
+    if (!eventId || !userId) return;
+    const eventRef = doc(db, 'events_global', eventId);
+    return await updateDoc(eventRef, {
+      invitedUsers: arrayRemove(userId)
     });
   },
 
@@ -125,15 +162,13 @@ export const eventService = {
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
 
     try {
-      // Capturamos o estado atual apenas para o log de histórico (Auditoria)
       const snap = await getDoc(eventRef);
       if (!snap.exists()) return;
 
       const currentInstData = snap.data()?.counts?.[instId] || {};
       const oldValue = parseInt(currentInstData[fieldToUpdate]) || 0;
-      const diferenca = val - oldValue; // Calculamos quanto aumentou ou diminuiu
+      const diferenca = val - oldValue; 
       
-      // Histórico rotativo (mantém as últimas 10 alterações para auditoria)
       let history = currentInstData.history || [];
       if (history.length >= 10) history = history.slice(-9);
       history.push(logEntry);
@@ -147,7 +182,6 @@ export const eventService = {
 
       if (customName) baseUpdate.name = customName;
 
-      // BLINDAGEM CRÍTICA: O uso de increment() garante que a soma seja feita no servidor
       await updateDoc(eventRef, { 
         [`counts.${instId}.lastEditBy`]: baseUpdate.lastEditBy,
         [`counts.${instId}.timestamp`]: baseUpdate.timestamp,
@@ -178,7 +212,6 @@ export const eventService = {
     if (!eventId) throw new Error("Referência de evento inválida.");
     const eventRef = doc(db, 'events_global', eventId);
     
-    // 1. Extração de Hinos para estatística rápida
     let todosHinos = [];
     (ataData.partes || []).forEach(p => {
       if (p.hinos) {
@@ -186,8 +219,6 @@ export const eventService = {
       }
     });
 
-    // 2. BLINDAGEM: Removemos campos que pertencem à RAIZ para não duplicar/conflitar dentro do objeto ATA
-    // Isso evita que o PDF se confunda entre ata.date e a raiz date.
     const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData;
 
     const finalAta = {
@@ -198,7 +229,6 @@ export const eventService = {
     };
 
     try {
-      // Usamos updateDoc para atualizar APENAS o mapa 'ata', preservando a raiz do documento intacta
       await updateDoc(eventRef, { 
         ata: finalAta 
       });

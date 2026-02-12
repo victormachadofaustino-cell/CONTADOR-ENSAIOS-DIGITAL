@@ -37,7 +37,7 @@ const AtaVisitantes = ({
             <div 
               key={v.id || idx} 
               className="flex justify-between items-center p-5 bg-white rounded-[2.2rem] border border-slate-100 shadow-sm active:scale-[0.98] transition-all group hover:border-blue-100"
-              onClick={() => handleOpenVisitaModal(v, idx)}
+              onClick={() => !isInputDisabled && handleOpenVisitaModal(v, idx)}
             >
               <div className="text-left flex-1">
                 {/* LINHA 1: NOME (Destaque Principal) */}

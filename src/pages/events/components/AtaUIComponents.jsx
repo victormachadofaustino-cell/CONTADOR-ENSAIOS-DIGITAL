@@ -3,34 +3,40 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, X, User, Briefcase } from 'lucide-react';
 
 /**
- * AtaUIComponents v1.0
+ * AtaUIComponents v1.1
  * Biblioteca de componentes padronizados para o módulo de Ata.
- * Foco: Expansão vertical dinâmica para evitar corte de textos.
+ * Foco: Expansão vertical dinâmica e acessibilidade visual 7XL.
  */
 
-// 1. CAMPO DE TEXTO DINÂMICO (Resolve o problema de palavras cortadas)
-export const Field = ({ label, val, onChange, disabled, icon, placeholder = "Preencher..." }) => (
-  <div className="flex flex-col flex-1 text-slate-950 w-full group">
-    <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5 transition-colors group-focus-within:text-blue-600">
-      {icon || <User size={10}/>} {label}
-    </label>
-    <div className="relative flex w-full">
-      {/* CONCEITO UX: Utilizamos um textarea com altura automática simulada ou 
-          um input com padding generoso e largura total para permitir visualização.
-      */}
-      <input 
-        type="text" 
-        disabled={disabled} 
-        placeholder={placeholder}
-        className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xs outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all uppercase shadow-inner italic disabled:opacity-40 truncate focus:whitespace-normal" 
-        value={val || ''} 
-        onChange={e => onChange(e.target.value.toUpperCase())} 
-      />
-    </div>
-  </div>
-);
+// 1. CAMPO DE TEXTO DINÂMICO (Substituído input por textarea para evitar cortes)
+export const Field = ({ label, val, onChange, disabled, icon, placeholder = "Preencher..." }) => {
+  // Lógica de ajuste automático de altura para evitar scroll interno no campo
+  const handleInput = (e) => {
+    e.target.style.height = 'inherit';
+    e.target.style.height = `${e.target.scrollHeight}px`;
+  };
 
-// 2. SELETOR PADRONIZADO
+  return (
+    <div className="flex flex-col flex-1 text-slate-950 w-full group">
+      <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5 transition-colors group-focus-within:text-blue-600">
+        {icon || <User size={10}/>} {label}
+      </label>
+      <div className="relative flex w-full">
+        <textarea 
+          rows="1"
+          disabled={disabled} 
+          placeholder={placeholder}
+          onInput={handleInput}
+          className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xs outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all uppercase shadow-inner italic disabled:opacity-40 resize-none overflow-hidden min-h-[52px]" 
+          value={val || ''} 
+          onChange={e => onChange(e.target.value.toUpperCase())} 
+        />
+      </div>
+    </div>
+  );
+};
+
+// 2. SELETOR PADRONIZADO (Aumento de escala para legibilidade)
 export const Select = ({ label, val, options, onChange, disabled }) => (
   <div className="flex flex-col flex-1 text-slate-950 w-full">
     <label className="text-[8px] font-black uppercase italic mb-2 text-slate-400 tracking-widest flex items-center gap-1.5">
@@ -39,7 +45,7 @@ export const Select = ({ label, val, options, onChange, disabled }) => (
     <div className="relative">
       <select 
         disabled={disabled} 
-        className="w-full bg-slate-50 p-4 rounded-2xl font-black text-[10px] outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all shadow-inner disabled:opacity-40 appearance-none pr-10" 
+        className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xs outline-none border-2 border-transparent focus:bg-white focus:border-blue-500 transition-all shadow-inner disabled:opacity-40 appearance-none pr-10" 
         value={val || ''} 
         onChange={e => onChange(e.target.value)}
       >

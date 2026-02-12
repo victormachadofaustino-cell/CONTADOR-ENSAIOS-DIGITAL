@@ -4,7 +4,7 @@ import InstrumentCard from './InstrumentCard';
 
 /**
  * Componente que agrupa instrumentos por seção (Naipe).
- * v1.1 - Adicionado suporte para inserção de instrumentos extras por seção.
+ * v1.3 - Restauração de campos de liderança para Ensaio Local.
  */
 const CounterSection = ({ 
   sec, 
@@ -27,7 +27,7 @@ const CounterSection = ({
     .filter(i => (i.section || "GERAL").toUpperCase() === sec)
     .reduce((acc, inst) => {
       const c = localCounts?.[inst.id];
-      // Lógica de soma diferenciada para Irmandade/Coral
+      // Lógica de soma diferenciada para Irmandade/Coral (Irmãos + Irmãs)
       return acc + (['irmandade', 'Coral'].includes(inst.id) 
         ? (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0) 
         : (parseInt(c?.total) || 0));
@@ -35,7 +35,11 @@ const CounterSection = ({
 
   const isLastIrmandade = sec === 'IRMANDADE' || sec === 'CORAL';
   const isOrganistas = sec === 'ORGANISTAS';
-  const extraSpacing = (isLastIrmandade || isOrganistas) ? "mb-10" : "mb-3";
+  
+  // REGRA: Seções que não permitem inserção de instrumentos extras
+  const isProtectedSection = isLastIrmandade || isOrganistas;
+  
+  const extraSpacing = isProtectedSection ? "mb-10" : "mb-3";
 
   return (
     <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing}`}>
@@ -61,12 +65,13 @@ const CounterSection = ({
           )}
         </div>
         <div className="flex items-center gap-4">
-          <div className="bg-slate-950 text-white min-w-[42px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-lg border border-white/10">
+          {/* BADGE DE TOTALIZAÇÃO DO NAIPE */}
+          <div className="bg-slate-950 text-white min-w-[42px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-lg border border-white/10 px-2">
             {sectionTotal}
           </div>
           <ChevronDown 
             size={18} 
-            className={`text-slate-300 transition-transform duration-300 ${activeGroup === sec ? 'rotate-180' : ''}`} 
+            className={`text-slate-300 transition-transform duration-500 ${activeGroup === sec ? 'rotate-180' : ''}`} 
           />
         </div>
       </button>
@@ -82,11 +87,14 @@ const CounterSection = ({
                 data={localCounts?.[inst.id] || {total:0, comum:0, enc:0, irmaos:0, irmas:0}} 
                 onUpdate={(id, f, v) => handleUpdateInstrument(id, f, v, sec)} 
                 disabled={!isEditingEnabled(sec)} 
+                // Injetado para manter consistência com v1.8
+                isRegional={false} 
+                userData={{uid: myUID}}
               />
             ))}
           
-          {/* BOTÃO PARA ADICIONAR INSTRUMENTO EXTRA NESTA SEÇÃO */}
-          {isEditingEnabled(sec) && !isLastIrmandade && (
+          {/* BOTÃO PARA ADICIONAR INSTRUMENTO EXTRA (BLOQUEADO EM IRMANDADE/ORGANISTAS) */}
+          {isEditingEnabled(sec) && !isProtectedSection && (
             <button
               onClick={() => onAddExtra(sec)}
               className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[1.8rem] flex items-center justify-center gap-2 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all active:scale-95"

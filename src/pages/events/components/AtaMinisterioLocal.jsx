@@ -2,9 +2,9 @@ import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 
 /**
- * AtaMinisterioLocal v1.0
+ * AtaMinisterioLocal v1.2
  * Módulo para controle de presença do ministério da comum.
- * Foco: Performance de clique e feedback visual imediato.
+ * Ajuste: Expansão do dicionário de variantes para paridade com subcoleções locais.
  */
 const AtaMinisterioLocal = ({ 
   localMinisterio, 
@@ -12,6 +12,25 @@ const AtaMinisterioLocal = ({
   isInputDisabled, 
   togglePresencaLocal 
 }) => {
+
+  // Função auxiliar para padronizar as descrições ministeriais por extenso
+  const formatRole = (role) => {
+    const rolesMap = {
+      'Anciao': 'Ancião',
+      'Anciães': 'Ancião',
+      'Diacono': 'Diácono',
+      'Cooperador do Oficio': 'Cooperador do Ofício',
+      'Cooperador do Ofício': 'Cooperador do Ofício',
+      'Cooperador RJM': 'Cooperador de Jovens e Menores',
+      'Cooperador de Jovens e Menores': 'Cooperador de Jovens e Menores',
+      'Secretario da Musica': 'Secretário da Música',
+      'Secretário da Música': 'Secretário da Música',
+      'Musico': 'Músico',
+      'Músico': 'Músico'
+    };
+    return rolesMap[role] || role;
+  };
+
   return (
     <div className="grid grid-cols-1 gap-2.5">
       {localMinisterio.length === 0 ? (
@@ -41,11 +60,11 @@ const AtaMinisterioLocal = ({
                   {m.name}
                 </p>
                 
-                {/* CARGO / MINISTÉRIO */}
+                {/* CARGO / MINISTÉRIO POR EXTENSO */}
                 <p className={`text-[9px] font-bold mt-2 uppercase tracking-widest leading-none ${
                   estaPresente ? 'text-blue-400' : 'text-slate-400'
                 }`}>
-                  {m.role}
+                  {formatRole(m.role)}
                 </p>
               </div>
 

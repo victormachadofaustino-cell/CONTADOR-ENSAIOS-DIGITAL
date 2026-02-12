@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { db, doc, onSnapshot, collection, query, where, orderBy } from '../../config/firebase';
+// PRESERVAÇÃO: Importações originais mantidas
+import { db, doc, onSnapshot, collection, query, where, orderBy, getDocs } from '../../config/firebase';
 import { eventService } from '../../services/eventService'; 
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Lock, ShieldCheck, Info, X, User, Music, MapPin, Phone, Calendar, Clock, Trash2
+  Lock, ShieldCheck, Info, X, User, Music, MapPin, Phone, Calendar, Clock, Trash2, Users, ShieldAlert
 } from 'lucide-react';
 
 // Importação do Cérebro de Autenticação v2.1
@@ -18,6 +19,11 @@ import AtaMinisterioLocal from './components/AtaMinisterioLocal.jsx';
 import AtaLacreStatus from './components/AtaLacreStatus.jsx';
 // Importação do Novo Módulo de Ocorrências
 import AtaOcorrencias from './components/AtaOcorrencias.jsx';
+// Importação do Módulo de Palavra Pregada (v1.0 Regional)
+import AtaPalavra from './components/AtaPalavra.jsx';
+// Importação dos Módulos de Gestão Regional v4.0
+import GuestManager from './components/GuestManager.jsx';
+import MinistryAccordion from './components/MinistryAccordion.jsx';
 
 const AtaPage = ({ eventId, comumId }) => {
   const { userData } = useAuth();
@@ -38,10 +44,11 @@ const AtaPage = ({ eventId, comumId }) => {
       { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
       { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
     ],
+    palavra: { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' },
     presencaLocal: [],
     presencaLocalFull: [],
     visitantes: [],
-    ocorrencias: [] // Inicialização do campo de ocorrências
+    ocorrencias: [] 
   });
   
   const [eventMeta, setEventMeta] = useState(null);
@@ -60,21 +67,28 @@ const AtaPage = ({ eventId, comumId }) => {
   const saveTimeoutRef = useRef(null);
 
   const [newVisita, setNewVisita] = useState({ 
-    nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
+    nome: '', min: '', inst: '', bairro: '', city: '', state: '', dataEnsaio: '', hora: '', contato: '' 
   });
 
   const isClosed = ataData?.status === 'closed';
+  const isRegionalScope = eventMeta?.scope === 'regional';
   
+  // MATRIZ DE PODER v2.5: Ajustado para permitir que nível Regional edite qualquer comum de sua cidade
   const temPermissaoEditar = useMemo(() => {
     if (isBasico || isClosed) return false;
     if (isMaster || isComissao) return true;
+    
+    // Se for Regional de Cidade, permite editar se a comum do evento pertencer à sua cidade de cadastro
+    if (level === 'regional_cidade' && eventMeta?.cidadeId === userData?.cidadeId) {
+      return true;
+    }
+
     const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return permitidasIds.includes(comumId);
-  }, [isBasico, isClosed, isMaster, isComissao, userData, comumId]);
+  }, [isBasico, isClosed, isMaster, isComissao, level, userData, comumId, eventMeta]);
 
   const isInputDisabled = !temPermissaoEditar;
 
-  // PESOS ATUALIZADOS v4.8 - Harmonia com PDF
   const pesosMinisterio = {
     'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador RJM': 4,
     'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7,
@@ -104,11 +118,13 @@ const AtaPage = ({ eventId, comumId }) => {
   }, [comumId, eventId, eventMeta, userData, isInputDisabled]);
 
   const handleChange = (newData) => {
+    if (isInputDisabled) return;
     setAtaData(newData);
     debouncedSave(newData);
   };
 
   const saveStatus = async (newStatus) => {
+    if (isBasico) return;
     const updated = { ...ataData, status: newStatus, comumNome: eventMeta?.comumNome || userData?.comum || "LOCALIDADE" };
     setAtaData(updated);
     try {
@@ -121,44 +137,53 @@ const AtaPage = ({ eventId, comumId }) => {
     if (!comumId || !eventId) return;
     let isMounted = true;
     
-    onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
-      if (!isMounted) return;
-      setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    // BLINDAGEM DE LISTENERS: Se for básico, não tenta ler tabelas de infraestrutura protegidas
+    if (!isBasico) {
+      onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
+        if (!isMounted) return;
+        setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
 
-    onSnapshot(collection(db, 'referencia_cargos'), (s) => {
-      if (!isMounted) return;
-      const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
-      setReferenciaMinisterio(lista);
-    });
+      onSnapshot(collection(db, 'referencia_cargos'), (s) => {
+        if (!isMounted) return;
+        const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
+        setReferenciaMinisterio(lista);
+      });
 
-    onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
-      if (!isMounted) return;
-      const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
-      setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
-    });
+      onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
+        if (!isMounted) return;
+        const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
+        setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
+      });
+    }
 
-    onSnapshot(doc(db, 'events_global', eventId), (s) => {
-      if (!isMounted) return;
-      if (s.exists()) {
-        const eventData = s.data();
-        setEventMeta(eventData);
-        if (eventData.ata) {
-          const loadedAta = { ...eventData.ata };
-          if (!loadedAta.partes || loadedAta.partes.length === 0) {
-            loadedAta.partes = [
-              { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
-              { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
-            ];
+    // MONITOR DO EVENTO GLOBAL (Acesso permitido ao Básico)
+    const unsubEvent = onSnapshot(doc(db, 'events_global', eventId), 
+      (s) => {
+        if (s.exists() && isMounted) {
+          const eventData = s.data();
+          setEventMeta(eventData);
+          if (eventData.ata) {
+            const loadedAta = { ...eventData.ata };
+            if (!loadedAta.partes || loadedAta.partes.length === 0) {
+              loadedAta.partes = [
+                { label: '1ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] },
+                { label: '2ª Parte', nome: '', min: '', hinos: ['', '', '', '', ''] }
+              ];
+            }
+            if (!loadedAta.palavra) {
+              loadedAta.palavra = { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' };
+            }
+            setAtaData(loadedAta);
           }
-          setAtaData(loadedAta);
+          setLoading(false);
         }
-        setLoading(false);
-      }
-    });
+      },
+      (err) => console.warn("Listener de Ata restrito.")
+    );
 
-    return () => { isMounted = false; if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [eventId, comumId]);
+    return () => { isMounted = false; unsubEvent(); if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+  }, [eventId, comumId, isBasico]);
 
   const handleHinoChange = (pIdx, hIdx, val) => {
     if (isInputDisabled) return;
@@ -183,9 +208,9 @@ const AtaPage = ({ eventId, comumId }) => {
   };
 
   const handleOpenVisitaModal = (v = null, idx = null) => {
-    if (isInputDisabled && !isClosed) return; 
+    if (isInputDisabled) return; 
     if (v) { setNewVisita(v); setEditIndex(idx); } 
-    else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
+    else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', city: '', state: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
     setShowVisitaModal(true);
   };
 
@@ -211,79 +236,137 @@ const AtaPage = ({ eventId, comumId }) => {
   return (
     <div className="space-y-3 pb-40 px-2 font-sans text-left bg-gray-50 pt-3 animate-premium">
       
+      {/* STATUS DE EDIÇÃO (Blindado para Básico) */}
       <div className="mx-2 mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden text-left">
         <div className={`absolute left-0 top-0 h-full w-1 ${temPermissaoEditar ? 'bg-blue-600' : 'bg-slate-300'}`} />
         <div className="flex items-center gap-3">
           <div className={`${temPermissaoEditar ? 'text-blue-600' : 'text-slate-400'}`}>
-            {isClosed ? <Lock size={14} /> : temPermissaoEditar ? <ShieldCheck size={14} /> : <Info size={14} />}
+            {isClosed ? <Lock size={14} /> : temPermissaoEditar ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
           </div>
           <div className="leading-none text-left">
             <p className="text-[9px] font-black text-slate-950 uppercase italic tracking-tighter">
-              {isClosed ? 'Ata Lacrada' : temPermissaoEditar ? 'Modo de Edição' : 'Visualização'}
+              {isClosed ? 'Ata Lacrada' : isBasico ? 'Modo de Leitura' : temPermissaoEditar ? 'Modo de Edição' : 'Visualização'}
             </p>
             <p className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">{eventMeta?.comumNome || '---'}</p>
           </div>
         </div>
       </div>
 
+      {/* GESTÃO DE EQUIPE (Apenas GEM Local+ em Regional) */}
+      {isRegionalScope && isGemLocal && (
+        <Accordion title="Equipe de Contagem" isOpen={openSection === 'guests'} onClick={() => setOpenSection(openSection === 'guests' ? null : 'guests')} icon="👥">
+          <GuestManager 
+            eventId={eventId} 
+            invitedUsersIds={eventMeta?.invitedUsers || []} 
+            userData={userData} 
+            isClosed={isClosed || isBasico} 
+          />
+        </Accordion>
+      )}
+
+      {/* LITURGIA DO ENSAIO */}
       <Accordion title="Liturgia do Ensaio" isOpen={openSection === 'liturgia'} onClick={() => setOpenSection(openSection === 'liturgia' ? null : 'liturgia')} icon="🎼">
-        <AtaLiturgia 
-          ataData={ataData} 
-          handleChange={handleChange} 
-          isInputDisabled={isInputDisabled} 
-          referenciaMinisterio={referenciaMinisterio} 
-          handleHinoChange={handleHinoChange} 
-        />
+        <div className="space-y-6">
+          <AtaLiturgia 
+            ataData={ataData} 
+            handleChange={handleChange} 
+            isInputDisabled={isInputDisabled} 
+            referenciaMinisterio={referenciaMinisterio} 
+            handleHinoChange={handleHinoChange}
+            hidePartes={true} 
+          />
+
+          {isRegionalScope && (
+            <div className="pt-4 border-t border-slate-100">
+              <div className="px-2 mb-4">
+                <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none mb-1">Liturgia Regional</p>
+                <h4 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter">Palavra Pregada</h4>
+              </div>
+              <AtaPalavra 
+                ataData={ataData} 
+                handleChange={handleChange} 
+                isInputDisabled={isInputDisabled} 
+              />
+            </div>
+          )}
+
+          <AtaLiturgia 
+            ataData={ataData} 
+            handleChange={handleChange} 
+            isInputDisabled={isInputDisabled} 
+            referenciaMinisterio={referenciaMinisterio} 
+            handleHinoChange={handleHinoChange}
+            onlyPartes={true} 
+          />
+        </div>
       </Accordion>
 
-      {/* NOVO MÓDULO DE OCORRÊNCIAS */}
+      {/* OCORRÊNCIAS */}
       <Accordion title="Ocorrências" isOpen={openSection === 'ocorrencias'} onClick={() => setOpenSection(openSection === 'ocorrencias' ? null : 'ocorrencias')} icon="📝" badge={ataData.ocorrencias?.length || null}>
         <AtaOcorrencias 
           ocorrencias={ataData.ocorrencias} 
           instruments={instrumentsNacionais}
           onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })}
-          isClosed={isClosed}
+          isClosed={isClosed || isBasico}
+          isRegional={isRegionalScope}
         />
       </Accordion>
 
+      {/* VISITANTES */}
       <Accordion title="Visitantes" isOpen={openSection === 'visitantes'} onClick={() => setOpenSection(openSection === 'visitantes' ? null : 'visitantes')} icon="🌍" badge={ataData.visitantes?.length || null}>
         <AtaVisitantes 
           visitantes={ataData.visitantes} 
           isInputDisabled={isInputDisabled} 
-          isClosed={isClosed} 
+          isClosed={isClosed || isBasico} 
           handleOpenVisitaModal={handleOpenVisitaModal} 
           setVisitaToDelete={setVisitaToDelete} 
         />
       </Accordion>
 
-      <Accordion title="Ministério Local" isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={ataData.presencaLocal?.length || null}>
-        <AtaMinisterioLocal 
-          localMinisterio={localMinisterio} 
-          presencaLocal={ataData.presencaLocal} 
-          isInputDisabled={isInputDisabled} 
-          togglePresencaLocal={togglePresencaLocal} 
-        />
+      {/* MINISTÉRIO */}
+      <Accordion title={isRegionalScope ? "Ministério Regional" : "Ministério Local"} isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={isRegionalScope ? (ataData.presencaLocalFull?.length || null) : (ataData.presencaLocal?.length || null)}>
+        {isRegionalScope ? (
+          <MinistryAccordion 
+            eventId={eventId} 
+            regionalId={eventMeta?.regionalId} 
+            presencaAtual={ataData.presencaLocalFull || []} 
+            onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })}
+            isInputDisabled={isInputDisabled}
+            userData={userData}
+          />
+        ) : (
+          <AtaMinisterioLocal 
+            localMinisterio={localMinisterio} 
+            presencaLocal={ataData.presencaLocal} 
+            isInputDisabled={isInputDisabled} 
+            togglePresencaLocal={togglePresencaLocal} 
+          />
+        )}
       </Accordion>
 
-      <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
-        <AtaLacreStatus 
-          isClosed={isClosed} 
-          isGemLocal={isGemLocal} 
-          isComissao={isComissao} 
-          loading={loading} 
-          showConfirmLock={showConfirmLock} 
-          setShowConfirmLock={setShowConfirmLock} 
-          showConfirmReopen={showConfirmReopen} 
-          setShowConfirmReopen={setShowConfirmReopen} 
-          saveStatus={saveStatus} 
-        />
-      </div>
+      {/* BOTÃO DE LACRE (Oculto para nível Básico) */}
+      {!isBasico && (
+        <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
+          <AtaLacreStatus 
+            isClosed={isClosed} 
+            isGemLocal={isGemLocal} 
+            isComissao={isComissao} 
+            loading={loading} 
+            showConfirmLock={showConfirmLock} 
+            setShowConfirmLock={setShowConfirmLock} 
+            showConfirmReopen={showConfirmReopen} 
+            setShowConfirmReopen={setShowConfirmReopen} 
+            saveStatus={saveStatus} 
+          />
+        </div>
+      )}
 
+      {/* MODAL DE VISITA (Apenas Visualização para Básico) */}
       <AnimatePresence>
         {showVisitaModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar text-left relative">
-              <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:text-slate-950"><X size={24}/></button>
+              <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:scale-95 transition-all"><X size={24}/></button>
               <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">Dados da Visita</h3>
               <div className="space-y-5">
                 <Field label="Nome Completo" val={newVisita.nome} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, nome: v})} />
@@ -291,25 +374,10 @@ const AtaPage = ({ eventId, comumId }) => {
                   <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, min: v})} />
                   <Field label="Instrumento" val={newVisita.inst} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Bairro" val={newVisita.bairro} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
-                  <Field label="Cidade / UF" val={newVisita.cidadeUf} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} icon={<MapPin size={10}/>} />
-                </div>
-                <Field label="Contato (Telefone/Cel)" val={newVisita.contato} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Escala (Ex: 3º Sábado)" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} />
-                  <Field label="Horário Ensaio" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} />
-                </div>
                 {!isInputDisabled && <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">Salvar Registro</button>}
               </div>
             </motion.div>
           </div>
-        )}
-
-        {visitaToDelete && (
-          <Modal title="Excluir Visita?" icon={<Trash2 size={40}/>} confirmLabel="Sim, Excluir" onConfirm={() => { const nv = ataData.visitantes.filter(x => x.id !== visitaToDelete); handleChange({...ataData, visitantes: nv}); setVisitaToDelete(null); }} onCancel={() => setVisitaToDelete(null)} danger>
-            O visitante será removido permanentemente deste relatório.
-          </Modal>
         )}
       </AnimatePresence>
     </div>

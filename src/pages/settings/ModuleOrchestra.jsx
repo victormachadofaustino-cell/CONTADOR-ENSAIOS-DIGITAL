@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // CORREÇÃO: Caminho do Firebase e uso de setDoc para IDs amigáveis
-import { db, collection, doc, setDoc, deleteDoc, writeBatch, getDocs } from '../../config/firebase';
+import { db, collection, doc, setDoc, deleteDoc, writeBatch, getDocs, onSnapshot, query, where } from '../../config/firebase';
 import toast from 'react-hot-toast';
-import { Activity, Plus, Trash2, LayoutGrid, Ban, X, Edit3, Settings2 } from 'lucide-react';
+import { Activity, Plus, Trash2, LayoutGrid, Ban, X, Edit3, Settings2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 // Importação do Cérebro de Autenticação para validação de poder
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +19,26 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
 
   const [showModal, setShowModal] = useState(null); // 'NAIPE' | 'INST' | 'EDIT'
   const [formData, setFormData] = useState({ name: '', section: '', evalType: 'Sem', id: '' });
+  
+  // ESTADO DA TRAVA DE SEGURANÇA: Bloqueia Reset se houver ensaio aberto
+  const [isEnsaioAberto, setIsEnsaioAberto] = useState(false);
+
+  // Monitora se há ensaio aberto para esta comum específica
+  useEffect(() => {
+    if (!comumId) return;
+    
+    const q = query(
+      collection(db, 'events_global'),
+      where('comumId', '==', comumId),
+      where('ata.status', '==', 'open')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setIsEnsaioAberto(!snapshot.empty);
+    });
+
+    return () => unsub();
+  }, [comumId]);
 
   // 1. DEFINIÇÃO DA HIERARQUIA VISUAL
   const ordemSessoes = ['IRMANDADE', 'ORGANISTAS', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS', 'GERAL'];
@@ -52,6 +72,15 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
   const handleInsertPattern = async () => {
     if (!comumId) return toast.error("Localidade não identificada");
     if (!podeGerenciar) return toast.error("Sem privilégios de gestão");
+    
+    // TRAVA DE SEGURANÇA: Impede reset durante contagem ativa
+    if (isEnsaioAberto) {
+      return toast.error("Ação Bloqueada: Existe um ensaio aberto nesta comum. Encerre o ensaio antes de resetar a orquestra.", {
+        duration: 5000,
+        icon: <AlertTriangle className="text-amber-500" />
+      });
+    }
+
     if (!confirm("Deseja aplicar o RESET DE FÁBRICA? Isso apagará a lista atual e instalará o Padrão CCB saneado diretamente do banco.")) return;
     
     const loadingToast = toast.loading("Sincronizando com a Matriz Nacional...");
@@ -137,11 +166,17 @@ const ModuleOrchestra = ({ comumId, instrumentsData }) => {
           <div className="flex flex-col gap-2">
             <button 
               onClick={handleInsertPattern} 
-              className="w-full bg-slate-950 text-white py-3.5 rounded-2xl font-black uppercase italic text-[10px] tracking-widest flex justify-center items-center gap-3 active:scale-95 transition-all shadow-lg border border-white/5"
+              className={`w-full py-3.5 rounded-2xl font-black uppercase italic text-[10px] tracking-widest flex justify-center items-center gap-3 active:scale-95 transition-all shadow-lg border ${isEnsaioAberto ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-slate-950 text-white border-white/5'}`}
             >
-              <LayoutGrid size={14} className="text-amber-500" /> 
+              <LayoutGrid size={14} className={isEnsaioAberto ? 'text-slate-400' : 'text-amber-500'} /> 
               Reset Padrão CCB
             </button>
+            
+            {isEnsaioAberto && (
+              <p className="text-[7px] font-black text-amber-600 uppercase italic text-center px-4 leading-tight">
+                O Reset de Fábrica está desabilitado enquanto houver um ensaio aberto nesta localidade.
+              </p>
+            )}
             
             <div className="grid grid-cols-2 gap-2">
               <button 

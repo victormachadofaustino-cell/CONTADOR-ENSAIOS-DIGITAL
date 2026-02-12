@@ -22,7 +22,6 @@ const ModuleAccess = ({ comumId, cargos }) => {
   const isGemLocal = isRegionalCidade || level === 'gem_local';
 
   const [users, setUsers] = useState([]);
-  const [comunsDaRegional, setComunsDaRegional] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [openSections, setOpenSections] = useState({}); 
 
@@ -107,7 +106,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
     // Comissão pode aprovar qualquer um na regional (exceto Master)
     if (isComissao && u.accessLevel !== 'master') return true;
     
-    // Regional de Cidade: Só edita quem pertence à MESMA cidade [cite: 1732]
+    [cite_start]// Regional de Cidade: Só edita quem pertence à MESMA cidade [cite: 1732]
     if (isRegionalCidade && u.cidadeId === userData.cidadeId) {
       return u.accessLevel === 'gem_local' || u.accessLevel === 'basico';
     }
@@ -125,6 +124,13 @@ const ModuleAccess = ({ comumId, cargos }) => {
       await updateDoc(doc(db, 'users', userId), data);
       toast.success("Zeladoria atualizada");
     } catch (e) { toast.error("Erro na sincronização"); }
+  };
+
+  // Função para ofuscar e-mail para usuários sem permissão administrativa
+  const ofuscarEmail = (email) => {
+    if (!email) return "";
+    const [user, domain] = email.split('@');
+    return `${user.charAt(0)}******@${domain}`;
   };
 
   if (authLoading) return <div className="p-10 text-center animate-pulse text-[10px] font-black uppercase text-slate-400 tracking-widest">Acessando Portaria...</div>;
@@ -198,7 +204,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
                   <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1 italic leading-none">Perfil de Acesso</p>
                   <h3 className="text-xl font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight">{selectedUser.name}</h3>
                   <div className="flex items-center gap-2 mt-2 text-slate-400 text-[9px] font-bold lowercase">
-                    <Mail size={10} /> {selectedUser.email}
+                    <Mail size={10} /> {podeEditarEstePerfil(selectedUser) || selectedUser.id === user?.uid ? selectedUser.email : ofuscarEmail(selectedUser.email)}
                     {selectedUser.emailVerified ? (
                       <span className="text-[7px] font-black text-emerald-500 uppercase bg-emerald-50 px-1.5 py-0.5 rounded">Validado</span>
                     ) : (
