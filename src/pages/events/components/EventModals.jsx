@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, AlertTriangle, Settings, Trash2, Globe, UserPlus, Check, Search } from 'lucide-react';
+import { X, Send, AlertTriangle, Settings, Trash2, Globe, UserPlus, Check, Search, Clock } from 'lucide-react';
 import { db, collection, query, where, onSnapshot } from '../../../config/firebase';
 
 /**
  * Componente que agrupa todos os modais da página de eventos.
- * v1.6 - Adicionado barra de pesquisa para Whitelist de Convidados.
+ * v2.0 - Adicionado View de Recentes e Carimbagem Rica de Convidados.
  */
 const EventModals = ({
   showModal,
@@ -25,11 +25,20 @@ const EventModals = ({
   setEventToDelete,
   confirmDelete
 }) => {
-  // ESTADOS PARA CONTROLE DO ENSAIO REGIONAL (v1.5)
+  // ESTADOS PARA CONTROLE DO ENSAIO REGIONAL
   const [scope, setScope] = useState('local');
   const [availableUsers, setAvailableUsers] = useState([]);
-  const [invitedUsers, setInvitedUsers] = useState([]);
-  const [searchTerm, setSearchTerm] = useState(''); // v1.6: Estado para busca
+  const [invitedUsers, setInvitedUsers] = useState([]); // Agora armazena objetos completos v2.0
+  const [searchTerm, setSearchTerm] = useState('');
+  const [recentUsers, setRecentUsers] = useState([]);
+
+  // JUSTIFICATIVA: Carrega os últimos convidados salvos no dispositivo para agilizar a seleção
+  useEffect(() => {
+    if (showModal && userData?.uid) {
+      const saved = localStorage.getItem(`recent_guests_${userData.uid}`);
+      if (saved) setRecentUsers(JSON.parse(saved));
+    }
+  }, [showModal, userData?.uid]);
 
   // MONITOR DE USUÁRIOS DA CIDADE PARA CONVITES
   useEffect(() => {
@@ -43,15 +52,20 @@ const EventModals = ({
 
     const unsub = onSnapshot(q, (snap) => {
       const users = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(u => u.id !== userData.uid); // Remove o próprio criador da lista de convites
+        .map(d => ({ 
+          uid: d.id, 
+          name: d.data().name, 
+          comum: d.data().comum,
+          role: d.data().role 
+        }))
+        .filter(u => u.uid !== userData.uid); // Remove o próprio criador
       setAvailableUsers(users);
     });
 
     return () => unsub();
   }, [showModal, scope, userData]);
 
-  // v1.6: Lógica de filtragem em tempo real
+  // Lógica de filtragem em tempo real (Nome ou Comum)
   const filteredUsers = availableUsers.filter(u => 
     u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.comum?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -65,13 +79,24 @@ const EventModals = ({
     setSearchTerm('');
   };
 
-  const toggleInvitedUser = (uid) => {
-    setInvitedUsers(prev => 
-      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
-    );
+  // JUSTIFICATIVA: Implementação de Carimbagem Rica - salva objeto em vez de apenas ID
+  const toggleInvitedUser = (user) => {
+    setInvitedUsers(prev => {
+      const isAlreadyInvited = prev.find(u => u.uid === user.uid);
+      if (isAlreadyInvited) return prev.filter(u => u.uid !== user.uid);
+      return [...prev, { uid: user.uid, name: user.name, comum: user.comum }];
+    });
   };
 
   const onConfirmAction = () => {
+    // JUSTIFICATIVA: Atualiza a lista de recentes no localStorage antes de criar
+    if (invitedUsers.length > 0) {
+      const updatedRecents = [...invitedUsers, ...recentUsers]
+        .filter((v, i, a) => a.findIndex(t => t.uid === v.uid) === i)
+        .slice(0, 5);
+      localStorage.setItem(`recent_guests_${userData?.uid}`, JSON.stringify(updatedRecents));
+    }
+
     // Encaminha os novos metadados de escopo para a função de criação global
     handleCreate({
       scope,
@@ -152,7 +177,6 @@ const EventModals = ({
                         <UserPlus size={10} /> Convidados da Cidade
                       </label>
 
-                      {/* v1.6: Barra de Busca de Convidados */}
                       <div className="relative mb-2">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
                         <input 
@@ -164,22 +188,42 @@ const EventModals = ({
                         />
                       </div>
 
-                      <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
-                        {filteredUsers.length === 0 ? (
-                          <p className="text-[9px] font-bold text-slate-300 uppercase italic p-4 text-center">
-                            {searchTerm ? "Nenhum resultado encontrado" : "Nenhum colaborador encontrado na cidade."}
-                          </p>
+                      <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
+                        {/* VIEW DE RECENTES */}
+                        {searchTerm === '' && recentUsers.length > 0 && (
+                          <div className="mb-4">
+                            <p className="text-[7px] font-black text-blue-500 uppercase mb-2 ml-1 flex items-center gap-1">
+                              <Clock size={8} /> Seleção Recente
+                            </p>
+                            {recentUsers.map(u => (
+                              <button 
+                                key={`recent-${u.uid}`} 
+                                onClick={() => toggleInvitedUser(u)}
+                                className={`w-full p-3 rounded-xl border flex items-center justify-between mb-1 transition-all ${invitedUsers.find(i => i.uid === u.uid) ? 'bg-slate-950 border-slate-900 text-white shadow-md' : 'bg-blue-50/50 border-blue-100 text-slate-500'}`}
+                              >
+                                <div className="text-left leading-none">
+                                  <p className="text-[10px] font-black uppercase italic">{u.name}</p>
+                                  <p className="text-[6px] font-bold uppercase mt-1 opacity-60">{u.comum}</p>
+                                </div>
+                                {invitedUsers.find(i => i.uid === u.uid) && <Check size={14} className="text-amber-500" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {filteredUsers.length === 0 && searchTerm !== '' ? (
+                          <p className="text-[9px] font-bold text-slate-300 uppercase italic p-4 text-center">Nenhum resultado encontrado</p>
                         ) : filteredUsers.map(user => (
                           <button 
-                            key={user.id} 
-                            onClick={() => toggleInvitedUser(user.id)}
-                            className={`w-full p-3 rounded-xl border flex items-center justify-between transition-all ${invitedUsers.includes(user.id) ? 'bg-slate-950 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-500'}`}
+                            key={user.uid} 
+                            onClick={() => toggleInvitedUser(user)}
+                            className={`w-full p-3 rounded-xl border flex items-center justify-between transition-all ${invitedUsers.find(i => i.uid === user.uid) ? 'bg-slate-950 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-500'}`}
                           >
                             <div className="text-left leading-none">
                               <p className="text-[10px] font-black uppercase italic">{user.name}</p>
-                              <p className={`text-[7px] font-bold uppercase mt-1 ${invitedUsers.includes(user.id) ? 'text-blue-400' : 'text-slate-300'}`}>{user.role} • {user.comum}</p>
+                              <p className={`text-[7px] font-bold uppercase mt-1 ${invitedUsers.find(i => i.uid === user.uid) ? 'text-blue-400' : 'text-slate-300'}`}>{user.role} • {user.comum}</p>
                             </div>
-                            {invitedUsers.includes(user.id) && <Check size={14} className="text-amber-500" />}
+                            {invitedUsers.find(i => i.uid === user.uid) && <Check size={14} className="text-amber-500" />}
                           </button>
                         ))}
                       </div>

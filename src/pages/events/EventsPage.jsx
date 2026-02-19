@@ -170,7 +170,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     if (!selectedChurchId) return toast.error("Selecione uma comum");
     const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
     
-    // Unifica dados básicos com dados de escopo regional vindos do modal
+    // JUSTIFICATIVA: Unifica dados básicos com dados ricos (invitedUsers como objetos) vindos do modal
     const finalEventData = {
       type: extendedData.scope === 'regional' ? 'Ensaio Regional' : 'Ensaio Local',
       date: newEventDate,
@@ -179,7 +179,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
       comumId: selectedChurchId,
       cidadeId: selectedCityId,
-      ...extendedData // Inclui scope e invitedUsers
+      ...extendedData // Inclui scope e invitedUsers (array de objetos v7.0)
     };
 
     try {

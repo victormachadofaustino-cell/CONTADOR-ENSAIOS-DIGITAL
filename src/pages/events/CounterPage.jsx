@@ -218,6 +218,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     
     if (activeGroup === sec) { setActiveGroup(null); return; }
     
+    // Regra v7.0: Se já for o dono, apenas abre. Se não, abre o modal de confirmação para assumir.
     if (isMaster || responsibleId === myUID) {
       setActiveGroup(sec);
     } else {
@@ -227,20 +228,15 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   const setOwnership = async (id, currentOwnerStatus) => {
     if (!eventComumId || isClosed) return;
-    const wantsToOwn = !currentOwnerStatus;
     
+    // Regra v7.0: Removida a vacância. Sempre "Assumir" (Take Ownership)
     try {
-      await updateDoc(doc(db, 'events_global', currentEventId), {
-        [`counts.${id}.responsibleId`]: wantsToOwn ? myUID : null,
-        [`counts.${id}.responsibleName`]: wantsToOwn ? (userData?.name || "Colaborador") : null,
-        [`counts.${id}.isActive`]: wantsToOwn,
-        [`counts.${id}.updatedAt`]: Date.now()
-      });
+      await eventService.takeOwnership(currentEventId, id, userData);
       
       if (id.startsWith('meta_')) {
-        setActiveGroup(wantsToOwn ? id.replace('meta_', '').toUpperCase() : null);
+        setActiveGroup(id.replace('meta_', '').toUpperCase());
       }
-      if (wantsToOwn) toast.success("Você assumiu esta contagem.");
+      toast.success("Você assumiu esta contagem.");
     } catch (e) { 
       toast.error("Banco: Falha na permissão de posse."); 
     }
@@ -320,7 +316,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             localCounts={localCounts}
             myUID={myUID}
             userData={userData}
-            onConfirm={(sec, wantsToOwn) => setOwnership(`meta_${sec.toLowerCase().replace(/\s/g, '_')}`, !wantsToOwn)}
+            onConfirm={(sec) => setOwnership(`meta_${sec.toLowerCase().replace(/\s/g, '_')}`, true)}
             onCancel={() => setShowOwnershipModal(null)}
           />
         )}

@@ -8,8 +8,8 @@ let updateBuffers = {};
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v6.6 - Otimização com Denormalização (Carimbagem de Metadados)
- * Agrupa atualizações e garante que o evento nasça com nomes de Cidade/Regional.
+ * v7.1 - Otimização Anti-Duplicidade e Carimbagem de Convidados
+ * Agrupa atualizações e garante economia de cota via denormalização.
  */
 export const eventService = {
 
@@ -84,15 +84,15 @@ export const eventService = {
       return await addDoc(collection(db, 'events_global'), {
         type: type || 'Ensaio Local',
         scope: scope || 'local', 
-        invitedUsers: invitedUsers || [], 
+        invitedUsers: invitedUsers || [], // Pode vir como array de objetos v7.0
         date,
         responsavel: responsavel || 'Pendente',
         comumNome: comumNome || '',
         comumId: comumId,
         cidadeId: cidadeId || '',
-        cidadeNome: cidadeNome || '', // Denormalizado v6.6
+        cidadeNome: cidadeNome || '', 
         regionalId: regionalId || '',
-        regionalNome: regionalNome || '', // Denormalizado v6.6
+        regionalNome: regionalNome || '', 
         ata: { 
           status: 'open',
           palavra: {
@@ -106,7 +106,7 @@ export const eventService = {
         },
         counts: initialCounts, 
         createdAt: Date.now(),
-        dbVersion: "4.5-global-denormalized"
+        dbVersion: "7.1-global-rich-guests-antidup"
       });
 
     } catch (err) {
@@ -117,21 +117,52 @@ export const eventService = {
   },
 
   /**
-   * GESTÃO DE CONVIDADOS
+   * GESTÃO DE CONVIDADOS (CARIMBAGEM RICA)
+   * v7.1 - Removido timestamp interno do objeto para garantir funcionamento do arrayUnion (Anti-Duplicidade)
    */
-  addGuest: async (eventId, userId) => {
-    if (!eventId || !userId) return;
+  addGuest: async (eventId, userFullData) => {
+    if (!eventId || !userFullData?.uid) return;
     const eventRef = doc(db, 'events_global', eventId);
+    
+    // JUSTIFICATIVA: Sem o 'timestamp' interno, o objeto é único por usuário.
+    // O Firebase agora impede a inserção do mesmo Osvaldo ou Jonas duas vezes no array.
+    const guestStamp = {
+      uid: userFullData.uid,
+      name: userFullData.name || userFullData.nome || 'Convidado',
+      comum: userFullData.comumNome || userFullData.comum || 'Não informada'
+    };
+
     return await updateDoc(eventRef, {
-      invitedUsers: arrayUnion(userId)
+      invitedUsers: arrayUnion(guestStamp),
+      updatedAt: Date.now() // Carimbo de tempo movido para o nível do documento
     });
   },
 
-  removeGuest: async (eventId, userId) => {
-    if (!eventId || !userId) return;
+  removeGuest: async (eventId, userFullData) => {
+    if (!eventId || !userFullData) return;
     const eventRef = doc(db, 'events_global', eventId);
     return await updateDoc(eventRef, {
-      invitedUsers: arrayRemove(userId)
+      invitedUsers: arrayRemove(userFullData),
+      updatedAt: Date.now()
+    });
+  },
+
+  /**
+   * LÓGICA DE POSSE ÚNICA (Take Ownership)
+   * Substitui o responsável atual pelo novo sem deixar o campo vago.
+   */
+  takeOwnership: async (eventId, instId, userData) => {
+    if (!eventId || !instId || !userData) return;
+    const eventRef = doc(db, 'events_global', eventId);
+    
+    const isMeta = instId.startsWith('meta_');
+    const updatePath = isMeta ? `counts.${instId}` : `counts.${instId}`;
+
+    return await updateDoc(eventRef, {
+      [`${updatePath}.responsibleId`]: userData.uid || userData.id,
+      [`${updatePath}.responsibleName`]: userData.name || userData.nome,
+      [`${updatePath}.updatedAt`]: Date.now(),
+      [`${updatePath}.isActive`]: true
     });
   },
 

@@ -246,7 +246,13 @@ const AtaPage = ({ eventId, comumId }) => {
 
       {isRegionalScope && isGemLocal && (
         <Accordion title="Equipe de Contagem" isOpen={openSection === 'guests'} onClick={() => setOpenSection(openSection === 'guests' ? null : 'guests')} icon="👥">
-          <GuestManager eventId={eventId} invitedUsersIds={eventMeta?.invitedUsers || []} userData={userData} isClosed={isClosed || isBasico} />
+          {/* JUSTIFICATIVA: Propriedade corrigida para invitedUsers (passando array de objetos carimbados) */}
+          <GuestManager 
+            eventId={eventId} 
+            invitedUsers={eventMeta?.invitedUsers || []} 
+            userData={userData} 
+            isClosed={isClosed || isBasico} 
+          />
         </Accordion>
       )}
 

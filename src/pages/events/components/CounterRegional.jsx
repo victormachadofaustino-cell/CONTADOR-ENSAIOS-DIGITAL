@@ -1,15 +1,14 @@
-import React, { useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Plus, UserPlus } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, UserPlus, ChevronDown } from 'lucide-react';
 import { db, doc, writeBatch } from '../../../config/firebase';
 import toast from 'react-hot-toast';
 // PRESERVAÇÃO: Importação mantida conforme estrutura do projeto
 import InstrumentCard from './InstrumentCard'; 
-import GovernanceCard from './GovernanceCard';
 
 /**
  * Módulo de Contagem para Ensaios Regionais
- * v2.4 - UI Refinada: Botão Extra no Rodapé e Header Limpo
+ * v3.1 - Accordion Independente, Transparência Total e Sincronização de Soma.
  */
 const CounterRegional = ({ 
   instruments, 
@@ -22,6 +21,15 @@ const CounterRegional = ({
   isClosed,
   currentEventId 
 }) => {
+  // JUSTIFICATIVA: Estado local para garantir Accordion independente por usuário no modo Regional
+  const [openSections, setOpenSections] = useState({});
+
+  const toggleAccordion = (section) => {
+    setOpenSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   const getSectionColor = (section) => {
     const s = section.toUpperCase();
@@ -33,10 +41,18 @@ const CounterRegional = ({
     return 'bg-slate-500';
   };
 
+  // JUSTIFICATIVA: Ajuste na soma para contemplar irmaos/irmas no badge do header regional conforme Firestore
   const getSectionTotal = (sectionName) => {
     return (instruments || [])
       .filter(i => i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === sectionName.toUpperCase())
-      .reduce((acc, inst) => acc + (parseInt(localCounts?.[inst.id]?.total) || 0), 0);
+      .reduce((acc, inst) => {
+        const c = localCounts?.[inst.id];
+        const isIrm = ['irmandade', 'Coral', 'coral'].includes(inst.id.toLowerCase());
+        if (isIrm) {
+          return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0);
+        }
+        return acc + (parseInt(c?.total) || 0);
+      }, 0);
   };
 
   const handleAssumeSection = async (sectionName, instrumentsList) => {
@@ -49,7 +65,7 @@ const CounterRegional = ({
       const fieldPathId = `counts.${inst.id}`;
       batch.update(eventRef, {
         [`${fieldPathId}.responsibleId`]: userData.uid,
-        [`${fieldPathId}.responsibleName`]: userData.name || "Colaborador",
+        [`${fieldPathId}.responsibleName`]: userData.name || userData.nome || "Colaborador",
         [`${fieldPathId}.updatedAt`]: Date.now()
       });
     });
@@ -65,7 +81,7 @@ const CounterRegional = ({
   };
 
   return (
-    <div className="space-y-10 pb-32 animate-premium">
+    <div className="space-y-4 pb-32 animate-premium">
       {sections.map((section, index) => {
         const sectionInstruments = (instruments || []).filter(i => 
           i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase()
@@ -73,110 +89,90 @@ const CounterRegional = ({
 
         const isEspecial = ['IRMANDADE', 'CORAL', 'ORGANISTAS'].includes(section.toUpperCase());
         const totalNaipe = getSectionTotal(section);
+        const isOpen = openSections[section];
 
         return (
-          <React.Fragment key={section}>
-            <div className="relative">
-              {/* STICKY HEADER REFINADO */}
-              <div className="sticky top-0 z-20 mb-4 px-2">
-                <div className="bg-white/95 backdrop-blur-md p-4 rounded-3xl border border-slate-200 shadow-xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-12 rounded-full ${getSectionColor(section)}`} />
-                    <div className="leading-none text-left">
-                      <p className="text-[14px] font-[900] text-slate-950 uppercase italic tracking-tighter mb-1 leading-none">{section}</p>
-                      <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">{sectionInstruments.length} ITENS</p>
-                    </div>
-                  </div>
-
-                  {/* PLACAR CENTRALIZADO */}
-                  <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
-                    <span className="text-[6px] font-black text-slate-400 uppercase italic mb-0.5">Total Naipe</span>
-                    <div className="bg-slate-950 px-4 py-1.5 rounded-xl shadow-lg border border-white/10">
-                      <span className="text-sm font-[900] text-white italic leading-none">{totalNaipe}</span>
-                    </div>
-                  </div>
-
-                  {/* BOTÃO ASSUMIR À DIREITA (APENAS NÃO ESPECIAIS) */}
-                  <div className="flex items-center gap-2">
-                    {!isClosed && !isEspecial && sectionInstruments.length > 0 && (
-                      <button
-                        onClick={() => handleAssumeSection(section, sectionInstruments)}
-                        className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-50 text-blue-600 rounded-2xl active:scale-90 transition-all border border-blue-100 shadow-sm"
-                      >
-                        <UserPlus size={12} strokeWidth={3} />
-                        <span className="text-[8px] font-black uppercase italic tracking-tighter">Assumir Todos</span>
-                      </button>
-                    )}
-                  </div>
+          <div key={section} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mx-2">
+            {/* STICKY HEADER REFINADO COM ACCORDION */}
+            <button 
+              onClick={() => toggleAccordion(section)}
+              className="w-full p-4 flex items-center justify-between active:bg-slate-50 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-10 rounded-full ${getSectionColor(section)}`} />
+                <div className="leading-none text-left">
+                  <p className="text-[13px] font-[900] text-slate-950 uppercase italic tracking-tighter mb-1 leading-none">{section}</p>
+                  <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">{sectionInstruments.length} ITENS</p>
                 </div>
               </div>
 
-              {/* LISTA DE INSTRUMENTOS */}
-              <div className="grid grid-cols-1 gap-3 px-2">
-                {sectionInstruments.length > 0 ? (
-                  <>
-                    {sectionInstruments.map((inst) => (
-                      <InstrumentCard
-                        key={inst.id}
-                        inst={inst}
-                        data={localCounts?.[inst.id] || {}}
-                        onUpdate={onUpdate}
-                        onToggleOwnership={() => onToggleSection(inst.id, localCounts?.[inst.id]?.responsibleId === userData?.uid)}
-                        userData={userData}
-                        isClosed={isClosed}
-                        isRegional={true}
-                      />
-                    ))}
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-center">
+                  <span className="text-[6px] font-black text-slate-400 uppercase italic mb-0.5">Naipe</span>
+                  <div className="bg-slate-950 px-3 py-1 rounded-xl shadow-lg border border-white/10">
+                    <span className="text-xs font-[900] text-white italic leading-none">{totalNaipe}</span>
+                  </div>
+                </div>
+                <ChevronDown 
+                  size={18} 
+                  className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} 
+                />
+              </div>
+            </button>
+
+            {/* LISTA EXPANSÍVEL */}
+            <AnimatePresence>
+              {isOpen && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-6 space-y-3 pt-2">
+                    {/* BOTÃO ASSUMIR LOTE (DENTRO DO ACCORDION) */}
+                    {!isClosed && !isEspecial && sectionInstruments.length > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAssumeSection(section, sectionInstruments); }}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 mb-2 active:scale-95 transition-all"
+                      >
+                        <UserPlus size={14} strokeWidth={3} />
+                        <span className="text-[9px] font-black uppercase italic tracking-widest">Assumir Todo o Naipe</span>
+                      </button>
+                    )}
+
+                    {sectionInstruments.length > 0 ? (
+                      sectionInstruments.map((inst) => (
+                        <InstrumentCard
+                          key={inst.id}
+                          inst={inst}
+                          data={localCounts?.[inst.id] || {}}
+                          onUpdate={onUpdate}
+                          onToggleOwnership={() => onToggleSection(inst.id, localCounts?.[inst.id]?.responsibleId === userData?.uid)}
+                          userData={userData}
+                          isClosed={isClosed}
+                          isRegional={true}
+                          sectionName={section}
+                        />
+                      ))
+                    ) : (
+                      <p className="text-center py-4 text-[8px] font-bold text-slate-300 uppercase italic">Vazio</p>
+                    )}
                     
-                    {/* BOTÃO ADICIONAR EXTRA NO RODAPÉ DO NAIPE */}
                     {!isClosed && !isEspecial && (
                       <button
                         onClick={() => onAddExtra(section)}
-                        className="mt-2 mx-4 p-5 bg-white border border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 active:scale-95 transition-all group"
+                        className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all"
                       >
-                        <div className="p-1.5 bg-slate-100 rounded-lg text-slate-400 group-active:bg-blue-600 group-active:text-white transition-colors">
-                          <Plus size={16} strokeWidth={3} />
-                        </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest">Adicionar Instrumento Extra</span>
+                        <Plus size={16} strokeWidth={3} />
+                        <span className="text-[9px] font-black uppercase italic tracking-widest">Adicionar Extra</span>
                       </button>
                     )}
-                  </>
-                ) : (
-                  <div className="py-8 text-center border-2 border-dashed border-slate-200 rounded-[2.5rem] mx-4">
-                    <p className="text-[9px] font-bold text-slate-300 uppercase italic">Nenhum instrumento configurado</p>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* GOVERNANÇA INTEGRADA APÓS ORGANISTAS */}
-            {section.toUpperCase() === 'ORGANISTAS' && (
-              <div className="px-2 space-y-3 mt-4 mb-10">
-                <GovernanceCard 
-                  type="EXAMINADORAS"
-                  val={localCounts?.meta_organistas?.enc || 0}
-                  onChange={(v) => onUpdate('meta_organistas', 'enc', v)}
-                  userData={userData}
-                  isMyTurn={localCounts?.meta_organistas?.responsibleId === userData?.uid}
-                  isOtherTurn={localCounts?.meta_organistas?.responsibleId && localCounts?.meta_organistas?.responsibleId !== userData?.uid}
-                  responsibleName={localCounts?.meta_organistas?.responsibleName}
-                  onToggle={() => onToggleSection('meta_organistas', localCounts?.meta_organistas?.responsibleId === userData?.uid)}
-                  disabled={isClosed}
-                />
-                <GovernanceCard 
-                  type="ENCARREGADOS LOCAIS"
-                  val={localCounts?.meta_metais?.enc || 0}
-                  onChange={(v) => onUpdate('meta_metais', 'enc', v)}
-                  userData={userData}
-                  isMyTurn={localCounts?.meta_metais?.responsibleId === userData?.uid}
-                  isOtherTurn={localCounts?.meta_metais?.responsibleId && localCounts?.meta_metais?.responsibleId !== userData?.uid}
-                  responsibleName={localCounts?.meta_metais?.responsibleName}
-                  onToggle={() => onToggleSection('meta_metais', localCounts?.meta_metais?.responsibleId === userData?.uid)}
-                  disabled={isClosed}
-                />
-              </div>
-            )}
-          </React.Fragment>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         );
       })}
     </div>

