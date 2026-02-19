@@ -1,10 +1,15 @@
 import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
 import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore";
 
+// Variável de controle para o acumulador de cliques (Debounce)
+let debounceTimers = {};
+// Buffer temporário para acumular múltiplos campos do mesmo instrumento antes de enviar
+let updateBuffers = {};
+
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v4.0 - Suporte a Ensaios Regionais, Colaboração Individual e Whitelist Dinâmica
- * Implementa Multitenancy e Auditoria de Dados com Herança Nacional/Local
+ * v6.6 - Otimização com Denormalização (Carimbagem de Metadados)
+ * Agrupa atualizações e garante que o evento nasça com nomes de Cidade/Regional.
  */
 export const eventService = {
 
@@ -17,7 +22,6 @@ export const eventService = {
       orderBy('date', 'desc')
     );
     return onSnapshot(q, (snapshot) => {
-      if (snapshot.metadata.hasPendingWrites) return; 
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       callback(events);
     }, (error) => {
@@ -27,12 +31,11 @@ export const eventService = {
 
   /**
    * Cria um novo ensaio na Coleção Global
-   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local e inicializa metadados de sessão.
-   * v4.0: Inicialização de posse individual por instrumento e campos litúrgicos.
+   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local e CARIMBA nomes de Cidade/Regional.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
-    const { type, date, responsavel, regionalId, comumNome, cidadeId, scope, invitedUsers } = eventData;
+    const { type, date, responsavel, regionalId, regionalNome, comumNome, cidadeId, cidadeNome, scope, invitedUsers } = eventData;
     
     let initialCounts = {};
 
@@ -46,7 +49,7 @@ export const eventService = {
         throw new Error("CONFIG_REQUIRED"); 
       }
 
-      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL + METADADOS DE POSSE INDIVIDUAL
+      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL
       const sessoesDetectadas = new Set();
 
       localSnap.docs.forEach(docInst => {
@@ -60,14 +63,13 @@ export const eventService = {
           name: inst.name || id.toUpperCase(),
           section: sectionName,
           evalType: inst.evalType || 'Sem',
-          // v4.0: Metadados de posse por instrumento para colaboração picada
           responsibleId: null,
           responsibleName: null,
           updatedAt: Date.now()
         };
       });
 
-      // INICIALIZAÇÃO DE SEÇÕES: Cria os metadados para controle de naipe completo
+      // INICIALIZAÇÃO DE SEÇÕES
       sessoesDetectadas.forEach(sec => {
         const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
         initialCounts[metaKey] = {
@@ -78,43 +80,44 @@ export const eventService = {
         };
       });
       
+      // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL COM CARIMBAGEM (Denormalização)
+      return await addDoc(collection(db, 'events_global'), {
+        type: type || 'Ensaio Local',
+        scope: scope || 'local', 
+        invitedUsers: invitedUsers || [], 
+        date,
+        responsavel: responsavel || 'Pendente',
+        comumNome: comumNome || '',
+        comumId: comumId,
+        cidadeId: cidadeId || '',
+        cidadeNome: cidadeNome || '', // Denormalizado v6.6
+        regionalId: regionalId || '',
+        regionalNome: regionalNome || '', // Denormalizado v6.6
+        ata: { 
+          status: 'open',
+          palavra: {
+            anciao: '',
+            livro: '',
+            capitulo: '',
+            verso: '',
+            assunto: ''
+          },
+          ocorrencias: [] 
+        },
+        counts: initialCounts, 
+        createdAt: Date.now(),
+        dbVersion: "4.5-global-denormalized"
+      });
+
     } catch (err) {
       if (err.message === "CONFIG_REQUIRED") throw err;
-      console.error("Erro ao capturar instrumentos:", err);
-      throw new Error("Falha ao acessar configuração da localidade.");
+      console.error("Erro ao processar criação de evento:", err);
+      throw new Error("Falha ao inicializar evento na localidade.");
     }
-    
-    // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL (v4.0)
-    return await addDoc(collection(db, 'events_global'), {
-      type: type || 'Ensaio Local',
-      scope: scope || 'local', 
-      invitedUsers: invitedUsers || [], 
-      date,
-      responsavel: responsavel || 'Pendente',
-      comumNome: comumNome || '',
-      comumId: comumId,
-      cidadeId: cidadeId || '',
-      regionalId: regionalId || '',
-      ata: { 
-        status: 'open',
-        palavra: {
-          anciao: '',
-          livro: '',
-          capitulo: '',
-          verso: '',
-          assunto: ''
-        },
-        ocorrencias: [] // Inicializa array de ocorrências como texto livre
-      },
-      counts: initialCounts, 
-      createdAt: Date.now(),
-      dbVersion: "4.0-global-regional-colab"
-    });
   },
 
   /**
-   * GESTÃO DE CONVIDADOS (Whitelist Dinâmica)
-   * Permite adicionar ou remover colaboradores com o ensaio em andamento.
+   * GESTÃO DE CONVIDADOS
    */
   addGuest: async (eventId, userId) => {
     if (!eventId || !userId) return;
@@ -140,59 +143,42 @@ export const eventService = {
 
   /**
    * Atualiza a contagem na COLEÇÃO GLOBAL
-   * v4.0 - Blindagem Atômica: Implementado 'increment' para evitar perda de dados por concorrência
+   * v6.5 - Otimização Consolidada: Agrupa múltiplos campos em uma única escrita por instrumento.
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
-    if (!eventId || !instId) {
-      console.warn("Tentativa de atualização com IDs incompletos.");
-      return; 
-    }
+    if (!eventId || !instId) return;
 
-    const eventRef = doc(db, 'events_global', eventId);
-    const val = parseInt(value) || 0;
-    const timestamp = Date.now();
-    
-    const logEntry = {
-      user: userData?.name || 'Sistema',
-      field: field,
-      newValue: val,
-      time: timestamp
-    };
-
+    const timerKey = `${eventId}_${instId}`;
     const fieldToUpdate = field === 'total_simples' ? 'total' : field;
+    const val = Math.max(0, parseInt(value) || 0);
 
-    try {
-      const snap = await getDoc(eventRef);
-      if (!snap.exists()) return;
+    if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {};
+    
+    updateBuffers[timerKey][`counts.${instId}.${fieldToUpdate}`] = val;
 
-      const currentInstData = snap.data()?.counts?.[instId] || {};
-      const oldValue = parseInt(currentInstData[fieldToUpdate]) || 0;
-      const diferenca = val - oldValue; 
+    if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]);
+
+    debounceTimers[timerKey] = setTimeout(async () => {
+      const eventRef = doc(db, 'events_global', eventId);
       
-      let history = currentInstData.history || [];
-      if (history.length >= 10) history = history.slice(-9);
-      history.push(logEntry);
+      try {
+        const finalUpdates = { ...updateBuffers[timerKey] };
+        
+        finalUpdates[`counts.${instId}.lastEditBy`] = userData?.name || 'Sistema';
+        finalUpdates[`counts.${instId}.timestamp`] = Date.now();
+        
+        if (section) finalUpdates[`counts.${instId}.section`] = section;
+        if (customName) finalUpdates[`counts.${instId}.name`] = customName;
 
-      const baseUpdate = {
-        lastEditBy: userData?.name || 'Sistema',
-        timestamp: timestamp,
-        section: section || currentInstData.section || 'GERAL',
-        history: history 
-      };
+        await updateDoc(eventRef, finalUpdates);
+        
+        delete debounceTimers[timerKey];
+        delete updateBuffers[timerKey];
 
-      if (customName) baseUpdate.name = customName;
-
-      await updateDoc(eventRef, { 
-        [`counts.${instId}.lastEditBy`]: baseUpdate.lastEditBy,
-        [`counts.${instId}.timestamp`]: baseUpdate.timestamp,
-        [`counts.${instId}.section`]: baseUpdate.section,
-        [`counts.${instId}.history`]: baseUpdate.history,
-        [`counts.${instId}.${fieldToUpdate}`]: increment(diferenca)
-      });
-    } catch (e) {
-      console.error("Erro ao atualizar contagem:", e);
-      throw new Error("Falha na sincronização.");
-    }
+      } catch (e) {
+        console.error("Erro ao consolidar contagem:", e);
+      }
+    }, 600);
   },
 
   // Remove um instrumento extra da contagem global
@@ -206,7 +192,6 @@ export const eventService = {
 
   /**
    * Salva Ata na COLEÇÃO GLOBAL
-   * AJUSTE v3.2: Proteção de Metadados da Raiz
    */
   saveAtaData: async (comumId, eventId, ataData) => {
     if (!eventId) throw new Error("Referência de evento inválida.");
@@ -219,6 +204,7 @@ export const eventService = {
       }
     });
 
+    // Limpeza de campos para garantir integridade do documento
     const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData;
 
     const finalAta = {

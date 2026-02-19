@@ -2,14 +2,23 @@ import React from 'react';
 import { Minus, Plus, Lock, User, UserCheck } from 'lucide-react';
 
 /**
- * InstrumentCard v2.7 - ALTA VISIBILIDADE & MINISTÉRIO ACOPLADO
- * v2.7 - Preserva 7XL Central e move Ministério para Destaque Inferior (Local)
+ * InstrumentCard v2.8 - ALTA VISIBILIDADE & MINISTÉRIO ACOPLADO
+ * v2.8 - Implementação de travas de segurança (Total > 0) e rótulos dinâmicos.
  */
-const InstrumentCard = ({ inst, data, onUpdate, onToggleOwnership, userData, isClosed, isRegional }) => {
+const InstrumentCard = ({ 
+  inst, 
+  data, 
+  onUpdate, 
+  onToggleOwnership, 
+  userData, 
+  isClosed, 
+  isRegional,
+  labelLideranca // Nova prop v1.4
+}) => {
   // BLINDAGEM CRÍTICA: Se o instrumento não existir ou não tiver ID, ignora a renderização
   if (!inst || !inst.id) return null;
 
-  const isIrmandade = ['irmandade', 'Coral'].includes(inst.id);
+  const isIrmandade = ['irmandade', 'Coral', 'coral'].includes(inst.id.toLowerCase());
   
   // LÓGICA DE POSSE INDIVIDUAL
   const myUID = userData?.uid || userData?.id;
@@ -28,10 +37,18 @@ const InstrumentCard = ({ inst, data, onUpdate, onToggleOwnership, userData, isC
   
   const visitas = Math.max(0, total - comum);
 
+  // Trava visual: Impede alteração de subcampos se não houver ninguém no total
+  const isSubFieldDisabled = !canEdit || total === 0;
+
   const handleUpdate = (field, value) => {
     if (!canEdit) return;
     let finalValue = Math.max(0, parseInt(value) || 0);
-    if (field === 'comum' && finalValue > total) finalValue = total;
+
+    // REGRA DE OURO: Comum ou Liderança nunca podem ser maiores que o Total
+    if ((field === 'comum' || field === 'enc') && finalValue > total) {
+      finalValue = total;
+    }
+    
     onUpdate(inst.id, field, finalValue);
   };
 
@@ -87,10 +104,10 @@ const InstrumentCard = ({ inst, data, onUpdate, onToggleOwnership, userData, isC
               <CounterBox label={isRegional ? "TOTAL PRESENTE" : "TOTAL"} color="slate" val={total} onChange={v => handleUpdate('total', v)} disabled={!canEdit} isMain={true} />
               {!isRegional && (
                 <>
-                  <CounterBox label="COMUM" color="white" val={comum} onChange={v => handleUpdate('comum', v)} disabled={!canEdit} isMain={false} />
-                  <div className="flex-[0.6] flex flex-col items-center justify-center bg-blue-50 border border-blue-100 rounded-[1.8rem] leading-none shadow-inner">
-                    <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest mb-2 italic">Visitas</span>
-                    <span className="text-4xl font-[900] text-blue-600 italic leading-none">{visitas}</span>
+                  <CounterBox label="COMUM" color="white" val={comum} onChange={v => handleUpdate('comum', v)} disabled={isSubFieldDisabled} isMain={false} />
+                  <div className={`flex-[0.6] flex flex-col items-center justify-center rounded-[1.8rem] leading-none shadow-inner border transition-colors ${total === 0 ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}>
+                    <span className={`text-[7px] font-black uppercase tracking-widest mb-2 italic ${total === 0 ? 'text-slate-300' : 'text-blue-400'}`}>Visitas</span>
+                    <span className={`text-4xl font-[900] italic leading-none ${total === 0 ? 'text-slate-200' : 'text-blue-600'}`}>{visitas}</span>
                   </div>
                 </>
               )}
@@ -98,20 +115,32 @@ const InstrumentCard = ({ inst, data, onUpdate, onToggleOwnership, userData, isC
 
             {/* DESTAQUE DE MINISTÉRIO (RODAPÉ DO CARD - MODO LOCAL) */}
             {!isRegional && (
-              <div className="mt-1 bg-slate-100/50 rounded-2xl p-2.5 flex items-center justify-between border border-slate-200/50">
+              <div className={`mt-1 rounded-2xl p-2.5 flex items-center justify-between border transition-all ${isSubFieldDisabled ? 'bg-slate-50/30 border-slate-100 opacity-50' : 'bg-slate-100/50 border-slate-200/50'}`}>
                 <div className="flex items-center gap-2">
-                  <div className="bg-slate-950 p-1.5 rounded-lg text-white">
+                  <div className={`p-1.5 rounded-lg text-white transition-colors ${isSubFieldDisabled ? 'bg-slate-300' : 'bg-slate-950'}`}>
                     <UserCheck size={12} strokeWidth={3} />
                   </div>
-                  <span className="text-[8px] font-black text-slate-500 uppercase italic tracking-widest leading-none">Encarregados / Examinadoras</span>
+                  <span className="text-[8px] font-black text-slate-500 uppercase italic tracking-widest leading-none">
+                    {labelLideranca || "Liderança"}
+                  </span>
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <button onClick={() => handleUpdate('enc', enc - 1)} className="text-slate-400 active:text-red-500 transition-colors">
+                  <button 
+                    disabled={isSubFieldDisabled} 
+                    onClick={() => handleUpdate('enc', enc - 1)} 
+                    className={`${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-400 active:text-red-500'} transition-colors`}
+                  >
                     <Minus size={14} strokeWidth={4}/>
                   </button>
-                  <span className="text-xl font-[900] text-slate-950 italic w-8 text-center">{enc}</span>
-                  <button onClick={() => handleUpdate('enc', enc + 1)} className="text-slate-950 active:text-blue-600 transition-colors">
+                  <span className={`text-xl font-[900] italic w-8 text-center ${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-950'}`}>
+                    {enc}
+                  </span>
+                  <button 
+                    disabled={isSubFieldDisabled} 
+                    onClick={() => handleUpdate('enc', enc + 1)} 
+                    className={`${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-950 active:text-blue-600'} transition-colors`}
+                  >
                     <Plus size={14} strokeWidth={4}/>
                   </button>
                 </div>
@@ -128,14 +157,14 @@ const InstrumentCard = ({ inst, data, onUpdate, onToggleOwnership, userData, isC
 
 const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) => (
   <div className={`flex-1 rounded-[1.8rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden ${
-    disabled ? 'bg-slate-100 border-slate-200' : 
+    disabled ? 'bg-slate-50 border-slate-100 opacity-60' : 
     color === 'slate' ? 'bg-slate-950 text-white border-slate-800 shadow-inner' : 
     'bg-white border-slate-100 shadow-sm'
   }`}>
     <p className={`absolute top-2.5 text-[7px] font-black uppercase tracking-[0.2em] ${color === 'slate' ? 'text-white/30' : 'text-slate-400'}`}>{label}</p>
     
     <div className="flex items-center w-full h-full pt-4">
-        <button disabled={disabled} onClick={() => onChange(val - 1)} className="w-10 h-full flex items-center justify-center active:bg-white/10 transition-colors">
+        <button disabled={disabled} onClick={() => onChange(val - 1)} className="w-10 h-full flex items-center justify-center active:bg-white/10 transition-colors disabled:opacity-0">
           <Minus size={isMain ? 18 : 14} strokeWidth={4} className={color === 'slate' ? 'text-white/20' : 'text-slate-300'}/>
         </button>
 
@@ -143,7 +172,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) =
           <input 
             disabled={disabled} 
             type="number" 
-            className={`bg-transparent w-full text-center font-[900] outline-none italic tracking-tighter leading-none ${isMain ? 'text-7xl' : 'text-5xl'}`} 
+            className={`bg-transparent w-full text-center font-[900] outline-none italic tracking-tighter leading-none ${isMain ? 'text-7xl' : 'text-5xl'} ${disabled ? 'text-slate-200' : ''}`} 
             value={val} 
             onFocus={(e) => e.target.select()}
             onChange={(e) => {
@@ -153,7 +182,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) =
           />
         </div>
 
-        <button disabled={disabled} onClick={() => onChange(val + 1)} className="w-10 h-full flex items-center justify-center active:bg-white/10 transition-colors">
+        <button disabled={disabled} onClick={() => onChange(val + 1)} className="w-10 h-full flex items-center justify-center active:bg-white/10 transition-colors disabled:opacity-0">
           <Plus size={isMain ? 18 : 14} strokeWidth={4} className={color === 'slate' ? 'text-white/80' : 'text-slate-950'}/>
         </button>
     </div>

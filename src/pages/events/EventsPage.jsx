@@ -213,7 +213,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       
       {/* SELETORES HIERÁRQUICOS (GPS) */}
       <div className="mb-6 max-w-md mx-auto flex items-center gap-2 px-1">
-        <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <MapPin size={10} className="text-blue-600 shrink-0" />
           <select disabled={!isRegionalCidade || cidades.length === 0} value={selectedCityId} onChange={(e) => setContext('city', e.target.value)} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer">
             <option value="">{cidades.length === 0 ? "NENHUMA CIDADE" : isComissao ? "CIDADE..." : (userData?.cidadeNome || "SUA CIDADE")}</option>
@@ -221,7 +221,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
           </select>
         </div>
 
-        <div className={`flex-1 flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 transition-all ${(!isRegionalCidade || comuns.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 transition-all ${(!isRegionalCidade || comuns.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <Home size={10} className="text-blue-600 shrink-0" />
           <select disabled={!isRegionalCidade || comuns.length === 0} value={selectedChurchId || ''} onChange={(e) => { const com = comuns.find(c => c.id === e.target.value); if (com) { setContext('comum', com.id); if (onChurchChange) onChurchChange(com.id, com.nome); } }} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer">
             <option value="" className="text-slate-900">{cidades.length === 0 ? "AGUARDANDO CIDADE" : comuns.length === 0 ? "VAZIO" : "LOCALIDADE..."}</option>

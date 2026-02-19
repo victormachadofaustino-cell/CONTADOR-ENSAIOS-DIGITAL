@@ -25,11 +25,10 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
 
   const isMaster = userData?.accessLevel === 'master';
 
-  // Monitor de Tickets com Auto-limpeza (Inspirado no Calendário Regional)
+  // Monitor de Tickets com Auto-limpeza
   useEffect(() => {
     if (!isOpen || !isMaster) return;
 
-    // Lógica para esconder resolvidos há mais de 10 dias
     const limiteDias = Date.now() - (10 * 24 * 60 * 60 * 1000);
 
     const q = query(collection(db, "tickets_global"), orderBy("createdAt", "desc"));
@@ -37,7 +36,6 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
       const todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       
       const filtrados = todos.filter(t => {
-        // Se for resolvido/rejeitado, verifica se é recente
         if (t.status === 'resolvido' || t.status === 'rejeitado' || t.status === 'agradecido') {
            const dataAcao = t.resolvedAt || t.createdAt;
            return dataAcao > limiteDias;
@@ -50,7 +48,6 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
   }, [isOpen, isMaster]);
 
   const handleUpdateStatus = async (ticketId, novoStatus) => {
-    // Validação: elogios não precisam de texto de resposta obrigatório
     const ticketOriginal = tickets.find(t => t.id === ticketId);
     if (!resposta.trim() && novoStatus !== 'pendente' && ticketOriginal?.tipo !== 'elogio') {
       return toast.error("Escreva uma breve nota de retorno");
@@ -102,39 +99,51 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
                   <button onClick={onClose} className="p-2 bg-white/5 rounded-xl text-white/40"><X size={20}/></button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-[900] uppercase italic tracking-tighter truncate">{userData?.name}</h2>
+                  <h2 className="text-xl font-[900] uppercase italic tracking-tighter truncate max-w-[200px]">{userData?.name}</h2>
                   {isMaster && <span className="bg-amber-500 text-slate-950 text-[7px] font-black px-2 py-0.5 rounded-md uppercase italic border border-amber-400">Master</span>}
                 </div>
                 <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest italic opacity-80">{userData?.role}</p>
               </div>
 
               <div className="flex-1 p-6 space-y-3 overflow-y-auto no-scrollbar">
-                {isMaster && (
-                  <>
-                    <button onClick={() => setIsTicketsOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-blue-100 flex justify-between items-center active:scale-95 shadow-sm relative overflow-hidden group">
+                {/* ÁREA DE GESTÃO - Prioridade Visual */}
+                <div className="space-y-3 mb-6">
+                   <p className="text-[9px] font-black text-slate-400 uppercase italic px-4">Administrativo</p>
+                    
+                    <button onClick={() => setIsRegionalSelectorOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-blue-100 flex justify-between items-center active:scale-95 shadow-sm group">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-xl transition-all ${pendingTickets > 0 ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-blue-50 text-blue-600'}`}><MessageSquare size={16}/></div>
-                        <span className="text-[10px] font-black text-slate-950 uppercase italic leading-none">Central de Chamados</span>
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Map size={16}/></div>
+                        <span className="text-[10px] font-black text-slate-950 uppercase italic leading-none">Trocar Regional Ativa</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                         {pendingTickets > 0 && <span className="bg-amber-500 text-slate-950 text-[8px] px-2 py-1 rounded-lg font-black">{pendingTickets}</span>}
-                         <ChevronRight size={14} className="text-slate-300"/>
-                      </div>
+                      <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-600 transition-colors"/>
                     </button>
 
-                    <button onClick={() => setIsRegionalManagerOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-slate-200 flex justify-between items-center active:scale-95 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Building size={16}/></div>
-                        <span className="text-[10px] font-black text-slate-950 uppercase italic leading-none">Gestão de Regionais</span>
-                      </div>
-                      <span className="bg-blue-600 text-white text-[8px] px-2 py-1 rounded-lg font-black">{listaRegionais.length}</span>
-                    </button>
-                  </>
-                )}
+                    {isMaster && (
+                      <>
+                        <button onClick={() => setIsTicketsOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-slate-200 flex justify-between items-center active:scale-95 shadow-sm relative overflow-hidden group">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl transition-all ${pendingTickets > 0 ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-blue-50 text-blue-600'}`}><MessageSquare size={16}/></div>
+                            <span className="text-[10px] font-black text-slate-950 uppercase italic leading-none">Central de Chamados</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             {pendingTickets > 0 && <span className="bg-amber-500 text-slate-950 text-[8px] px-2 py-1 rounded-lg font-black">{pendingTickets}</span>}
+                             <ChevronRight size={14} className="text-slate-300"/>
+                          </div>
+                        </button>
 
-                <div className="space-y-1 pt-4 border-t border-slate-200">
-                  <MenuButton icon={<Map size={16}/>} label="Trocar Regional" onClick={() => setIsRegionalSelectorOpen(true)} />
-                  <MenuButton icon={<RefreshCcw size={16}/>} label="Sincronizar Dados" onClick={() => window.location.reload()} />
+                        <button onClick={() => setIsRegionalManagerOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-slate-200 flex justify-between items-center active:scale-95 shadow-sm group">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Building size={16}/></div>
+                            <span className="text-[10px] font-black text-slate-950 uppercase italic leading-none">Gerenciar Regionais</span>
+                          </div>
+                          <span className="bg-blue-600 text-white text-[8px] px-2 py-1 rounded-lg font-black group-hover:scale-110 transition-transform">{listaRegionais.length}</span>
+                        </button>
+                      </>
+                    )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-200">
+                   <p className="text-[8px] font-bold text-slate-300 text-center uppercase tracking-widest italic">Contador de Ensaios Digital v4.5</p>
                 </div>
               </div>
 
@@ -148,7 +157,7 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
         )}
       </AnimatePresence>
 
-      {/* SUB-MODAL DE TICKETS (ZELADORIA ATIVA MASTER) */}
+      {/* SUB-MODAL DE TICKETS */}
       <AnimatePresence>
         {isTicketsOpen && isMaster && (
           <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} className="fixed inset-0 z-[300] bg-[#F1F5F9] flex flex-col p-6 overflow-hidden">
@@ -207,22 +216,22 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
         )}
       </AnimatePresence>
 
-      {/* MODAL GESTÃO DE REGIONAIS (Original Preservado) */}
+      {/* MODAL GESTÃO DE REGIONAIS */}
       <AnimatePresence>
         {isRegionalManagerOpen && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6 text-left">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsRegionalManagerOpen(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" />
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative w-full max-w-sm bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col max-h-[85vh]">
               <h3 className="text-xl font-[900] text-slate-950 uppercase italic mb-6">Regionais Ativas</h3>
-              <form onSubmit={handleCreateRegional} className="mb-6 flex gap-2">
-                <input placeholder="NOVA REGIONAL..." className="flex-1 bg-slate-50 p-4 rounded-2xl font-black text-slate-950 text-[10px] outline-none border border-slate-100 uppercase italic" value={newRegionalName} onChange={(e) => setNewRegionalName(e.target.value)} />
-                <button type="submit" className="bg-blue-600 text-white px-5 rounded-2xl shadow-lg"><Plus size={20}/></button>
+              <form onSubmit={handleCreateRegional} className="mb-6 flex gap-2 items-center">
+                <input placeholder="NOVA REGIONAL..." className="flex-1 bg-slate-50 p-4 rounded-2xl font-black text-slate-950 text-[10px] outline-none border border-slate-200 focus:border-blue-400 transition-all uppercase italic truncate" value={newRegionalName} onChange={(e) => setNewRegionalName(e.target.value)} />
+                <button type="submit" className="bg-blue-600 text-white h-12 w-12 flex items-center justify-center rounded-2xl shadow-lg active:scale-90 transition-transform"><Plus size={20}/></button>
               </form>
               <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
                 {listaRegionais.map(reg => (
-                  <div key={reg.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border border-slate-100">
-                    <span className="text-[10px] font-black uppercase italic">{reg.nome}</span>
-                    <button onClick={() => deleteDoc(doc(db, 'config_regional', reg.id))} className="p-2 text-red-500"><Trash2 size={16}/></button>
+                  <div key={reg.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border border-slate-100 group">
+                    <span className="text-[10px] font-black uppercase italic truncate max-w-[180px]">{reg.nome}</span>
+                    <button onClick={() => deleteDoc(doc(db, 'config_regional', reg.id))} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
                   </div>
                 ))}
               </div>
@@ -231,7 +240,7 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
         )}
       </AnimatePresence>
 
-      {/* SELETOR DE REGIONAL (Original Preservado) */}
+      {/* SELETOR DE REGIONAL */}
       <AnimatePresence>
         {isRegionalSelectorOpen && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6">
@@ -241,7 +250,7 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
               <div className="space-y-2 max-h-[60vh] overflow-y-auto no-scrollbar">
                 {listaRegionais.map(reg => (
                   <button key={reg.id} onClick={() => { setContext('regional', reg.id); if (onRegionalChange) onRegionalChange(reg.id, reg.nome); setIsRegionalSelectorOpen(false); toast.success(`Navegando para: ${reg.nome}`); }} className={`w-full p-4 rounded-2xl flex justify-between items-center transition-all ${userData?.activeRegionalId === reg.id ? 'bg-slate-950 text-white shadow-xl' : 'bg-slate-50 text-slate-400'}`}>
-                    <span className="text-[10px] font-black uppercase italic leading-none">{reg.nome}</span>
+                    <span className="text-[10px] font-black uppercase italic leading-none truncate max-w-[200px]">{reg.nome}</span>
                     {userData?.activeRegionalId === reg.id && <Check size={14} className="text-blue-400" />}
                   </button>
                 ))}
@@ -253,11 +262,5 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
     </>
   );
 };
-
-const MenuButton = ({ icon, label, onClick }) => (
-  <button onClick={onClick} className="w-full p-4 bg-white border border-slate-100 rounded-2xl flex items-center gap-3 text-slate-400 hover:text-slate-950 transition-all active:scale-95 shadow-sm">
-    {icon}<span className="text-[10px] font-black uppercase italic leading-none">{label}</span>
-  </button>
-);
 
 export default ProfileMenu;

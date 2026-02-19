@@ -66,23 +66,18 @@ const AtaPage = ({ eventId, comumId }) => {
   const [editIndex, setEditIndex] = useState(null);
   const saveTimeoutRef = useRef(null);
 
+  // v1.1: Expandido com os campos solicitados no Anexo 2
   const [newVisita, setNewVisita] = useState({ 
-    nome: '', min: '', inst: '', bairro: '', city: '', state: '', dataEnsaio: '', hora: '', contato: '' 
+    nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
   });
 
   const isClosed = ataData?.status === 'closed';
   const isRegionalScope = eventMeta?.scope === 'regional';
   
-  // MATRIZ DE PODER v2.5: Ajustado para permitir que nível Regional edite qualquer comum de sua cidade
   const temPermissaoEditar = useMemo(() => {
     if (isBasico || isClosed) return false;
     if (isMaster || isComissao) return true;
-    
-    // Se for Regional de Cidade, permite editar se a comum do evento pertencer à sua cidade de cadastro
-    if (level === 'regional_cidade' && eventMeta?.cidadeId === userData?.cidadeId) {
-      return true;
-    }
-
+    if (level === 'regional_cidade' && eventMeta?.cidadeId === userData?.cidadeId) return true;
     const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return permitidasIds.includes(comumId);
   }, [isBasico, isClosed, isMaster, isComissao, level, userData, comumId, eventMeta]);
@@ -137,7 +132,6 @@ const AtaPage = ({ eventId, comumId }) => {
     if (!comumId || !eventId) return;
     let isMounted = true;
     
-    // BLINDAGEM DE LISTENERS: Se for básico, não tenta ler tabelas de infraestrutura protegidas
     if (!isBasico) {
       onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
         if (!isMounted) return;
@@ -157,7 +151,6 @@ const AtaPage = ({ eventId, comumId }) => {
       });
     }
 
-    // MONITOR DO EVENTO GLOBAL (Acesso permitido ao Básico)
     const unsubEvent = onSnapshot(doc(db, 'events_global', eventId), 
       (s) => {
         if (s.exists() && isMounted) {
@@ -210,7 +203,7 @@ const AtaPage = ({ eventId, comumId }) => {
   const handleOpenVisitaModal = (v = null, idx = null) => {
     if (isInputDisabled) return; 
     if (v) { setNewVisita(v); setEditIndex(idx); } 
-    else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', city: '', state: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
+    else { setNewVisita({ nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' }); setEditIndex(null); }
     setShowVisitaModal(true);
   };
 
@@ -236,7 +229,6 @@ const AtaPage = ({ eventId, comumId }) => {
   return (
     <div className="space-y-3 pb-40 px-2 font-sans text-left bg-gray-50 pt-3 animate-premium">
       
-      {/* STATUS DE EDIÇÃO (Blindado para Básico) */}
       <div className="mx-2 mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden text-left">
         <div className={`absolute left-0 top-0 h-full w-1 ${temPermissaoEditar ? 'bg-blue-600' : 'bg-slate-300'}`} />
         <div className="flex items-center gap-3">
@@ -252,129 +244,85 @@ const AtaPage = ({ eventId, comumId }) => {
         </div>
       </div>
 
-      {/* GESTÃO DE EQUIPE (Apenas GEM Local+ em Regional) */}
       {isRegionalScope && isGemLocal && (
         <Accordion title="Equipe de Contagem" isOpen={openSection === 'guests'} onClick={() => setOpenSection(openSection === 'guests' ? null : 'guests')} icon="👥">
-          <GuestManager 
-            eventId={eventId} 
-            invitedUsersIds={eventMeta?.invitedUsers || []} 
-            userData={userData} 
-            isClosed={isClosed || isBasico} 
-          />
+          <GuestManager eventId={eventId} invitedUsersIds={eventMeta?.invitedUsers || []} userData={userData} isClosed={isClosed || isBasico} />
         </Accordion>
       )}
 
-      {/* LITURGIA DO ENSAIO */}
       <Accordion title="Liturgia do Ensaio" isOpen={openSection === 'liturgia'} onClick={() => setOpenSection(openSection === 'liturgia' ? null : 'liturgia')} icon="🎼">
         <div className="space-y-6">
-          <AtaLiturgia 
-            ataData={ataData} 
-            handleChange={handleChange} 
-            isInputDisabled={isInputDisabled} 
-            referenciaMinisterio={referenciaMinisterio} 
-            handleHinoChange={handleHinoChange}
-            hidePartes={true} 
-          />
-
+          <AtaLiturgia ataData={ataData} handleChange={handleChange} isInputDisabled={isInputDisabled} referenciaMinisterio={referenciaMinisterio} handleHinoChange={handleHinoChange} hidePartes={true} />
           {isRegionalScope && (
             <div className="pt-4 border-t border-slate-100">
               <div className="px-2 mb-4">
                 <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none mb-1">Liturgia Regional</p>
                 <h4 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter">Palavra Pregada</h4>
               </div>
-              <AtaPalavra 
-                ataData={ataData} 
-                handleChange={handleChange} 
-                isInputDisabled={isInputDisabled} 
-              />
+              <AtaPalavra ataData={ataData} handleChange={handleChange} isInputDisabled={isInputDisabled} />
             </div>
           )}
-
-          <AtaLiturgia 
-            ataData={ataData} 
-            handleChange={handleChange} 
-            isInputDisabled={isInputDisabled} 
-            referenciaMinisterio={referenciaMinisterio} 
-            handleHinoChange={handleHinoChange}
-            onlyPartes={true} 
-          />
+          <AtaLiturgia ataData={ataData} handleChange={handleChange} isInputDisabled={isInputDisabled} referenciaMinisterio={referenciaMinisterio} handleHinoChange={handleHinoChange} onlyPartes={true} />
         </div>
       </Accordion>
 
-      {/* OCORRÊNCIAS */}
       <Accordion title="Ocorrências" isOpen={openSection === 'ocorrencias'} onClick={() => setOpenSection(openSection === 'ocorrencias' ? null : 'ocorrencias')} icon="📝" badge={ataData.ocorrencias?.length || null}>
-        <AtaOcorrencias 
-          ocorrencias={ataData.ocorrencias} 
-          instruments={instrumentsNacionais}
-          onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })}
-          isClosed={isClosed || isBasico}
-          isRegional={isRegionalScope}
-        />
+        <AtaOcorrencias ocorrencias={ataData.ocorrencias} instruments={instrumentsNacionais} onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })} isClosed={isClosed || isBasico} isRegional={isRegionalScope} />
       </Accordion>
 
-      {/* VISITANTES */}
       <Accordion title="Visitantes" isOpen={openSection === 'visitantes'} onClick={() => setOpenSection(openSection === 'visitantes' ? null : 'visitantes')} icon="🌍" badge={ataData.visitantes?.length || null}>
-        <AtaVisitantes 
-          visitantes={ataData.visitantes} 
-          isInputDisabled={isInputDisabled} 
-          isClosed={isClosed || isBasico} 
-          handleOpenVisitaModal={handleOpenVisitaModal} 
-          setVisitaToDelete={setVisitaToDelete} 
-        />
+        <AtaVisitantes visitantes={ataData.visitantes} isInputDisabled={isInputDisabled} isClosed={isClosed || isBasico} handleOpenVisitaModal={handleOpenVisitaModal} setVisitaToDelete={setVisitaToDelete} />
       </Accordion>
 
-      {/* MINISTÉRIO */}
       <Accordion title={isRegionalScope ? "Ministério Regional" : "Ministério Local"} isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={isRegionalScope ? (ataData.presencaLocalFull?.length || null) : (ataData.presencaLocal?.length || null)}>
         {isRegionalScope ? (
-          <MinistryAccordion 
-            eventId={eventId} 
-            regionalId={eventMeta?.regionalId} 
-            presencaAtual={ataData.presencaLocalFull || []} 
-            onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })}
-            isInputDisabled={isInputDisabled}
-            userData={userData}
-          />
+          <MinistryAccordion eventId={eventId} regionalId={eventMeta?.regionalId} presencaAtual={ataData.presencaLocalFull || []} onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })} isInputDisabled={isInputDisabled} userData={userData} />
         ) : (
-          <AtaMinisterioLocal 
-            localMinisterio={localMinisterio} 
-            presencaLocal={ataData.presencaLocal} 
-            isInputDisabled={isInputDisabled} 
-            togglePresencaLocal={togglePresencaLocal} 
-          />
+          <AtaMinisterioLocal localMinisterio={localMinisterio} presencaLocal={ataData.presencaLocal} isInputDisabled={isInputDisabled} togglePresencaLocal={togglePresencaLocal} />
         )}
       </Accordion>
 
-      {/* BOTÃO DE LACRE (Oculto para nível Básico) */}
       {!isBasico && (
         <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
-          <AtaLacreStatus 
-            isClosed={isClosed} 
-            isGemLocal={isGemLocal} 
-            isComissao={isComissao} 
-            loading={loading} 
-            showConfirmLock={showConfirmLock} 
-            setShowConfirmLock={setShowConfirmLock} 
-            showConfirmReopen={showConfirmReopen} 
-            setShowConfirmReopen={setShowConfirmReopen} 
-            saveStatus={saveStatus} 
-          />
+          <AtaLacreStatus isClosed={isClosed} isGemLocal={isGemLocal} isComissao={isComissao} loading={loading} showConfirmLock={showConfirmLock} setShowConfirmLock={setShowConfirmLock} showConfirmReopen={showConfirmReopen} setShowConfirmReopen={setShowConfirmReopen} saveStatus={saveStatus} />
         </div>
       )}
 
-      {/* MODAL DE VISITA (Apenas Visualização para Básico) */}
+      {/* MODAL DE VISITA REESTRUTURADO (Anexo 2) */}
       <AnimatePresence>
         {showVisitaModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar text-left relative">
               <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:scale-95 transition-all"><X size={24}/></button>
               <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">Dados da Visita</h3>
-              <div className="space-y-5">
+              
+              <div className="space-y-4">
                 <Field label="Nome Completo" val={newVisita.nome} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, nome: v})} />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <div className="grid grid-cols-1 gap-4">
                   <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, min: v})} />
                   <Field label="Instrumento" val={newVisita.inst} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
-                {!isInputDisabled && <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">Salvar Registro</button>}
+
+                {/* NOVOS CAMPOS: BAIRRO, CIDADE E CONTATO (Anexo 2) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Bairro" val={newVisita.bairro} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
+                  <Field label="Cidade/UF" val={newVisita.cidadeUf} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} />
+                </div>
+
+                <Field label="Celular / Contato" val={newVisita.contato} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
+
+                {/* AGENDAMENTO DE ENSAIO (Anexo 2) */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                   <Field label="Data Ensaio" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} placeholder="00/00/00" />
+                   <Field label="Horário" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} placeholder="00:00" />
+                </div>
+
+                {!isInputDisabled && (
+                  <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">
+                    Salvar Registro
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>

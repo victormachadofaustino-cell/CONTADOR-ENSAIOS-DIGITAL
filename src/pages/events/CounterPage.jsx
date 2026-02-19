@@ -19,8 +19,6 @@ import ExtraInstrumentModal from './components/ExtraInstrumentModal';
 // Importação do Modo Regional (v1.0 Flat-List)
 import CounterRegional from './components/CounterRegional';
 
-let debounceTimers = {};
-
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const { userData } = useAuth();
   const level = userData?.accessLevel;
@@ -48,10 +46,18 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const [extraInstrumentSection, setExtraInstrumentSection] = useState(null);
   const [localCounts, setLocalCounts] = useState({});
 
+  // JUSTIFICATIVA: Ref para controlar se há uma atualização local em curso
+  // Isso evita que o onSnapshot sobrescreva a tela enquanto o usuário clica
+  const isUpdatingRef = useRef(null);
+
   const isClosed = ataData?.status === 'closed';
   const myUID = auth.currentUser?.uid || userData?.uid || userData?.id;
 
-  useEffect(() => { if (counts) setLocalCounts(counts); }, [counts]);
+  useEffect(() => { 
+    if (counts && !isUpdatingRef.current) {
+      setLocalCounts(counts); 
+    }
+  }, [counts]);
 
   // HEARTBEAT DE SESSÃO: Blindado para evitar crash por permission-denied
   useEffect(() => {
@@ -81,7 +87,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   useEffect(() => {
     let isMounted = true;
     const loadInstruments = async () => {
-      // Bloqueio Preventivo: Básico não tem permissão nestas coleções de config nacional
       if (isBasico) {
         if (isMounted) setLoading(false);
         return;
@@ -128,11 +133,14 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           setAtaData(ataConsolidada);
           setEventComumId(data.comumId);
           setEventDateRaw(data.date || '');
-          if (data.counts) setLocalCounts(data.counts);
+          
+          // JUSTIFICATIVA: Só atualiza a tela se o usuário não estiver no meio de uma contagem
+          if (!isUpdatingRef.current) {
+             setLocalCounts(data.counts || {});
+          }
         }
       },
       (err) => {
-        // Impede o crash do SDK capturando a negação de permissão
         console.error("Firestore Sync Error:", err);
       }
     );
@@ -144,7 +152,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     
     let base = [];
     
-    // Fallback Inteligente: Se as configs nacionais falharem (Básico), monta via localCounts
     if (instrumentsNacionais.length > 0) {
       base = instrumentsNacionais.map(instBase => {
         const override = instrumentsConfig.find(local => local.id === instBase.id);
@@ -168,18 +175,26 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return [...new Set(allInstruments.map(i => (i.section || "GERAL").toUpperCase()))].sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
   }, [allInstruments]);
 
+  // JUSTIFICATIVA: Lógica de atualização com bloqueio de snapshot reverso
   const handleUpdateInstrument = (id, field, value, section) => {
     if (isClosed) return;
-    setLocalCounts(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+
+    // 1. Sinaliza que estamos alterando (Bloqueia o onSnapshot)
+    if (isUpdatingRef.current) clearTimeout(isUpdatingRef.current);
+    isUpdatingRef.current = setTimeout(() => { isUpdatingRef.current = null; }, 1500);
+
+    // 2. Atualização visual instantânea (Otimista)
+    setLocalCounts(prev => ({ 
+      ...prev, 
+      [id]: { ...prev[id], [field]: value } 
+    }));
     
-    if (debounceTimers[id + field]) clearTimeout(debounceTimers[id + field]);
-    debounceTimers[id + field] = setTimeout(async () => {
-      try {
-        await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section });
-      } catch (e) {
-        toast.error("Sem permissão para gravar no banco.");
-      }
-    }, 450);
+    // 3. Dispara para o serviço que já possui seu próprio debounce e travas de teto
+    eventService.updateInstrumentCount(eventComumId, currentEventId, { 
+       instId: id, field, value, userData, section 
+    }).catch(() => {
+       toast.error("Erro na sincronização.");
+    });
   };
 
   const handleAddExtraInstrument = async (nome) => {

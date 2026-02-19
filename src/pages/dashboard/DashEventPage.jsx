@@ -16,7 +16,8 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
-  const isGemLocal = isComissao || level === 'regional_cidade' || level === 'gem_local';
+  const isRegionalCidade = isComissao || level === 'regional_cidade';
+  const isGemLocal = isRegionalCidade || level === 'gem_local';
   const isBasico = level === 'basico';
 
   const stats = useMemo(() => {
@@ -33,9 +34,11 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         const valTotal = parseInt(data.total) || 0;
         const valIrmaos = parseInt(data.irmaos) || 0;
         const valIrmas = parseInt(data.irmas) || 0;
+        const valEnc = parseInt(data.enc) || 0;
         const section = (data.section || "GERAL").toUpperCase();
         const saneId = id.toLowerCase();
 
+        // Agrupamento Inteligente de Coral e Irmandade
         if (section === 'CORAL' || section === 'IRMANDADE' || saneId === 'coral' || saneId === 'irmandade') {
           if (valIrmaos > 0 || valIrmas > 0) {
             totals.irmaos += valIrmaos;
@@ -46,11 +49,13 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         } 
         else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') {
           totals.organistas += valTotal;
-          // REMOVIDO: totals.examinadoras += parseInt(data.enc) para obedecer à regra de pegar apenas da Ata
+          // Contabiliza examinadoras vindo da contagem de naipe
+          totals.examinadoras += valEnc;
         } 
         else {
           totals.musicos += valTotal;
-          totals.encLocal += parseInt(data.enc) || 0;
+          // Contabiliza encarregados locais vindo da contagem de naipe
+          totals.encLocal += valEnc;
           
           if (section === 'CORDAS' || ['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo'].includes(saneId)) {
             totals.cordas += valTotal;
@@ -82,12 +87,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
       lista.forEach(p => {
         const cargo = (p.min || p.role || "");
         if (isVisitante) totals.visitas_total++;
-        
         if (cargo === 'Encarregado Regional') totals.encRegional++;
-        
-        // CORREÇÃO: Examinadoras agora são contadas APENAS aqui (Listas nominais da Ata)
-        if (cargo === 'Examinadora') totals.examinadoras++;
-        
         if (oficio.includes(cargo)) totals.ministerio_oficio++;
       });
     };
@@ -127,28 +127,33 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
   };
 
   const handleGeneratePDF = async () => {
-    const loadingToast = toast.loading("Buscando dados da localidade...");
+    const loadingToast = toast.loading("Gerando PDF...");
     try {
       const comumId = ataData?.comumId || counts?.comumId || userData?.activeComumId || userData?.comumId; 
-      if (!comumId) throw new Error("ID da comum não identificado.");
+      if (!comumId) throw new Error("ID da localidade ausente.");
 
-      const comumRef = doc(db, 'comuns', comumId);
-      const comumSnap = await getDoc(comumRef);
-      const comumFullData = comumSnap.exists() ? comumSnap.data() : null;
+      // JUSTIFICATIVA: Prioriza dados em cache para economizar leitura de banco
+      let comumFullData = null;
+      if (userData?.comumId === comumId && userData?.comumDados) {
+        comumFullData = userData.comumDados;
+      } else {
+        const comumSnap = await getDoc(doc(db, 'comuns', comumId));
+        comumFullData = comumSnap.exists() ? comumSnap.data() : null;
+      }
 
       pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, comumFullData);
-      
       toast.dismiss(loadingToast);
-      toast.success("PDF Gerado!");
+      toast.success("Documento gerado!");
     } catch (error) {
       console.error("Erro PDF:", error);
       toast.dismiss(loadingToast);
-      toast.error(error.message || "Falha ao processar PDF.");
+      toast.error(error.message || "Erro ao processar PDF.");
     }
   };
 
   return (
     <div className="space-y-4 pb-44 px-4 pt-6 max-w-md mx-auto animate-premium bg-[#F1F5F9] text-left">
+      {/* CARD PRINCIPAL - ALIMENTAÇÃO */}
       <div className="bg-slate-950 p-5 rounded-[2rem] shadow-2xl relative overflow-hidden border border-white/5">
         <div className="flex justify-between items-center relative z-10">
           <div>
@@ -175,6 +180,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
+      {/* GRID DE STATS RÁPIDOS */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard title="Músicos" value={stats.musicos} icon={<Music size={12}/>} />
         <StatCard title="Organistas" value={stats.organistas} icon={<PieChart size={12}/>} />
@@ -184,14 +190,16 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         <StatCard title="Visitas" value={stats.visitas_total} icon={<Star size={12}/>} />
       </div>
       
+      {/* CARD MINISTÉRIO */}
       <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-slate-50 rounded-xl text-slate-400"><Briefcase size={16}/></div>
-          <p className="text-[9px] font-black uppercase text-slate-500 italic tracking-widest">Ministério</p>
+          <p className="text-[9px] font-black uppercase text-slate-500 italic tracking-widest">Ministério Ofício</p>
         </div>
         <p className="text-xl font-black text-slate-950 italic">{stats.ministerio_oficio}</p>
       </div>
 
+      {/* GRÁFICOS DE EQUILÍBRIO */}
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex items-center gap-2 mb-2">
           <TrendingUp className="text-slate-900" size={16} />
@@ -219,6 +227,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
+      {/* RESUMO E EXPORTAÇÃO */}
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-[11px] font-black uppercase italic text-slate-950 tracking-tighter">Resumo Estatístico</h3>
@@ -254,6 +263,8 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId }) => {
     </div>
   );
 };
+
+/* --- SUB-COMPONENTES AUXILIARES --- */
 
 const StatCard = ({ title, value, icon }) => (
   <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">

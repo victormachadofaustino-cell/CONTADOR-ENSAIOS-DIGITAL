@@ -5,3 +5,7 @@ serviceAccount.json
 contexto_projeto.txt
 extracao_profunda_banco.json
 .vercel
+serviceAccountKey.json
+projeto_completo.txt
+backup_seguranca_*.json
+firebase_export.json

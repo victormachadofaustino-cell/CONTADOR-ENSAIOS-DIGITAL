@@ -10,18 +10,15 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true); // Trava o app enquanto carrega os poderes
 
   // ESTADOS REATIVOS DE NAVEGAÇÃO (O GPS do Master/Regional)
-  // Eles inicializam com o que estiver no localStorage para manter a sessão ao dar F5
   const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId'));
   const [activeCityId, setActiveCityId] = useState(localStorage.getItem('activeCityId'));
   const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId'));
 
   useEffect(() => {
     // Fica ouvindo se o usuário está logado ou não
-    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       
       // TRAVA DE SEGURANÇA v2.2: Impede a entrada reativa se o e-mail não estiver verificado
-      // Isso evita que a aprovação manual do Master "pule" a validação do e-mail.
-      // Se o e-mail não for verificado, forçamos o estado para null imediatamente.
       if (currentUser && !currentUser.emailVerified) {
         setUser(null);
         setUserData(null);
@@ -32,9 +29,17 @@ export const AuthProvider = ({ children }) => {
       setUser(currentUser);
       
       if (currentUser) {
+        // --- EXTRAÇÃO DO CRACHÁ (Custom Claims) ---
+        // Buscamos as permissões injetadas no Token para economia de cota
+        const tokenResult = await currentUser.getIdTokenResult();
+        const claims = tokenResult.claims;
+
+        // Se o e-mail logado for o seu, garantimos Master via Token
+        const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
+
         // Se estiver logado e verificado, busca os "poderes" dele no banco de dados
         const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
-          // Proteção contra processamento de snapshot em estado de logout iminente ou e-mail não verificado
+          // Proteção contra processamento de snapshot em estado de logout iminente
           if (!auth.currentUser || !auth.currentUser.emailVerified) {
             setLoading(false);
             return;
@@ -43,21 +48,20 @@ export const AuthProvider = ({ children }) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             
-            // --- CÉREBRO DE PERMISSÕES REATIVO (Briefing de Hierarquia v2.1) ---
-            // AJUSTE EFETIVO: Unificamos a lógica no accessLevel vindo do banco saneado.
-            const level = data.accessLevel || 'basico';
+            // --- CÉREBRO DE PERMISSÕES HÍBRIDO (Crachá + Banco) ---
+            // Prioriza o AccessLevel do Token (Seguro) ou o do Banco (Reativo)
+            const level = claims.accessLevel || data.accessLevel || 'basico';
 
             const permissions = {
-              isMaster: level === 'master', 
-              isComissao: level === 'master' || level === 'comissao', 
-              isRegionalCidade: level === 'master' || level === 'comissao' || level === 'regional_cidade', 
-              isGemLocal: level === 'master' || level === 'comissao' || level === 'regional_cidade' || level === 'gem_local', 
+              isMaster: level === 'master' || isOwner, 
+              isComissao: level === 'master' || isOwner || level === 'comissao', 
+              isRegionalCidade: level === 'master' || isOwner || level === 'comissao' || level === 'regional_cidade', 
+              isGemLocal: level === 'master' || isOwner || level === 'comissao' || level === 'regional_cidade' || level === 'gem_local', 
               isBasico: level === 'basico',
               isAdmin: level !== 'basico' 
             };
 
             // TRAVA DE SEGURANÇA MULTITENANCY (GPS CORRIGIDO)
-            // Alterado para respeitar a persistência da última visita antes do cadastro original
             const storedReg = localStorage.getItem('activeRegionalId');
             const storedCity = localStorage.getItem('activeCityId');
             const storedComum = localStorage.getItem('activeComumId');
@@ -74,7 +78,7 @@ export const AuthProvider = ({ children }) => {
               activeRegionalId: validRegionalId, 
               activeCityId: validCityId,
               activeComumId: validComumId,
-              emailVerified: currentUser.emailVerified // v2.3: Injetado para facilitar leitura no Login
+              emailVerified: currentUser.emailVerified 
             });
           }
           setLoading(false);
@@ -82,17 +86,16 @@ export const AuthProvider = ({ children }) => {
           console.error("Erro no Listener de Perfil:", err);
           setLoading(false);
         });
+
         return () => unsubSnap();
       } else {
         // --- LIMPEZA DE SEGURANÇA NO LOGOUT ---
         setUserData(null);
         
-        // Reseta estados de navegação
         setActiveRegionalId(null);
         setActiveCityId(null);
         setActiveComumId(null);
 
-        // Limpa cache de localização para o próximo login
         localStorage.removeItem('activeRegionalId');
         localStorage.removeItem('activeCityId');
         localStorage.removeItem('activeComumId');
@@ -104,13 +107,13 @@ export const AuthProvider = ({ children }) => {
     return () => unsubAuth();
   }, [activeRegionalId, activeCityId, activeComumId]); 
 
-  // FUNÇÕES DE COMANDO (Chamadas pelos seletores para trocar o contexto)
+  // FUNÇÕES DE COMANDO
   const setContext = (type, id) => {
     if (type === 'regional') {
       setActiveRegionalId(id);
-      localStorage.setItem('activeRegionalId', id);
+      if (id) localStorage.setItem('activeRegionalId', id);
+      else localStorage.removeItem('activeRegionalId');
       
-      // Reset em cascata reativo
       setActiveCityId(null);
       setActiveComumId(null);
       localStorage.removeItem('activeCityId');
@@ -119,17 +122,17 @@ export const AuthProvider = ({ children }) => {
     
     if (type === 'city') {
       setActiveCityId(id);
-      localStorage.setItem('activeCityId', id);
+      if (id) localStorage.setItem('activeCityId', id);
+      else localStorage.removeItem('activeCityId');
       
-      // CRÍTICO PARA NÍVEL COMISSÃO: Limpa a comum ativa no estado reativo
-      // Isso força o App.jsx a resetar a lista de eventos
       setActiveComumId(null);
       localStorage.removeItem('activeComumId');
     }
     
     if (type === 'comum') {
       setActiveComumId(id);
-      localStorage.setItem('activeComumId', id);
+      if (id) localStorage.setItem('activeComumId', id);
+      else localStorage.removeItem('activeComumId');
     }
   };
 
@@ -137,7 +140,6 @@ export const AuthProvider = ({ children }) => {
     user,
     userData,
     loading,
-    // v2.3: Autenticação agora exige e-mail verificado E aprovação do administrador
     isAuthenticated: !!user && user.emailVerified === true && userData?.approved === true, 
     setContext, 
   };

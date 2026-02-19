@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-// Importação dos Módulos (Incluindo os novos arquivos criados)
+// Importação dos Módulos
 import ModuleChurch from './settings/ModuleChurch';
 import ModuleOrchestra from './settings/ModuleOrchestra';
 import ModuleGlobal from './settings/ModuleGlobal';
@@ -78,7 +78,7 @@ const SettingsPage = () => {
         </div>
       </div>
     ), {
-      duration: Infinity, // Mantém aberto até o usuário decidir
+      duration: Infinity,
       position: 'top-center',
       style: {
         borderRadius: '2.5rem',
@@ -90,7 +90,6 @@ const SettingsPage = () => {
     });
   };
 
-  // Sincronização passiva com o GPS Global - HIGIENE DE TROCA
   useEffect(() => {
     if (userData?.activeCityId) {
       const city = sharedData.cidades.find(c => c.id === userData.activeCityId);
@@ -105,7 +104,6 @@ const SettingsPage = () => {
     }
   }, [userData?.activeCityId, userData?.activeComumId, sharedData.cidades]);
 
-  // 1. MONITOR GEOGRÁFICO REATIVO
   useEffect(() => {
     if (!activeRegionalId || !userData) return;
     let isMounted = true;
@@ -144,13 +142,6 @@ const SettingsPage = () => {
           
           setSharedData(prev => ({ ...prev, cidades: filtradas }));
           
-          if (filtradas.length === 0) {
-            setSelectedCity(null);
-            setSelectedComum(null);
-          } else if (!selectedCity) {
-            const myCity = filtradas.find(c => c.id === (userData?.activeCityId || userData?.cidadeId));
-            if (myCity) setSelectedCity(myCity);
-          }
           setLoading(false); 
         }));
       }));
@@ -160,7 +151,6 @@ const SettingsPage = () => {
     return () => { isMounted = false; unsubs.forEach(unsub => unsub?.()); };
   }, [activeRegionalId, isComissao]);
 
-  // 2. MONITOR DE INSTRUMENTOS
   useEffect(() => {
     if (!comumIdEfetivo) return;
     let isMounted = true;
@@ -197,29 +187,23 @@ const SettingsPage = () => {
       {isComissao && (
         <div className="space-y-3">
           <MenuCard id="global" active={activeMenu} setActive={setActiveMenu} icon={<Briefcase size={18}/>} module="Referências" title="Cargos & Ministérios">
-            <ModuleGlobal 
-              cargos={sharedData.cargos} 
-              ministerios={sharedData.ministeriosDropdown}
-              onConfirmDelete={confirmarExclusaoNativa} // Prop para exclusão nativa
-            />
+            <ModuleGlobal cargos={sharedData.cargos} ministerios={sharedData.ministeriosDropdown} onConfirmDelete={confirmarExclusaoNativa} />
           </MenuCard>
 
           <MenuCard id="cities" active={activeMenu} setActive={setActiveMenu} icon={<MapPin size={18}/>} module="Geografia" title="Gestão de Cidades">
-            <ModuleCities 
-              regionalId={activeRegionalId} 
-              onConfirmDelete={confirmarExclusaoNativa} // Prop para exclusão nativa
-            />
+            <ModuleCities regionalId={activeRegionalId} onConfirmDelete={confirmarExclusaoNativa} />
           </MenuCard>
         </div>
       )}
 
-      {/* BLOCO 2: DIVISOR DE CONTEXTO (Os Pills) */}
+      {/* BLOCO 2: DIVISOR DE CONTEXTO (PILLS AJUSTADOS ANEXOS 1/3) */}
       {isRegionalCidade && (
         <div key={`pills-container-${activeRegionalId}`} className="flex items-center gap-2 px-1 py-4 border-y border-slate-100">
-          <div className={`flex-1 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+          {/* Pill Cidade */}
+          <div className={`flex-1 min-w-0 flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
             <MapPin size={10} className="text-blue-600 shrink-0" />
             <select 
-              className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer"
+              className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer truncate pr-4"
               value={selectedCity?.id || ''}
               disabled={!isComissao || sharedData.cidades.length === 0}
               onChange={(e) => {
@@ -236,10 +220,11 @@ const SettingsPage = () => {
             </select>
           </div>
 
-          <div className={`flex-[1.2] flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 ${(!selectedCity && sharedData.cidades.length > 0) ? 'opacity-50 pointer-events-none' : ''}`}>
+          {/* Pill Localidade - Maior Peso para evitar cortes (Anexo 1) */}
+          <div className={`flex-[1.5] min-w-0 flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 ${(!selectedCity && sharedData.cidades.length > 0) ? 'opacity-50 pointer-events-none' : ''}`}>
             <Home size={10} className="text-blue-400 shrink-0" />
             <select 
-              className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer pr-4"
+              className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer pr-5 truncate"
               value={selectedComum?.id || ''}
               disabled={!selectedCity && sharedData.cidades.length > 0}
               onChange={(e) => {
@@ -256,21 +241,16 @@ const SettingsPage = () => {
                 .filter(c => selectedCity ? c.cidadeId === selectedCity.id : true)
                 .map(c => <option key={c.id} value={c.id} className="text-slate-900">{c.comum}</option>)}
             </select>
-            <ChevronDown size={10} className="text-white/20 ml-auto" />
+            <ChevronDown size={10} className="text-white/20 ml-auto shrink-0" />
           </div>
         </div>
       )}
 
       {/* BLOCO 3: GESTÃO OPERACIONAL */}
       <div className="space-y-3">
-        {/* LIBERADO PARA REGIONAL DE CIDADE: isRegionalCidade engloba Regional, Comissão e Master */}
         {isRegionalCidade && (
           <MenuCard id="churches_mgr" active={activeMenu} setActive={setActiveMenu} icon={<Building2 size={18}/>} module="Infraestrutura" title="Manutenção de Comuns">
-            <ModuleChurchesManager 
-              selectedCity={selectedCity} 
-              regionalId={activeRegionalId} 
-              onConfirmDelete={confirmarExclusaoNativa} // Prop para exclusão nativa
-            />
+            <ModuleChurchesManager selectedCity={selectedCity} regionalId={activeRegionalId} onConfirmDelete={confirmarExclusaoNativa} />
           </MenuCard>
         )}
 
@@ -278,7 +258,7 @@ const SettingsPage = () => {
           <div className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="px-2 mb-2 leading-none pt-4">
                 <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none">Manutenção Ativa:</p>
-                <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter leading-none mt-1">
+                <h3 className="text-lg font-black text-slate-950 uppercase italic tracking-tighter leading-none mt-1 truncate">
                   {selectedComum.comum}
                 </h3>
             </div>
@@ -294,10 +274,7 @@ const SettingsPage = () => {
                 </MenuCard>
                 
                 <MenuCard id="church" active={activeMenu} setActive={setActiveMenu} icon={<Home size={18}/>} module="Gestão" title="Dados Cadastrais">
-                    <ModuleChurch 
-                      localData={selectedComum} 
-                      onUpdate={(updated) => setSelectedComum(updated)} 
-                    />
+                    <ModuleChurch localData={selectedComum} onUpdate={(updated) => setSelectedComum(updated)} />
                 </MenuCard>
               </>
             )}
@@ -322,14 +299,14 @@ const MenuCard = ({ id, active, setActive, icon, module, title, children }) => {
   return (
     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mb-3">
       <button onClick={() => setActive(isOpen ? null : id)} className="w-full p-6 flex justify-between items-center outline-none transition-colors active:bg-slate-50">
-        <div className="flex items-center gap-4 text-left leading-none">
-          <div className={`p-3 rounded-2xl transition-all duration-500 ${isOpen ? 'bg-slate-950 text-white scale-110 rotate-3 shadow-lg' : 'bg-slate-50 text-slate-400'}`}>{icon}</div>
-          <div>
-            <p className="text-[8px] font-black text-blue-600 uppercase mb-1 tracking-[0.2em] italic opacity-70 leading-none">{module}</p>
-            <h3 className="text-[13px] font-[900] text-slate-950 uppercase italic tracking-tighter leading-none">{title}</h3>
+        <div className="flex items-center gap-4 text-left leading-none min-w-0">
+          <div className={`p-3 rounded-2xl transition-all duration-500 shrink-0 ${isOpen ? 'bg-slate-950 text-white scale-110 rotate-3 shadow-lg' : 'bg-slate-50 text-slate-400'}`}>{icon}</div>
+          <div className="min-w-0">
+            <p className="text-[8px] font-black text-blue-600 uppercase mb-1 tracking-[0.2em] italic opacity-70 leading-none truncate">{module}</p>
+            <h3 className="text-[13px] font-[900] text-slate-950 uppercase italic tracking-tighter leading-none truncate">{title}</h3>
           </div>
         </div>
-        <ChevronDown size={14} className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`text-slate-300 transition-transform duration-500 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       <div className={`transition-all duration-500 ease-in-out ${isOpen ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
         <div className="p-6 pt-2 bg-slate-50/30 border-t border-slate-50">

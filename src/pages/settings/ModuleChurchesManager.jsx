@@ -44,7 +44,7 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
   };
 
   const handleDelete = (id, nome) => {
-    // INTEGRAÇÃO: Utiliza o alerta nativo configurado na SettingsPage
+    // ELIMINAÇÃO DE MODAL DO CHROME: Prioriza sempre o componente de confirmação nativo
     if (onConfirmDelete) {
       onConfirmDelete(nome, async () => {
         try {
@@ -63,12 +63,8 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
         }
       });
     } else {
-      // Fallback para manter o funcionamento caso a prop não exista
-      if (window.confirm(`Remover a comum ${nome}? Todos os ensaios vinculados serão perdidos.`)) {
-        deleteDoc(doc(db, 'comuns', id))
-          .then(() => toast.success("Igreja removida"))
-          .catch(() => toast.error("Erro ao excluir"));
-      }
+      // Fallback de segurança silencioso (Toast) em vez de window.confirm amador
+      toast.error("Ação protegida. Use o painel de zeladoria.");
     }
   };
 
@@ -80,17 +76,17 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
 
   return (
     <div className="space-y-4">
-      {/* FORMULÁRIO DE ADIÇÃO - AJUSTE DE LAYOUT E PLACEHOLDER */}
-      <div className="flex gap-2 items-stretch">
+      {/* FORMULÁRIO DE ADIÇÃO - AJUSTE ERGONÔMICO ANEXO 4 */}
+      <div className="flex gap-2 items-stretch h-14"> {/* items-stretch garante alinhamento vertical perfeito */}
         <input 
-          className="flex-1 bg-white p-4 rounded-2xl text-xs font-black text-slate-950 outline-none border border-slate-100 uppercase italic shadow-inner" 
+          className="flex-1 bg-white px-4 rounded-2xl text-xs font-black text-slate-950 outline-none border border-slate-100 uppercase italic shadow-inner focus:border-blue-400 transition-colors" 
           placeholder={`NOVA COMUM EM ${selectedCity.nome.toUpperCase()}...`} 
           value={newChurchName} 
           onChange={e => setNewChurchName(e.target.value)} 
         />
         <button 
           onClick={handleAdd} 
-          className="bg-slate-950 text-white min-w-[60px] rounded-2xl active:scale-90 shadow-lg flex items-center justify-center transition-all"
+          className="bg-slate-950 text-white w-14 rounded-2xl active:scale-90 shadow-lg flex items-center justify-center transition-all hover:bg-slate-900 shrink-0"
         >
           <Send size={18} />
         </button>
@@ -103,24 +99,27 @@ const ModuleChurchesManager = ({ selectedCity, regionalId, onConfirmDelete }) =>
             <motion.div layout key={c.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-sm">
               {editingId === c.id ? (
                 <div className="flex items-center gap-2 w-full">
-                  <input autoFocus className="flex-1 bg-slate-50 p-2 rounded-lg text-[10px] font-black outline-none uppercase" value={editValue} onChange={e => setEditValue(e.target.value)} />
-                  <button onClick={() => handleUpdate(c.id)} className="text-emerald-500"><Check size={18}/></button>
-                  <button onClick={() => setEditingId(null)} className="text-red-400"><X size={18}/></button>
+                  <input autoFocus className="flex-1 bg-slate-50 p-2 rounded-lg text-[10px] font-black outline-none uppercase italic" value={editValue} onChange={e => setEditValue(e.target.value)} />
+                  <button onClick={() => handleUpdate(c.id)} className="p-2 text-emerald-500 active:scale-90"><Check size={18}/></button>
+                  <button onClick={() => setEditingId(null)} className="p-2 text-red-400 active:scale-90"><X size={18}/></button>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-slate-50 rounded-lg text-slate-400"><Home size={12}/></div>
-                    <span className="text-[10px] font-black text-slate-700 uppercase">{c.comum}</span>
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="p-2 bg-slate-50 rounded-lg text-slate-400 shrink-0"><Home size={12}/></div>
+                    <span className="text-[10px] font-black text-slate-700 uppercase truncate">{c.comum}</span>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => { setEditingId(c.id); setEditValue(c.comum); }} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Edit3 size={14}/></button>
-                    <button onClick={() => handleDelete(c.id, c.comum)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                  <div className="flex gap-1 shrink-0 ml-2">
+                    <button onClick={() => { setEditingId(c.id); setEditValue(c.comum); }} className="p-3 text-slate-300 hover:text-blue-500 transition-colors active:scale-90"><Edit3 size={14}/></button>
+                    <button onClick={() => handleDelete(c.id, c.comum)} className="p-3 text-slate-300 hover:text-red-500 transition-colors active:scale-90"><Trash2 size={14}/></button>
                   </div>
                 </>
               )}
             </motion.div>
           ))}
+          {comuns.length === 0 && (
+            <p className="py-10 text-center text-[8px] font-black text-slate-300 uppercase italic">Nenhuma comum cadastrada nesta cidade.</p>
+          )}
         </div>
       </div>
     </div>

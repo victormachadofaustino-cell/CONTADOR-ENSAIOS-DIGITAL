@@ -3,9 +3,10 @@ import { UserPlus, Trash2, MapPin, Phone, Calendar, Clock } from 'lucide-react';
 import { toTitleCase } from '../../../services/pdfEventService'; // Reaproveitando lógica de formatação
 
 /**
- * AtaVisitantes v1.0
+ * AtaVisitantes v1.1
  * Módulo de gestão de visitas com layout em Cards Individuais.
  * Resolve problemas de espaço vertical e legibilidade em dispositivos móveis.
+ * Adequado para exibir: Nome, Ministério, Instrumento, Bairro, Cidade, Contato e Data/Hora.
  */
 const AtaVisitantes = ({ 
   visitantes, 
@@ -39,9 +40,10 @@ const AtaVisitantes = ({
               className="flex justify-between items-center p-5 bg-white rounded-[2.2rem] border border-slate-100 shadow-sm active:scale-[0.98] transition-all group hover:border-blue-100"
               onClick={() => !isInputDisabled && handleOpenVisitaModal(v, idx)}
             >
-              <div className="text-left flex-1">
+              <div className="text-left flex-1 min-w-0"> {/* min-w-0 permite que o truncate funcione em flex-items */}
+                
                 {/* LINHA 1: NOME (Destaque Principal) */}
-                <p className="text-sm font-[900] uppercase text-slate-950 italic leading-tight mb-1">
+                <p className="text-sm font-[900] uppercase text-slate-950 italic leading-tight mb-1 break-words">
                   {v.nome}
                 </p>
 
@@ -51,28 +53,36 @@ const AtaVisitantes = ({
                     {v.min}
                   </span>
                   <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                  <span className="text-[10px] font-black text-slate-500 uppercase italic leading-none">
+                  <span className="text-[10px] font-black text-slate-500 uppercase italic leading-none truncate">
                     {v.inst || 'Instrumento N/I'}
                   </span>
                 </div>
 
-                {/* LINHA 3: LOCALIZAÇÃO GEOGRÁFICA */}
+                {/* LINHA 3: LOCALIZAÇÃO GEOGRÁFICA (Ajustado Anexo 1/3) */}
                 <p className="text-[9px] font-bold text-slate-400 mt-2 flex items-center gap-1.5 uppercase leading-none">
                   <MapPin size={10} className="text-slate-300 shrink-0"/> 
-                  <span className="truncate">{v.bairro} ({v.cidadeUf})</span>
+                  <span className="truncate">
+                    {v.bairro || 'Bairro N/I'} {v.cidadeUf ? `(${v.cidadeUf})` : ''}
+                  </span>
                 </p>
 
-                {/* LINHA 4: METADADOS (CONTATO E ESCALA) */}
+                {/* LINHA 4: METADADOS (CONTATO E ESCALA) (Ajustado Anexo 2) */}
                 {(v.dataEnsaio || v.contato) && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {v.contato && (
                       <span className="text-[7px] font-black bg-slate-100 px-2 py-1 rounded-lg text-slate-500 flex items-center gap-1 uppercase border border-slate-200/50">
-                        <Phone size={8}/> {v.contato}
+                        <Phone size={8} className="shrink-0"/> {v.contato}
                       </span>
                     )}
                     {v.dataEnsaio && (
                       <span className="text-[7px] font-black bg-blue-50 px-2 py-1 rounded-lg text-blue-400 flex items-center gap-1 uppercase border border-blue-100/50">
-                        <Calendar size={8}/> {v.dataEnsaio} {v.hora && <><span className="mx-0.5">•</span> <Clock size={8}/> {v.hora}</>}
+                        <Calendar size={8} className="shrink-0"/> {v.dataEnsaio} 
+                        {v.hora && (
+                          <>
+                            <span className="mx-0.5 opacity-30">•</span> 
+                            <Clock size={8} className="shrink-0"/> {v.hora}
+                          </>
+                        )}
                       </span>
                     )}
                   </div>
@@ -84,9 +94,9 @@ const AtaVisitantes = ({
                 <button 
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    setVisitaToDelete(v.id); 
+                    setVisitaToDelete(v.id || idx); 
                   }} 
-                  className="p-3 text-slate-200 hover:text-red-500 active:bg-red-50 rounded-2xl transition-all ml-2"
+                  className="p-3 text-slate-200 hover:text-red-500 active:bg-red-50 rounded-2xl transition-all ml-2 shrink-0"
                 >
                   <Trash2 size={20}/>
                 </button>

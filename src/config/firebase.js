@@ -6,7 +6,7 @@ import {
   getDocs,
   writeBatch,
   initializeFirestore,
-  persistentLocalCache,
+  memoryLocalCache, // MUDANÇA: Cache em memória para evitar QuotaExceededError
   persistentMultipleTabManager,
   collectionGroup // ADICIONADO: Necessário para consultas escaláveis no Dashboard
 } from "firebase/firestore";
@@ -28,11 +28,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// CONFIGURAÇÃO ROBUSTA: Resolve erros de conexão e gerencia múltiplas abas
+// CONFIGURAÇÃO REPARADA: Resolve o erro "QuotaExceededError" [cite: 1361, 1913]
+// Substituímos persistentLocalCache por memoryLocalCache para liberar o navegador
 const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  }),
+  localCache: memoryLocalCache(), 
   experimentalForceLongPolling: true,
   useFetchStreams: false
 });
