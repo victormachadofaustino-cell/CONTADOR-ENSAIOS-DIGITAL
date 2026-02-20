@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, AlertTriangle, Settings, Trash2, Globe, UserPlus, Check, Search, Clock } from 'lucide-react';
 import { db, collection, query, where, onSnapshot } from '../../../config/firebase';
 
 /**
  * Componente que agrupa todos os modais da página de eventos.
- * v2.0 - Adicionado View de Recentes e Carimbagem Rica de Convidados.
+ * v2.1 - Separação Estrita de Escopo: GEM Local (Só Local) vs Regional (Ambos).
  */
 const EventModals = ({
   showModal,
@@ -31,6 +31,20 @@ const EventModals = ({
   const [invitedUsers, setInvitedUsers] = useState([]); // Agora armazena objetos completos v2.0
   const [searchTerm, setSearchTerm] = useState('');
   const [recentUsers, setRecentUsers] = useState([]);
+
+  // v2.1 - Filtro de opções de escopo baseado no "Crachá" do usuário
+  const optionsScope = useMemo(() => {
+    const options = [];
+    // Todo GEM Local para cima pode criar eventos locais
+    if (isGemLocal || isRegionalCidade) {
+      options.push({ id: 'local', name: 'Ensaio Local (Comum)' });
+    }
+    // Apenas Regional para cima pode criar eventos regionais
+    if (isRegionalCidade) {
+      options.push({ id: 'regional', name: 'Ensaio Regional (Cidade)' });
+    }
+    return options;
+  }, [isGemLocal, isRegionalCidade]);
 
   // JUSTIFICATIVA: Carrega os últimos convidados salvos no dispositivo para agilizar a seleção
   useEffect(() => {
@@ -110,7 +124,7 @@ const EventModals = ({
   return (
     <>
       <AnimatePresence>
-        {/* MODAL 1: NOVO REGISTRO (ADAPTADO PARA REGIONAL) */}
+        {/* MODAL 1: NOVO REGISTRO (ADAPTADO v2.1) */}
         {showModal && (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 text-left">
             <motion.div 
@@ -126,8 +140,8 @@ const EventModals = ({
               <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8 leading-none tracking-tighter">Novo Registro</h3>
               
               <div className="space-y-5 overflow-y-auto no-scrollbar pr-1">
-                {/* SELETOR DE ESCOPO - RESTRITO A HIERARQUIA CIDADE/REGIONAL+ */}
-                {isRegionalCidade && (
+                {/* SELETOR DE ESCOPO - RESTRITO v2.1: Só aparece se houver mais de uma opção (usuários Regional+) */}
+                {optionsScope.length > 1 && (
                   <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
                     <label className="text-[8px] font-black text-blue-600 uppercase ml-2 tracking-widest italic flex items-center gap-1.5">
                       <Globe size={10} /> Tipo de Evento
@@ -137,8 +151,9 @@ const EventModals = ({
                       onChange={(e) => setScope(e.target.value)}
                       className="w-full bg-blue-50 border border-blue-100 text-blue-600 rounded-2xl py-4 px-4 text-xs font-black outline-none appearance-none italic uppercase shadow-sm"
                     >
-                      <option value="local">Ensaio Local (Comum)</option>
-                      <option value="regional">Ensaio Regional (Cidade)</option>
+                      {optionsScope.map(opt => (
+                        <option key={opt.id} value={opt.id}>{opt.name}</option>
+                      ))}
                     </select>
                   </div>
                 )}

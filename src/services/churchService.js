@@ -1,4 +1,4 @@
-import { db, doc, collection, writeBatch, getDocs, query, where, addDoc, updateDoc } from '../config/firebase';
+import { db, doc, collection, writeBatch, getDocs, query, where, addDoc, updateDoc, setDoc } from '../config/firebase';
 import { DEFAULT_INSTRUMENTS } from '../config/config';
 import toast from 'react-hot-toast';
 
@@ -97,6 +97,52 @@ export const churchService = {
   },
 
   /**
+   * ATUALIZAÇÃO DE DADOS DA COMUM (Endereço, Telefone, etc)
+   * Utilizado pelo GEM Local e Regional.
+   */
+  updateChurchDetails: async (comumId, data) => {
+    if (!comumId) throw new Error("ID da comum não fornecido.");
+    
+    try {
+      const churchRef = doc(db, 'comuns', comumId);
+      await updateDoc(churchRef, {
+        ...data,
+        updatedAt: Date.now()
+      });
+      return true;
+    } catch (e) {
+      console.error("Erro ao atualizar detalhes da comum:", e);
+      throw e;
+    }
+  },
+
+  /**
+   * ATUALIZAÇÃO DO MINISTÉRIO LOCAL (Lista de Obreiros)
+   * Salva a lista denormalizada dentro da subcoleção da comum.
+   */
+  updateMinistryList: async (comumId, ministryData) => {
+    if (!comumId) throw new Error("ID da comum não fornecido.");
+    
+    const loadingToast = toast.loading("Salvando ministério...");
+    try {
+      // Salva no documento padrão 'lista' dentro da subcoleção ministerio_lista
+      const ministryRef = doc(db, 'comuns', comumId, 'ministerio_lista', 'lista');
+      
+      await setDoc(ministryRef, {
+        membros: ministryData,
+        updatedAt: Date.now()
+      }, { merge: true });
+
+      toast.success("Ministério atualizado!", { id: loadingToast });
+      return true;
+    } catch (e) {
+      console.error("Erro ao salvar ministério:", e);
+      toast.error("Erro de permissão ou conexão.", { id: loadingToast });
+      throw e;
+    }
+  },
+
+  /**
    * ATUALIZAÇÃO DE NOME COM PROPAGAÇÃO HISTÓRICA
    * v5.0 - Sincroniza o novo nome com todos os ensaios já realizados
    */
@@ -141,7 +187,7 @@ export const churchService = {
    * Busca todas as comuns de uma cidade específica para filtros de interface
    */
   getChurchesByCity: async (cidadeId) => {
-    const q = query(collection(db, 'comuns'), where('cidadeId', '==', cidadeId));
+    const q = query(collection(db, 'comuns'), where('cidadeId', '==', cityId));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
