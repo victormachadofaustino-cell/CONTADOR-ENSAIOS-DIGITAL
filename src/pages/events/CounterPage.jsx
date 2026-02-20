@@ -83,15 +83,11 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   }, [activeGroup, currentEventId, isClosed, myUID, localCounts]);
 
-  // CARREGAMENTO DE INSTRUMENTOS: Blindagem contra acesso negado (Crash do SDK)
+  // CARREGAMENTO DE INSTRUMENTOS: Blindagem contra acesso negado (v7.1 - Aberto para Básico para permitir Zeladoria)
   useEffect(() => {
     let isMounted = true;
     const loadInstruments = async () => {
-      if (isBasico) {
-        if (isMounted) setLoading(false);
-        return;
-      }
-
+      // PRESERVAÇÃO: Removido o 'if (isBasico) return;' para permitir que todos carreguem a estrutura de contagem
       try {
         const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc')));
         if (isMounted) setInstrumentsNacionais(nacSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -108,7 +104,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     };
     loadInstruments();
     return () => { isMounted = false; };
-  }, [eventComumId, isBasico]);
+  }, [eventComumId]); // Removido isBasico da dependência
 
   // MONITOR REATIVO DO EVENTO (Tratamento de erro robusto)
   useEffect(() => {
@@ -229,9 +225,15 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const setOwnership = async (id, currentOwnerStatus) => {
     if (!eventComumId || isClosed) return;
     
-    // Regra v7.0: Removida a vacância. Sempre "Assumir" (Take Ownership)
+    // Regra v7.1: Liberado para todos (incluindo Básico) conforme diretriz de zeladoria.
     try {
-      await eventService.takeOwnership(currentEventId, id, userData);
+      // Usando updateDoc direto ou via service se disponível para garantir a posse
+      await updateDoc(doc(db, 'events_global', currentEventId), {
+        [`counts.${id}.responsibleId`]: myUID,
+        [`counts.${id}.responsibleName`]: userData?.name || "Colaborador",
+        [`counts.${id}.isActive`]: true,
+        [`counts.${id}.updatedAt`]: Date.now()
+      });
       
       if (id.startsWith('meta_')) {
         setActiveGroup(id.replace('meta_', '').toUpperCase());

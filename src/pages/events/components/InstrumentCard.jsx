@@ -2,8 +2,8 @@ import React from 'react';
 import { Minus, Plus, Lock, User, UserCheck, ShieldCheck } from 'lucide-react';
 
 /**
- * InstrumentCard v3.1 - PADRONIZAÇÃO DE GOVERNANÇA & VISUALIZAÇÃO LIMPA
- * v3.1 - Unificação visual para Examinadoras/Encarregados e botões ocultos sem posse.
+ * InstrumentCard v3.2 - PADRONIZAÇÃO DE GOVERNANÇA & ZELADORIA FLEXÍVEL
+ * v3.2 - Ajuste de canEdit para permitir zeladoria colaborativa e botões inteligentes.
  */
 const InstrumentCard = ({ 
   inst, 
@@ -28,8 +28,8 @@ const InstrumentCard = ({
   const isMyTurn = data?.responsibleId === myUID;
   const isOtherTurn = data?.responsibleId && data?.responsibleId !== myUID;
   
-  // REGRA v7.0: Todos veem, mas só o dono edita.
-  const canEdit = !isClosed && isMyTurn;
+  // REGRA v7.1: Liberado para editar se não estiver fechado e não houver outro dono travando o item.
+  const canEdit = !isClosed && !isOtherTurn;
 
   // SANEAMENTO DE DADOS
   const total = parseInt(data?.total) || 0;
@@ -60,7 +60,7 @@ const InstrumentCard = ({
       isMyTurn ? 'border-blue-200 shadow-md scale-[1.01]' : 'border-slate-100'
     } ${isGovernance ? 'border-l-4 border-l-amber-500' : ''}`}>
       
-      {/* BOTÃO ASSUMIR (Fluxo v7.0: Sempre disponível para trocar ou assumir) */}
+      {/* BOTÃO ASSUMIR (Fluxo v7.1: Sempre disponível para trocar ou assumir) */}
       {!isClosed && (
         <div className="absolute top-4 right-5 z-10">
           <button
@@ -103,7 +103,7 @@ const InstrumentCard = ({
           </div>
         ) : (
           <>
-            {/* ÁREA DE CONTAGEM PRINCIPAL - Governança agora usa este bloco para ficar igual aos outros */}
+            {/* ÁREA DE CONTAGEM PRINCIPAL */}
             <div className="flex gap-2 h-32">
               <CounterBox 
                 label={isGovernance ? (inst.evalType || "LIDERANÇA") : (isRegional ? "TOTAL PRESENTE" : "TOTAL")} 
@@ -125,7 +125,7 @@ const InstrumentCard = ({
               )}
             </div>
 
-            {/* RODAPÉ DE LIDERANÇA - Apenas para Instrumentos comuns (não para Governança direta) */}
+            {/* RODAPÉ DE LIDERANÇA - Apenas para Instrumentos comuns */}
             {!isRegional && !isGovernance && (
               <div className={`mt-1 rounded-2xl p-2.5 flex items-center justify-between border transition-all ${isSubFieldDisabled ? 'bg-slate-50 border-slate-100' : 'bg-slate-100/50 border-slate-200/50'}`}>
                 <div className="flex items-center gap-2">
