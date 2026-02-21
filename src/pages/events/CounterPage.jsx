@@ -4,6 +4,7 @@ import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, order
 import { eventService } from '../../services/eventService';
 import AtaPage from './AtaPage';
 import DashEventPage from '../dashboard/DashEventPage';
+import DashEventRegionalPage from '../dashboard/DashEventRegionalPage'; // Nova importação para suporte regional
 import toast from 'react-hot-toast';
 import { 
   ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3
@@ -297,7 +298,25 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             )
           )}
           {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={canEditAta} />}
-          {activeTab === 'dash' && <DashEventPage eventId={currentEventId} counts={localCounts} userData={userData} isAdmin={true} ataData={ataData} />}
+          {activeTab === 'dash' && (
+            ataData?.scope === 'regional' ? (
+              <DashEventRegionalPage 
+                eventId={currentEventId} 
+                counts={localCounts} 
+                userData={userData} 
+                isAdmin={true} 
+                ataData={ataData} 
+              />
+            ) : (
+              <DashEventPage 
+                eventId={currentEventId} 
+                counts={localCounts} 
+                userData={userData} 
+                isAdmin={true} 
+                ataData={ataData} 
+              />
+            )
+          )}
         </div>
       </main>
 
