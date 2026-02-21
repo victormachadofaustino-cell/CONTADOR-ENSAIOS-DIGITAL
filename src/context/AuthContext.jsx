@@ -30,7 +30,9 @@ export const AuthProvider = ({ children }) => {
       
       if (currentUser) {
         // --- EXTRAÇÃO DO CRACHÁ (Custom Claims) ---
-        // Buscamos as permissões injetadas no Token para economia de cota
+        // SINCRONIZAÇÃO v5.0: Forçamos a renovação do token para que o Firebase Rules 
+        // leia o nível de acesso mais atualizado do banco.
+        await currentUser.getIdToken(true);
         const tokenResult = await currentUser.getIdTokenResult();
         const claims = tokenResult.claims;
 
