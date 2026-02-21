@@ -14,9 +14,7 @@ import { useAuth } from '../../context/AuthContext';
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
 import CounterSection from './components/CounterSection';
 import OwnershipModal from './components/OwnershipModal';
-// Importação do novo modal de extras
 import ExtraInstrumentModal from './components/ExtraInstrumentModal';
-// Importação do Modo Regional (v1.0 Flat-List)
 import CounterRegional from './components/CounterRegional';
 
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
@@ -27,7 +25,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const isComissao = isMaster || level === 'comissao';
   const isRegionalCidade = isComissao || level === 'regional_cidade';
   const isGemLocal = isRegionalCidade || level === 'gem_local';
-  const isBasico = level === 'basico';
   
   // Conforme Matriz: Básico visualiza Dash/Ata, mas GEM+ edita a Ata
   const canEditAta = isGemLocal; 
@@ -47,7 +44,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const [localCounts, setLocalCounts] = useState({});
 
   // JUSTIFICATIVA: Ref para controlar se há uma atualização local em curso
-  // Isso evita que o onSnapshot sobrescreva a tela enquanto o usuário clica
   const isUpdatingRef = useRef(null);
 
   const isClosed = ataData?.status === 'closed';
@@ -74,7 +70,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             [`counts.${metaKey}.lastHeartbeat`]: Date.now()
           });
         } catch (e) {
-          // Silent catch para evitar crash do SDK no log de Heartbeat
+          // Silent catch
         }
       };
 
@@ -83,11 +79,10 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   }, [activeGroup, currentEventId, isClosed, myUID, localCounts]);
 
-  // CARREGAMENTO DE INSTRUMENTOS: Blindagem contra acesso negado (v7.1 - Aberto para Básico para permitir Zeladoria)
+  // CARREGAMENTO DE INSTRUMENTOS
   useEffect(() => {
     let isMounted = true;
     const loadInstruments = async () => {
-      // PRESERVAÇÃO: Removido o 'if (isBasico) return;' para permitir que todos carreguem a estrutura de contagem
       try {
         const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc')));
         if (isMounted) setInstrumentsNacionais(nacSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -97,16 +92,16 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           if (isMounted) setInstrumentsConfig(locSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         }
       } catch (e) { 
-        console.warn("Aviso de Jurisdição: Configurações globais não carregadas para seu nível.");
+        console.warn("Jurisdição: Configurações não carregadas.");
       } finally {
         if (isMounted) setLoading(false);
       }
     };
     loadInstruments();
     return () => { isMounted = false; };
-  }, [eventComumId]); // Removido isBasico da dependência
+  }, [eventComumId]);
 
-  // MONITOR REATIVO DO EVENTO (Tratamento de erro robusto)
+  // MONITOR REATIVO DO EVENTO
   useEffect(() => {
     if (!currentEventId) return;
     let isMounted = true;
@@ -130,14 +125,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           setEventComumId(data.comumId);
           setEventDateRaw(data.date || '');
           
-          // JUSTIFICATIVA: Só atualiza a tela se o usuário não estiver no meio de uma contagem
           if (!isUpdatingRef.current) {
              setLocalCounts(data.counts || {});
           }
         }
       },
       (err) => {
-        console.error("Firestore Sync Error:", err);
+        console.error("Sync Error:", err);
       }
     );
     return () => { isMounted = false; unsubEvent(); };
@@ -171,21 +165,17 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return [...new Set(allInstruments.map(i => (i.section || "GERAL").toUpperCase()))].sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
   }, [allInstruments]);
 
-  // JUSTIFICATIVA: Lógica de atualização com bloqueio de snapshot reverso
   const handleUpdateInstrument = (id, field, value, section) => {
     if (isClosed) return;
 
-    // 1. Sinaliza que estamos alterando (Bloqueia o onSnapshot)
     if (isUpdatingRef.current) clearTimeout(isUpdatingRef.current);
     isUpdatingRef.current = setTimeout(() => { isUpdatingRef.current = null; }, 1500);
 
-    // 2. Atualização visual instantânea (Otimista)
     setLocalCounts(prev => ({ 
       ...prev, 
       [id]: { ...prev[id], [field]: value } 
     }));
     
-    // 3. Dispara para o serviço que já possui seu próprio debounce e travas de teto
     eventService.updateInstrumentCount(eventComumId, currentEventId, { 
        instId: id, field, value, userData, section 
     }).catch(() => {
@@ -214,20 +204,22 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     
     if (activeGroup === sec) { setActiveGroup(null); return; }
     
-    // Regra v7.0: Se já for o dono, apenas abre. Se não, abre o modal de confirmação para assumir.
+    // JUSTIFICATIVA: Se o ID do responsável no banco já for o meu, abre direto sem perguntar
     if (isMaster || responsibleId === myUID) {
       setActiveGroup(sec);
+      setShowOwnershipModal(null);
     } else {
       setShowOwnershipModal(sec);
     }
   };
 
   const setOwnership = async (id, currentOwnerStatus) => {
-    if (!eventComumId || isClosed) return;
+    if (!eventComumId || isClosed || !currentEventId) return;
     
-    // Regra v7.1: Liberado para todos (incluindo Básico) conforme diretriz de zeladoria.
     try {
-      // Usando updateDoc direto ou via service se disponível para garantir a posse
+      // JUSTIFICATIVA: Limpa o modal antes de gravar no banco para evitar conflito visual (Race Condition)
+      setShowOwnershipModal(null);
+
       await updateDoc(doc(db, 'events_global', currentEventId), {
         [`counts.${id}.responsibleId`]: myUID,
         [`counts.${id}.responsibleName`]: userData?.name || "Colaborador",
@@ -235,23 +227,21 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         [`counts.${id}.updatedAt`]: Date.now()
       });
       
-      if (id.startsWith('meta_')) {
-        setActiveGroup(id.replace('meta_', '').toUpperCase());
-      }
-      toast.success("Você assumiu esta contagem.");
+      const sectionTag = id.replace('meta_', '').toUpperCase();
+      setActiveGroup(sectionTag);
+      toast.success("Você assumiu esta seção.");
     } catch (e) { 
-      toast.error("Banco: Falha na permissão de posse."); 
+      console.error("Erro de Posse:", e);
+      toast.error("Falha ao assumir responsabilidade."); 
     }
-    
-    if (showOwnershipModal) setShowOwnershipModal(null);
   };
 
   const isEditingEnabled = (sec) => isMaster || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando Jurisdição...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando...</div>;
 
   return (
-    <div className="flex flex-col h-screen bg-[#F1F5F9] overflow-hidden text-left relative font-sans animate-premium">
+    <div className="flex flex-col h-screen bg-[#F1F5F9] overflow-hidden text-left relative font-sans">
       <header className="bg-white pt-6 pb-6 px-6 rounded-b-[2.5rem] shadow-md border-b border-slate-200 z-50">
         <div className="flex justify-between items-center max-w-md mx-auto w-full">
           <button onClick={onBack} className="bg-slate-100 p-3 rounded-2xl text-slate-500 active:scale-90 transition-all">

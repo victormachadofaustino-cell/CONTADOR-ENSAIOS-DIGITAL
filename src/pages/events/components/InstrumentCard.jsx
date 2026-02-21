@@ -2,8 +2,8 @@ import React from 'react';
 import { Minus, Plus, Lock, User, UserCheck, ShieldCheck } from 'lucide-react';
 
 /**
- * InstrumentCard v3.3 - AJUSTE DE ESCALA MOBILE-FIRST
- * v3.3 - Correção de legibilidade: números agora cabem no card em telas pequenas.
+ * InstrumentCard v3.6.1 - FIX ORGANISTAS & PRIORIDADE DE ESTRUTURA
+ * v3.6.1 - Garante estrutura completa para Organistas mesmo sob supervisão de Examinadoras.
  */
 const InstrumentCard = ({ 
   inst, 
@@ -20,16 +20,23 @@ const InstrumentCard = ({
   if (!inst || !inst.id) return null;
 
   const isIrmandade = ['irmandade', 'Coral', 'coral'].includes(inst.id.toLowerCase());
-  // Identifica se é um card de Governança (Examinadoras/Encarregados Locais)
-  const isGovernance = inst.isGovernance || sectionName === 'GOVERNANÇA' || inst.id.includes('enc_local') || inst.evalType === 'Examinadora';
   
-  // LÓGICA DE POSSE INDIVIDUAL
+  // IDENTIFICAÇÃO CIRÚRGICA: Diferencia Organista (Instrumento) de Governança pura (Cargos)
+  // Busca por variações de nome para garantir que o card musical prevaleça
+  const isOrganista = inst.id.toLowerCase().includes('organista') || 
+                     inst.name?.toLowerCase().includes('organ') || 
+                     inst.id.toLowerCase().includes('orgao');
+
+  // CORREÇÃO: Força isGovernance como false se for organista para liberar os campos Comum/Visitas
+  const isGovernance = (inst.isGovernance || inst.id.includes('enc_local') || inst.evalType === 'Examinadora') && !isOrganista;
+  
+  // LÓGICA DE POSSE INDIVIDUAL (Informativa)
   const myUID = userData?.uid || userData?.id;
   const isMyTurn = data?.responsibleId === myUID;
   const isOtherTurn = data?.responsibleId && data?.responsibleId !== myUID;
   
-  // REGRA v7.1: Liberado para editar se não estiver fechado e não houver outro dono travando o item.
-  const canEdit = !isClosed && !isOtherTurn;
+  // REGRA: A edição aqui é controlada pelo 'isClosed' enviado pelo componente pai (Naipe)
+  const canEdit = !isClosed;
 
   // SANEAMENTO DE DADOS
   const total = parseInt(data?.total) || 0;
@@ -40,7 +47,7 @@ const InstrumentCard = ({
   
   const visitas = Math.max(0, total - comum);
 
-  // Trava visual: Impede alteração de subcampos se não houver ninguém no total
+  // Trava visual: Impede alteração de subcampos se não houver ninguém no total ou sem permissão
   const isSubFieldDisabled = !canEdit || total === 0;
 
   const handleUpdate = (field, value) => {
@@ -57,41 +64,25 @@ const InstrumentCard = ({
 
   return (
     <div className={`p-4 rounded-[2rem] border transition-all relative overflow-hidden bg-white shadow-sm ${
-      isMyTurn ? 'border-blue-200 shadow-md scale-[1.01]' : 'border-slate-100'
-    } ${isGovernance ? 'border-l-4 border-l-amber-500' : ''}`}>
+      isMyTurn ? 'border-blue-500 ring-1 ring-blue-100' : 'border-slate-100'
+    }`}>
       
-      {/* BOTÃO ASSUMIR (Fluxo v7.1: Sempre disponível para trocar ou assumir) */}
-      {!isClosed && (
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggleOwnership(); }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-black text-[8px] uppercase italic tracking-widest transition-all active:scale-90 shadow-sm ${
-              isMyTurn ? 'bg-blue-600 text-white' : 
-              isOtherTurn ? 'bg-amber-100 text-amber-700 border border-amber-200' : 
-              'bg-slate-950 text-white'
-            }`}
-          >
-            {isMyTurn ? <><UserCheck size={10}/> Seu Card</> : isOtherTurn ? <><Lock size={10}/> Trocar Posse</> : <><User size={10}/> Assumir</>}
-          </button>
-        </div>
-      )}
+      {/* JUSTIFICATIVA v3.6.1: Botão 'Assumir' individual removido para evitar redundância. */}
 
-      <div className="mb-3 flex flex-col text-left pr-28 leading-none">
+      <div className="mb-3 flex flex-col text-left pr-4 leading-none">
         <h5 className="font-[900] text-[11px] italic uppercase text-slate-950 tracking-tighter leading-none mb-1 flex items-center gap-2">
           {inst.name || 'INSTRUMENTO'}
-          {isGovernance && <ShieldCheck size={12} className="text-amber-500" />}
+          {(isGovernance || isOrganista) && <ShieldCheck size={12} className="text-blue-500" />}
         </h5>
         
-        {/* TAG DE IDENTIFICAÇÃO NOMINAL */}
-        {isOtherTurn && (
-          <span className="text-[7px] font-black text-slate-400 uppercase italic">
-            Resp: {data.responsibleName || 'Colaborador'}
-          </span>
-        )}
-        {isMyTurn && (
-          <span className="text-[7px] font-black text-blue-600 uppercase italic">
-            Editando agora
-          </span>
+        {/* TAG DE IDENTIFICAÇÃO NOMINAL (ZELADORIA) */}
+        {(isOtherTurn || isMyTurn) && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${isMyTurn ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'}`} />
+            <span className={`text-[7px] font-black uppercase italic ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}>
+              {isMyTurn ? 'Você está no comando' : `Responsável: ${data.responsibleName || 'Colaborador'}`}
+            </span>
+          </div>
         )}
       </div>
 
@@ -106,7 +97,7 @@ const InstrumentCard = ({
             {/* ÁREA DE CONTAGEM PRINCIPAL */}
             <div className="flex gap-2 h-28">
               <CounterBox 
-                label={isGovernance ? (inst.evalType || "LIDERANÇA") : (isRegional ? "TOTAL" : "TOTAL")} 
+                label={isRegional ? "TOTAL" : "TOTAL"} 
                 color="slate" 
                 val={total} 
                 onChange={v => handleUpdate('total', v)} 
@@ -114,6 +105,7 @@ const InstrumentCard = ({
                 isMain={true} 
               />
               
+              {/* ESTRUTURA COMPLETA: Agora liberada corretamente para Organistas */}
               {!isRegional && !isGovernance && (
                 <>
                   <CounterBox label="COMUM" color="white" val={comum} onChange={v => handleUpdate('comum', v)} disabled={isSubFieldDisabled} isMain={false} />
