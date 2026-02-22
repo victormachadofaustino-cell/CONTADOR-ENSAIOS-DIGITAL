@@ -70,6 +70,14 @@ const ModuleAccess = ({ comumId, cargos }) => {
     return () => { isMounted = false; unsubUsers(); };
   }, [authLoading, activeRegionalId, isMaster, isComissao, isRegionalCidade, isGemLocal, userData, userEmail, user?.uid]);
 
+  // EFEITO DE SANEAMENTO: Sempre que um usuário é selecionado, se ele estiver aprovado e logado, 
+  // assumimos que o e-mail está verificado (pois o sistema bloqueia a entrada de e-mails não verificados)
+  useEffect(() => {
+    if (selectedUser && !selectedUser.emailVerified && selectedUser.approved && podeEditarEstePerfil(selectedUser)) {
+      handleUpdate(selectedUser.id, { emailVerified: true });
+    }
+  }, [selectedUser]);
+
   const usersGrouped = useMemo(() => {
     const filteredUsers = comumId 
       ? users.filter(u => u.comumId === comumId) 
@@ -98,22 +106,19 @@ const ModuleAccess = ({ comumId, cargos }) => {
     return "Básico";
   };
 
-  // REGRA DE OURO: Validação de Matriz de Aprovação Territorial
+  // REGRA DE OURO: Validação de Matriz de Aprovação Territorial (SANEADA v2.3)
   const podeEditarEstePerfil = (u) => {
     if (isMaster) return true;
     if (u.id === user?.uid) return false; 
     
-    // Comissão pode aprovar qualquer um na regional (exceto Master)
     if (isComissao && u.accessLevel !== 'master') return true;
     
-    [cite_start]// Regional de Cidade: Só edita quem pertence à MESMA cidade [cite: 1732]
     if (isRegionalCidade && u.cidadeId === userData.cidadeId) {
-      return u.accessLevel === 'gem_local' || u.accessLevel === 'basico';
+      return u.accessLevel !== 'master' && u.accessLevel !== 'comissao';
     }
 
-    // GEM Local: Só edita quem pertence à MESMA comum
     if (isGemLocal && u.comumId === userData.comumId) {
-      return u.accessLevel === 'basico';
+      return u.accessLevel === 'gem_local' || u.accessLevel === 'basico';
     }
 
     return false;
@@ -122,11 +127,19 @@ const ModuleAccess = ({ comumId, cargos }) => {
   const handleUpdate = async (userId, data) => {
     try {
       await updateDoc(doc(db, 'users', userId), data);
-      toast.success("Zeladoria atualizada");
-    } catch (e) { toast.error("Erro na sincronização"); }
+      // Só mostramos o toast se NÃO for uma atualização silenciosa de e-mail
+      if (!data.emailVerified || Object.keys(data).length > 1) {
+        toast.success("Zeladoria atualizada");
+      }
+      
+      if (data.accessLevel) setSelectedUser(null);
+    } catch (e) { 
+      console.error("FALHA FIREBASE NA PORTARIA:", e); 
+      // Não mostramos erro em atualizações silenciosas de e-mail para não poluir a UX
+      if (!data.emailVerified) toast.error("Erro na sincronização."); 
+    }
   };
 
-  // Função para ofuscar e-mail para usuários sem permissão administrativa
   const ofuscarEmail = (email) => {
     if (!email) return "";
     const [user, domain] = email.split('@');
@@ -174,7 +187,9 @@ const ModuleAccess = ({ comumId, cargos }) => {
                             <div className="flex items-center gap-2">
                               <h4 className="text-[10px] font-black uppercase italic text-slate-950 leading-none">{u.name}</h4>
                               {!u.approved && <span className="text-[6px] font-black text-red-500 uppercase bg-red-50 px-1.5 py-0.5 rounded animate-pulse border border-red-100">Pendente</span>}
-                              {!u.emailVerified && <AlertTriangle size={10} className="text-amber-500" title="E-mail não verificado" />}
+                              {!u.emailVerified && !u.approved && podeEditarEstePerfil(u) && (
+                                <AlertTriangle size={10} className="text-amber-500" title="Aguardando confirmação de e-mail" />
+                              )}
                             </div>
                             <p className="text-[8px] font-black text-slate-400 uppercase leading-none">{u.role} • {getNivelLabel(u)}</p>
                           </div>
@@ -201,14 +216,14 @@ const ModuleAccess = ({ comumId, cargos }) => {
               
               <div className="flex justify-between items-start mb-6">
                 <div className="text-left leading-none">
-                  <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1 italic leading-none">Perfil de Acesso</p>
+                  <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic mb-1 leading-none">Perfil de Acesso</p>
                   <h3 className="text-xl font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight">{selectedUser.name}</h3>
                   <div className="flex items-center gap-2 mt-2 text-slate-400 text-[9px] font-bold lowercase">
                     <Mail size={10} /> {podeEditarEstePerfil(selectedUser) || selectedUser.id === user?.uid ? selectedUser.email : ofuscarEmail(selectedUser.email)}
                     {selectedUser.emailVerified ? (
                       <span className="text-[7px] font-black text-emerald-500 uppercase bg-emerald-50 px-1.5 py-0.5 rounded">Validado</span>
                     ) : (
-                      <span className="text-[7px] font-black text-amber-500 uppercase bg-amber-50 px-1.5 py-0.5 rounded">Aguardando Validação</span>
+                      <span className="text-[7px] font-black text-amber-500 uppercase bg-amber-50 px-1.5 py-0.5 rounded">Por Validar</span>
                     )}
                   </div>
                 </div>
@@ -237,10 +252,10 @@ const ModuleAccess = ({ comumId, cargos }) => {
                 <div className="space-y-2 pt-4 border-t border-slate-100">
                   {podeEditarEstePerfil(selectedUser) ? (
                     <>
-                      {!selectedUser.emailVerified && (
+                      {!selectedUser.emailVerified && !selectedUser.approved && (
                         <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-100 mb-2">
                            <AlertTriangle size={14} className="text-amber-500" />
-                           <p className="text-[8px] font-black text-amber-700 uppercase italic">Atenção: Usuário ainda não clicou no link de validação do e-mail.</p>
+                           <p className="text-[8px] font-black text-amber-700 uppercase italic">Atenção: O usuário precisa validar o link enviado ao e-mail.</p>
                         </div>
                       )}
                       <button 

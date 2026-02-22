@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// PRESERVAÇÃO: Importações originais mantidas
 import { db, doc, updateDoc, auth, collection, onSnapshot, addDoc, deleteDoc, query, where, orderBy } from '../config/firebase';
 import { 
   User, LogOut, X, Shield, Map, Home, 
@@ -109,14 +110,8 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
                 {/* ÁREA DE GESTÃO - Prioridade Visual */}
                 <div className="space-y-3 mb-6">
                    <p className="text-[9px] font-black text-slate-400 uppercase italic px-4">Administrativo</p>
-                    
-                    <button onClick={() => setIsRegionalSelectorOpen(true)} className="w-full bg-white p-5 rounded-[2rem] border border-blue-100 flex justify-between items-center active:scale-95 shadow-sm group">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Map size={16}/></div>
-                        <span className="text-[10px] font-black text-slate-950 uppercase italic leading-none">Trocar Regional Ativa</span>
-                      </div>
-                      <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-600 transition-colors"/>
-                    </button>
+                   
+                   {/* REMOVIDO: Botão de Trocar Regional Ativa (Migrado exclusivamente para o Header) */}
 
                     {isMaster && (
                       <>
@@ -177,14 +172,14 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
                     <div className={`absolute top-0 left-0 w-1 h-full ${t.status === 'resolvido' || t.status === 'agradecido' ? 'bg-emerald-500' : t.status === 'rejeitado' ? 'bg-red-500' : 'bg-amber-500'}`} />
                     
                     <div className="flex justify-between mb-2">
-                       <div className="flex gap-2 items-center">
+                        <div className="flex gap-2 items-center">
                           <span className="text-lg">{t.tipo === 'bug' ? '🐞' : t.tipo === 'elogio' ? '⭐' : '💡'}</span>
                           <div className="flex flex-col">
                             <span className="text-[10px] font-black uppercase text-slate-950 leading-none">{t.userName}</span>
                             <span className="text-[7px] font-bold text-slate-400 uppercase italic mt-1">Tela: {t.modulo}</span>
                           </div>
-                       </div>
-                       <span className="text-[7px] font-black text-slate-300 uppercase">{new Date(t.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <span className="text-[7px] font-black text-slate-300 uppercase">{new Date(t.createdAt).toLocaleDateString()}</span>
                     </div>
 
                     <p className="text-[11px] font-bold text-slate-600 italic bg-slate-50 p-3 rounded-2xl mb-4 border border-slate-100">"{t.mensagem}"</p>
@@ -207,6 +202,8 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
                       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                         <span className="text-[8px] font-black uppercase text-slate-400">Status: {t.status}</span>
                         <CheckCircle2 size={14} className="text-emerald-500" />
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                        </div>
                       </div>
                     )}
                 </div>
@@ -240,7 +237,7 @@ const ProfileMenu = ({ isOpen, onClose, pendingTickets, onRegionalChange, listaR
         )}
       </AnimatePresence>
 
-      {/* SELETOR DE REGIONAL */}
+      {/* SELETOR DE REGIONAL (Apenas lógica interna, renderizada pelo Header se necessário) */}
       <AnimatePresence>
         {isRegionalSelectorOpen && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-6">

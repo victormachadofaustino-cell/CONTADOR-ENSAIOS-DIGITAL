@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, collection, onSnapshot, doc, addDoc, deleteDoc, updateDoc } from '../../config/firebase';
-import { churchService } from '../../services/churchService'; 
+// PRESERVAÇÃO: Importações originais mantidas
+import { db, doc, collection, onSnapshot, addDoc, deleteDoc, updateDoc } from '../../config/firebase';
 import toast from 'react-hot-toast';
-import { MapPin, Clock, ChevronDown, Plus, Trash2, Home, X, Shield, Calendar, AlertTriangle, Save, Lock, Eye } from 'lucide-react';
+import { 
+  MapPin, Clock, ChevronDown, Plus, Trash2, Home, X, 
+  Shield, Calendar, AlertTriangle, Save, Lock, Eye, Edit3 
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 
@@ -28,8 +31,22 @@ const ModuleChurch = ({ localData, onUpdate }) => {
   const [isMinListOpen, setIsMinListOpen] = useState(false);
   const [newMin, setNewMin] = useState({ nome: '', cargo: '' });
   
+  // Estados para Edição e Exclusão Customizada
+  const [editingMin, setEditingMin] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [deletingMin, setDeletingMin] = useState(null);
+  
   const diasSemana = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
-  const cargosOrdem = ['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM', 'Encarregado Regional', 'Examinadora', 'Encarregado Local'];
+  
+  const cargosOrdem = [
+    'Ancião', 
+    'Diácono', 
+    'Cooperador do Ofício', 
+    'Cooperador RJM', 
+    'Encarregado Regional', 
+    'Examinadora', 
+    'Encarregado Local'
+  ];
 
   // Listener para dados da Comum
   useEffect(() => {
@@ -49,12 +66,16 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     return () => unsubDoc();
   }, [localData?.id]);
 
-  // Listener reativo para a subcoleção de Ministério (Onde o card nasce)
+  // Listener reativo para a subcoleção de Ministério
   useEffect(() => {
     if (!localData?.id) return;
     const unsubMin = onSnapshot(collection(db, 'comuns', localData.id, 'ministerio_lista'), (s) => {
       const lista = s.docs.map(d => ({ id: d.id, ...d.data() }));
-      lista.sort((a, b) => (cargosOrdem.indexOf(a.cargo) || 99) - (cargosOrdem.indexOf(b.cargo) || 99));
+      lista.sort((a, b) => {
+        const pesoA = cargosOrdem.indexOf(a.cargo);
+        const pesoB = cargosOrdem.indexOf(b.cargo);
+        return (pesoA === -1 ? 99 : pesoA) - (pesoB === -1 ? 99 : pesoB);
+      });
       setMinisterio(lista);
     });
     return () => unsubMin();
@@ -100,6 +121,39 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     } catch (e) { toast.error("Erro ao alterar agenda."); }
   };
 
+  const handleEditClick = (membro) => {
+    setEditingMin(membro);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMin.nome.trim() || !editingMin.cargo) return toast.error("Preencha todos os campos");
+    try {
+      const docRef = doc(db, 'comuns', localData.id, 'ministerio_lista', editingMin.id);
+      await updateDoc(docRef, {
+        nome: editingMin.nome.trim().toUpperCase(),
+        cargo: editingMin.cargo,
+        updatedAt: Date.now()
+      });
+      setIsEditModalOpen(false);
+      setEditingMin(null);
+      toast.success("Membro atualizado");
+    } catch (err) {
+      toast.error("Erro ao atualizar.");
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingMin || !localData?.id) return;
+    try {
+      await deleteDoc(doc(db, 'comuns', localData.id, 'ministerio_lista', deletingMin.id));
+      toast.success("Removido com sucesso");
+      setDeletingMin(null);
+    } catch (err) {
+      toast.error("Erro ao remover.");
+    }
+  };
+
   if (!localData) return <div className="py-10 text-center opacity-30 text-[8px] font-black uppercase tracking-widest italic">Selecione uma Comum.</div>;
 
   return (
@@ -116,17 +170,22 @@ const ModuleChurch = ({ localData, onUpdate }) => {
           </div>
       </div>
 
-      {/* SEÇÃO 1: ENDEREÇO */}
+      {/* SEÇÃO 1: ENDEREÇO (Grid Otimizado) */}
       <div className="space-y-3">
         <div className="flex items-center gap-2 px-1">
           <MapPin size={14} className="text-blue-600" />
           <p className="text-[10px] font-[900] text-slate-950 uppercase italic tracking-widest leading-none">Localização</p>
         </div>
-        <div className="grid grid-cols-1 gap-2">
-          <input disabled={!temPoderEdicao} placeholder="RUA / LOGRADOURO" className="w-full bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic" value={formData.endereco?.rua || ''} onChange={e => handleFieldChange('rua', e.target.value, true)} onBlur={saveToDatabase} />
-          <div className="grid grid-cols-3 gap-2">
-            <input disabled={!temPoderEdicao} placeholder="Nº" className="col-span-1 bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic" value={formData.endereco?.numero || ''} onChange={e => handleFieldChange('numero', e.target.value, true)} onBlur={saveToDatabase} />
-            <input disabled={!temPoderEdicao} placeholder="BAIRRO" className="col-span-2 bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic" value={formData.endereco?.bairro || ''} onChange={e => handleFieldChange('bairro', e.target.value, true)} onBlur={saveToDatabase} />
+        <div className="space-y-2">
+          {/* Linha 1: Rua e Número */}
+          <div className="grid grid-cols-4 gap-2">
+            <input disabled={!temPoderEdicao} placeholder="RUA / LOGRADOURO" className="col-span-3 bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none" value={formData.endereco?.rua || ''} onChange={e => handleFieldChange('rua', e.target.value, true)} onBlur={saveToDatabase} />
+            <input disabled={!temPoderEdicao} placeholder="Nº" className="col-span-1 bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none text-center" value={formData.endereco?.numero || ''} onChange={e => handleFieldChange('numero', e.target.value, true)} onBlur={saveToDatabase} />
+          </div>
+          {/* Linha 2: Bairro e CEP */}
+          <div className="grid grid-cols-2 gap-2">
+            <input disabled={!temPoderEdicao} placeholder="BAIRRO" className="bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none" value={formData.endereco?.bairro || ''} onChange={e => handleFieldChange('bairro', e.target.value, true)} onBlur={saveToDatabase} />
+            <input disabled={!temPoderEdicao} placeholder="CEP (00000-000)" className="bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none" value={formData.endereco?.cep || ''} onChange={e => handleFieldChange('cep', e.target.value, true)} onBlur={saveToDatabase} />
           </div>
         </div>
       </div>
@@ -147,8 +206,8 @@ const ModuleChurch = ({ localData, onUpdate }) => {
         <div className="space-y-2">
           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-inner flex items-center justify-between">
             <div className="flex items-center gap-3">
-               <Clock size={14} className="text-slate-300"/>
-               <span className="text-[9px] font-black text-slate-400 uppercase italic">Culto Semanal</span>
+                <Clock size={14} className="text-slate-300"/>
+                <span className="text-[9px] font-black text-slate-400 uppercase italic">Culto Semanal</span>
             </div>
              <input disabled={!temPoderEdicao} type="time" className="bg-transparent font-black text-slate-950 text-xs outline-none text-right" value={formData.horaCulto || '19:30'} onChange={e => handleFieldChange('horaCulto', e.target.value)} onBlur={saveToDatabase} />
           </div>
@@ -181,7 +240,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
         </div>
       </div>
 
-      {/* SEÇÃO 4: MINISTÉRIO LOCAL (v5.1 CORREÇÃO SUBCOLEÇÃO) */}
+      {/* SEÇÃO 4: MINISTÉRIO LOCAL */}
       <div className="bg-slate-950 rounded-[2.5rem] overflow-hidden shadow-xl border border-white/5">
         <button onClick={() => setIsMinListOpen(!isMinListOpen)} className="w-full p-6 flex justify-between items-center text-amber-500 transition-colors">
           <div className="flex items-center gap-3 text-left">
@@ -204,7 +263,6 @@ const ModuleChurch = ({ localData, onUpdate }) => {
                     <button onClick={async () => {
                         if(!newMin.nome.trim() || !newMin.cargo) return toast.error("Preencha nome e cargo");
                         try {
-                            // CORREÇÃO: Gravação direta na subcoleção para evitar cards vazios
                             await addDoc(collection(db, 'comuns', localData.id, 'ministerio_lista'), { 
                               nome: newMin.nome.trim().toUpperCase(), 
                               cargo: newMin.cargo,
@@ -223,21 +281,18 @@ const ModuleChurch = ({ localData, onUpdate }) => {
                 {ministerio.map((m) => (
                   <div key={m.id} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 transition-all">
                     <div className="leading-tight text-left flex-1 min-w-0 pr-4">
-                      <p className="text-[10px] font-[900] text-white uppercase italic truncate">{m.nome || 'SEM NOME'}</p>
-                      <p className="text-[7px] font-bold text-blue-400 uppercase tracking-widest mt-1 truncate">{m.cargo || 'SEM CARGO'}</p>
+                      <p className="text-[7px] font-bold text-blue-400 uppercase tracking-widest truncate">{m.cargo || 'SEM CARGO'}</p>
+                      <p className="text-[10px] font-[900] text-white uppercase italic mt-1 truncate">{m.nome || 'SEM NOME'}</p>
                     </div>
                     {temPoderEdicao && (
-                        <button onClick={async () => { 
-                            if(confirm('Remover do Ministério Local?')) {
-                                try {
-                                    // CORREÇÃO: Deleta usando o ID real do documento da subcoleção
-                                    await deleteDoc(doc(db, 'comuns', localData.id, 'ministerio_lista', m.id));
-                                    toast.success("Removido");
-                                } catch (err) { toast.error("Erro ao remover."); }
-                            }
-                        }} className="p-2 text-white/10 hover:text-red-400 transition-colors shrink-0">
-                          <Trash2 size={14}/>
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => handleEditClick(m)} className="p-2 text-white/10 hover:text-amber-400 transition-colors">
+                            <Edit3 size={14}/>
+                          </button>
+                          <button onClick={() => setDeletingMin(m)} className="p-2 text-white/10 hover:text-red-400 transition-colors">
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
                     )}
                   </div>
                 ))}
@@ -246,6 +301,56 @@ const ModuleChurch = ({ localData, onUpdate }) => {
           )}
         </AnimatePresence>
       </div>
+
+      {/* MODAL DE EDIÇÃO DE MINISTÉRIO */}
+      <AnimatePresence>
+        {isEditModalOpen && editingMin && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsEditModalOpen(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-xs bg-white rounded-[2.5rem] p-8 shadow-2xl">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[10px] font-black uppercase italic text-slate-950 tracking-widest">Editar Obreiro</h3>
+                <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={16}/></button>
+              </div>
+              <div className="space-y-3">
+                <input placeholder="NOME..." className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none" value={editingMin.nome} onChange={e => setEditingMin({...editingMin, nome: e.target.value})} />
+                <select className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-950 text-[10px] border border-slate-100 uppercase italic outline-none" value={editingMin.cargo} onChange={e => setEditingMin({...editingMin, cargo: e.target.value})}>
+                  {cargosOrdem.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button onClick={handleSaveEdit} className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase italic text-[10px] shadow-lg active:scale-95 transition-all">
+                  Salvar Alterações
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (App Style) */}
+      <AnimatePresence>
+        {deletingMin && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeletingMin(null)} className="absolute inset-0 bg-slate-950/90 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} className="relative w-full max-w-xs bg-white rounded-[2.5rem] p-10 shadow-2xl text-center">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="text-xs font-black text-slate-950 uppercase italic leading-tight mb-2">Remover do Ministério?</h3>
+              <p className="text-[9px] font-bold text-slate-400 uppercase leading-relaxed mb-8">
+                Você está prestes a remover <span className="text-slate-950 italic">{deletingMin.nome}</span> da lista oficial. Esta ação é imediata.
+              </p>
+              <div className="space-y-3">
+                <button onClick={handleConfirmDelete} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase italic text-[10px] shadow-lg active:scale-95 transition-all">
+                  Confirmar Exclusão
+                </button>
+                <button onClick={() => setDeletingMin(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase italic text-[10px] active:scale-95 transition-all">
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </motion.div>
   );

@@ -46,13 +46,14 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
     <>
       <div className="sticky top-0 z-[100] bg-white/90 backdrop-blur-md border-b border-slate-200/60 px-6 py-4 flex justify-between items-center shadow-sm">
         
-        {/* SELETOR DE REGIONAL DIRETO NO HEADER (Anexo 6) */}
+        {/* SELETOR DE REGIONAL DIRETO NO HEADER (Protegido v2.1) */}
         <button 
-          onClick={() => setIsProfileOpen(true)} // Abre o menu onde está a troca
-          className="flex flex-col items-start leading-none text-left active:opacity-60 transition-all group"
+          onClick={() => isMaster && setIsProfileOpen(true)} // Só abre troca se for Master
+          disabled={!isMaster} // Desabilita interação para GEM
+          className={`flex flex-col items-start leading-none text-left transition-all group ${isMaster ? 'active:opacity-60' : 'cursor-default'}`}
         >
           <span className="text-[10px] font-black text-blue-600 uppercase italic tracking-tighter flex items-center gap-1 leading-none">
-            Regional <ChevronDown size={10} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+            Regional {isMaster && <ChevronDown size={10} className="text-slate-400 group-hover:text-blue-600 transition-colors" />}
           </span>
           <h1 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight truncate max-w-[180px]">
             {regionalAtivaNome}
