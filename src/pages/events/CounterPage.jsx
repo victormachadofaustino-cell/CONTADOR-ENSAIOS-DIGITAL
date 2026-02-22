@@ -138,33 +138,34 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return () => { isMounted = false; unsubEvent(); };
   }, [currentEventId]);
 
-  // v5.1: UNIÃO DE INSTRUMENTOS NACIONAIS + EXTRAS REATIVOS
+  // v5.3: UNIÃO DE INSTRUMENTOS COM MAPEAMENTO DE LEITURA CONSOLIDADA
   const allInstruments = useMemo(() => {
-    const ordemOficial = ['Coral', 'irmandade', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
+    const ordemOficial = ['Coral', 'irmandade', 'irmas', 'irmaos', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
     
-    // Passo 1: Instrumentos base (Nacionais + Overrides locais)
     let base = instrumentsNacionais.map(instBase => {
       const override = instrumentsConfig.find(local => local.id === instBase.id);
       return override ? { ...instBase, ...override } : instBase;
     });
 
-    // Passo 2: Injeção de Extras que estão no banco (Fazer aparecer na tela na hora)
-    const extraIdsNoBanco = Object.keys(localCounts).filter(k => k.startsWith('extra_') || (!ordemOficial.includes(k) && !k.startsWith('meta_') && k !== 'irmas' && k !== 'irmaos' && k !== 'orgao'));
+    const extraIdsNoBanco = Object.keys(localCounts).filter(k => 
+      !k.startsWith('meta_') && 
+      !base.find(b => b.id === k)
+    );
     
-    const extras = extraIdsNoBanco.map(id => ({
-      id: id,
-      name: localCounts[id].name || id.replace('extra_', '').toUpperCase(),
-      section: (localCounts[id].section || 'GERAL').toUpperCase(),
-      isExtra: true
-    }));
+    const extras = extraIdsNoBanco.map(id => {
+      const isSisters = id === 'irmas';
+      const isBrothers = id === 'irmaos';
+      const isOrgan = id === 'orgao';
 
-    // Passo 3: Adição das chaves de Irmandade/Órgão se não estiverem na base (Regional)
-    const specialKeys = [];
-    if (!base.find(b => b.id === 'irmas')) specialKeys.push({ id: 'irmas', name: 'IRMÃS', section: 'IRMANDADE' });
-    if (!base.find(b => b.id === 'irmaos')) specialKeys.push({ id: 'irmaos', name: 'IRMÃOS', section: 'IRMANDADE' });
-    if (!base.find(b => b.id === 'orgao')) specialKeys.push({ id: 'orgao', name: 'ÓRGÃO', section: 'ORGANISTAS' });
+      return {
+        id: id,
+        name: localCounts[id].name || (isSisters ? 'IRMÃS' : isBrothers ? 'IRMÃOS' : isOrgan ? 'ÓRGÃO' : id.replace('extra_', '').toUpperCase()),
+        section: (localCounts[id].section || (isSisters || isBrothers ? 'IRMANDADE' : isOrgan ? 'ORGANISTAS' : 'GERAL')).toUpperCase(),
+        isExtra: !isSisters && !isBrothers && !isOrgan
+      };
+    });
 
-    const final = [...base, ...extras, ...specialKeys];
+    const final = [...base, ...extras];
 
     return final.sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
@@ -196,7 +197,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (!nome.trim() || !extraInstrumentSection || !isGemLocal) return;
     const idSaneado = `extra_${nome.toLowerCase().replace(/\s/g, '')}_${Date.now()}`;
     try {
-      // Gravação que garante a persistência para o PDF
       await eventService.updateInstrumentCount(eventComumId, currentEventId, {
         instId: idSaneado, field: 'total', value: 0, userData, section: extraInstrumentSection, customName: nome.toUpperCase().trim()
       });
@@ -235,7 +235,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         [`counts.${id}.updatedAt`]: Date.now()
       });
       
-      // Suporte para o modo Regional: Ativa a visão do grupo se for posse de Naipe
       if (id.startsWith('meta_')) {
         const sectionTag = id.replace('meta_', '').toUpperCase();
         setActiveGroup(sectionTag);

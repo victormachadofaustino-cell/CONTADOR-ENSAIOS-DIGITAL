@@ -9,15 +9,13 @@ let updateBuffers = {};
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v8.5 - Estabilização de Listeners e Gestão de Convidados
- * Ajustado para tratar revogação de acesso reativa sem disparar exceções de permissão.
+ * v8.8 - FIX: Resiliência em Escrita Concorrente e Desentupimento de Buffer
+ * Garante que falhas de leitura/permissão não travem o app para múltiplos usuários.
  */
 export const eventService = {
 
   /**
    * BUSCA USUÁRIOS DA REGIONAL
-   * Permite que o gestor encontre irmãos de outras cidades para convidar como contadores.
-   * Baseado na permissão de leitura de perfis da mesma regional nas Rules.
    */
   getUsersByRegional: async (regionalId) => {
     if (!regionalId) return [];
@@ -52,8 +50,6 @@ export const eventService = {
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       callback(events);
     }, (error) => {
-      // TRATAMENTO REATIVO: Se o acesso for revogado (ex: remoção da lista de convidados),
-      // retornamos uma lista vazia para o callback em vez de estourar erro no console.
       if (error.code === 'permission-denied') {
         console.warn("Sincronização encerrada: Acesso ao evento regional revogado ou finalizado.");
         callback([]);
@@ -117,10 +113,10 @@ export const eventService = {
       const payload = {
         type: type || 'Ensaio Local',
         scope: scope || 'local', 
-        invitedUsers: Array.isArray(invitedUsers) ? invitedUsers : [], // Garante que nasce como array de strings
+        invitedUsers: Array.isArray(invitedUsers) ? invitedUsers : [], 
         date,
         responsavel: responsavel || 'Pendente',
-        createdById: currentUser?.uid || null, // Carimbo essencial para permissão de Delete
+        createdById: currentUser?.uid || null,
         comumNome: comumNome || '',
         comumId: comumId,
         cidadeId: cidadeId || '',
@@ -134,7 +130,7 @@ export const eventService = {
         },
         counts: initialCounts, 
         createdAt: Date.now(),
-        dbVersion: "8.5-listener-stability-fix"
+        dbVersion: "8.8-resilience-fix"
       };
 
       return await addDoc(collection(db, 'events_global'), payload);
@@ -147,7 +143,7 @@ export const eventService = {
   },
 
   /**
-   * GESTÃO DE CONVIDADOS (Acesso por UID String)
+   * GESTÃO DE CONVIDADOS
    */
   addGuest: async (eventId, userObjectOrId) => {
     if (!eventId || !userObjectOrId) return;
@@ -189,7 +185,8 @@ export const eventService = {
   },
 
   /**
-   * Atualiza a contagem na COLEÇÃO GLOBAL
+   * v8.8 - ATUALIZAÇÃO RESILIENTE COM AUTO-LIMPEZA
+   * Garante que falhas não "entupam" o buffer global de cliques.
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
     if (!eventId || !instId) return;
@@ -199,27 +196,61 @@ export const eventService = {
     const val = Math.max(0, parseInt(value) || 0);
 
     if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {};
-    
-    updateBuffers[timerKey][`counts.${instId}.${fieldToUpdate}`] = val;
+    updateBuffers[timerKey][fieldToUpdate] = val;
 
     if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]);
 
     debounceTimers[timerKey] = setTimeout(async () => {
       const eventRef = doc(db, 'events_global', eventId);
+      const bufferCopy = { ...updateBuffers[timerKey] };
       
       try {
-        const finalUpdates = { ...updateBuffers[timerKey] };
-        finalUpdates[`counts.${instId}.lastEditBy`] = userData?.name || 'Sistema';
-        finalUpdates[`counts.${instId}.timestamp`] = Date.now();
+        const snap = await getDoc(eventRef);
+        if (!snap.exists()) throw new Error("EVENT_NOT_FOUND");
         
-        if (section) finalUpdates[`counts.${instId}.section`] = section;
-        if (customName) finalUpdates[`counts.${instId}.name`] = customName;
+        const counts = snap.data().counts || {};
+        let targetId = instId;
+
+        // --- LÓGICA DE REDIRECIONAMENTO RESILIENTE ---
+        const isPublico = instId.toLowerCase() === 'irmas' || instId.toLowerCase() === 'irmaos';
+        
+        if (isPublico) {
+          const oficialId = Object.keys(counts).find(key => counts[key].section?.toUpperCase() === 'IRMANDADE' && !key.startsWith('meta_'));
+          // Se encontrar o Coral/Irmandade oficial, redireciona. Senão, mantém o instId original.
+          if (oficialId) targetId = oficialId;
+        }
+
+        const currentInstData = counts[targetId] || {};
+        const finalUpdates = {};
+        const baseKey = `counts.${targetId}`;
+
+        // Aplica o que está no buffer
+        Object.keys(bufferCopy).forEach(f => {
+          finalUpdates[`${baseKey}.${f}`] = bufferCopy[f];
+        });
+
+        // AUTO-SOMA (Lógica de Totalizador Mestre)
+        const totalIrmaos = fieldToUpdate === 'irmaos' ? val : (currentInstData.irmaos || 0);
+        const totalIrmas = fieldToUpdate === 'irmas' ? val : (currentInstData.irmas || 0);
+        
+        if (isPublico || targetId.toLowerCase().includes('coral') || targetId.toLowerCase().includes('irmandade')) {
+          finalUpdates[`${baseKey}.total`] = totalIrmaos + totalIrmas;
+          finalUpdates[`${baseKey}.section`] = 'IRMANDADE';
+        }
+
+        finalUpdates[`${baseKey}.lastEditBy`] = userData?.name || 'Sistema';
+        finalUpdates[`${baseKey}.timestamp`] = Date.now();
+        if (section && !isPublico) finalUpdates[`${baseKey}.section`] = section;
+        if (customName) finalUpdates[`${baseKey}.name`] = customName;
 
         await updateDoc(eventRef, finalUpdates);
+        
+      } catch (e) {
+        console.error("Gargalo detectado no Service v8.8:", e.message);
+      } finally {
+        // LIMPEZA CRÍTICA: Desentope o cano independente de sucesso ou falha
         delete debounceTimers[timerKey];
         delete updateBuffers[timerKey];
-      } catch (e) {
-        console.error("Erro ao sincronizar contagem:", e);
       }
     }, 600);
   },
@@ -228,9 +259,7 @@ export const eventService = {
     if (!eventId || !instId) return;
     const eventRef = doc(db, 'events_global', eventId);
     try {
-      return await updateDoc(eventRef, { 
-        [`counts.${instId}`]: deleteField() 
-      });
+      return await updateDoc(eventRef, { [`counts.${instId}`]: deleteField() });
     } catch (e) {
       console.error("Erro ao remover extra:", e);
     }
@@ -260,9 +289,7 @@ export const eventService = {
     };
 
     try {
-      await updateDoc(eventRef, { 
-        ata: finalAta 
-      });
+      await updateDoc(eventRef, { ata: finalAta });
     } catch (e) {
       console.error("Erro ao salvar Ata:", e);
       throw new Error("Erro ao salvar os dados da Ata.");

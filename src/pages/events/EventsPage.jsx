@@ -86,7 +86,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     return () => { isMounted = false; unsubCid(); };
   }, [activeRegionalId, isComissao, userData?.cidadeId]); 
 
-  // 2. SINCRONIZAÇÃO: CIDADE -> COMUM
+  // 2. SINCRONIZAÇÃO: CIDADE -> COMUM (v4.0 - Estabilizada para evitar quedas simultâneas)
   useEffect(() => {
     if (!selectedCityId) { setComuns([]); return; }
     let isMounted = true;
@@ -100,16 +100,18 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       }));
       const sortedList = list.sort((a, b) => a.nome.localeCompare(b.nome));
       const filteredList = isRegionalCidade ? sortedList : sortedList.filter(c => permitidasIds.includes(c.id));
+      
       setComuns(filteredList);
 
       if (filteredList.length === 0) {
-        if (selectedChurchId !== null) {
+        // Apenas limpa se não estivermos no meio de uma transição reativa
+        if (selectedChurchId !== null && selectedChurchId !== '') {
           setContext('comum', null);
           if (onChurchChange) onChurchChange(null, '');
         }
       } else {
         const comumValida = filteredList.some(c => c.id === selectedChurchId);
-        if (!comumValida) {
+        if (!comumValida && selectedChurchId) {
           const primeira = filteredList[0];
           setContext('comum', primeira.id);
           if (onChurchChange) onChurchChange(primeira.id, primeira.nome);
@@ -119,13 +121,10 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     return () => { isMounted = false; unsub(); };
   }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
-  // 3. MONITOR DE CONVITES REGIONAIS (v3.9 - Ajuste para evitar Erro de Permissão)
+  // 3. MONITOR DE CONVITES REGIONAIS (v4.0 - Blindado contra estouro de quota/permisssão)
   useEffect(() => {
-    // Se não houver UID, não tentamos ler o banco para evitar erro de permissão
     if (!user?.uid) return;
 
-    // JUSTIFICATIVA: Para cumprir a Security Rule, a Query deve ser específica.
-    // Buscamos apenas documentos onde o usuário é explicitamente convidado.
     const qInvited = query(
       collection(db, 'events_global'),
       where('invitedUsers', 'array-contains', user.uid),
@@ -134,16 +133,21 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
 
     const unsubInvited = onSnapshot(qInvited, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setInvitedEvents(data);
+      // Só atualiza o estado se houver mudança real para evitar re-renderizações infinitas
+      setInvitedEvents(prev => {
+        if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+        return data;
+      });
     }, (err) => {
-      // Captura o erro mas não trava o app
-      console.error("Erro ao monitorar convites globais:", err.message);
+      if (err.code !== 'permission-denied') {
+         console.error("Monitor de convites:", err.message);
+      }
     });
 
     return () => unsubInvited();
-  }, [user?.uid]); // Dependência única e estável
+  }, [user?.uid]);
 
-  // 4. LÓGICA DE AGRUPAMENTO POR ANO (MESCLADA E DEDUPLICADA)
+  // 4. LÓGICA DE AGRUPAMENTO POR ANO
   const groupedEvents = useMemo(() => {
     const isComumValida = comuns.some(c => c.id === selectedChurchId);
     if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};

@@ -8,8 +8,8 @@ import InstrumentCard from './InstrumentCard';
 
 /**
  * Módulo de Contagem para Ensaios Regionais
- * v3.5 - Correção Definitiva de Rótulos e Ativação de Posse Individual
- * Resolve os erros dos Anexos 1 e 2, garantindo labels diretos e botões de assumir por linha.
+ * v3.7 - Sincronização de Leitura Consolidada (Irmandade/Órgão)
+ * Garante que os cards individuais leiam o 'total' do ID mestre da seção.
  */
 const CounterRegional = ({ 
   instruments, 
@@ -44,8 +44,15 @@ const CounterRegional = ({
   };
 
   const getSectionTotal = (sectionName) => {
-    if (sectionName.toUpperCase() === 'IRMANDADE') {
-      return (parseInt(localCounts?.irmas?.total) || 0) + (parseInt(localCounts?.irmaos?.total) || 0);
+    // Busca o ID oficial que detém o campo 'total' consolidado da seção
+    const masterInst = (instruments || []).find(i => 
+      i && i.id && !i.id.startsWith('meta_') && 
+      (i.section || '').toUpperCase() === sectionName.toUpperCase() &&
+      !['irmas', 'irmaos'].includes(i.id.toLowerCase())
+    );
+
+    if (sectionName.toUpperCase() === 'IRMANDADE' || sectionName.toUpperCase() === 'ORGANISTAS') {
+      return parseInt(localCounts?.[masterInst?.id]?.total) || 0;
     }
     
     return (instruments || [])
@@ -62,6 +69,10 @@ const CounterRegional = ({
         const sectionInstruments = (instruments || []).filter(i => 
           i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase()
         );
+
+        // Identifica o ID oficial da seção para prover dados consolidados aos cards parciais
+        const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id;
+        const masterData = localCounts?.[masterId] || {};
 
         const totalNaipe = getSectionTotal(section);
         const isOpen = openSections[section];
@@ -108,49 +119,45 @@ const CounterRegional = ({
                 >
                   <div className="px-4 pb-6 space-y-3 pt-2">
                     
-                    {/* CORREÇÃO ANEXO 1: IRMANDADE (Labels IRMÃS e IRMÃOS + Botão Assumir) */}
+                    {/* IRMANDADE: Vincula os cards ao masterData para exibir o Total correto */}
                     {isIrmandade ? (
                       <div className="space-y-3">
                         <InstrumentCard
                           key="irmas_row"
-                          inst={{ id: 'irmas', nome: 'IRMÃS', label: 'IRMÃS', type: 'simple' }}
-                          data={localCounts?.irmas || {}}
+                          inst={{ id: 'irmas', nome: 'IRMÃS', label: 'IRMÃS' }}
+                          data={masterData}
                           onUpdate={onUpdate}
                           onToggleOwnership={() => onToggleSection('irmas', localCounts?.irmas?.responsibleId === userData?.uid)}
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
-                          showOwnership={true}
                         />
                         <InstrumentCard
                           key="irmaos_row"
-                          inst={{ id: 'irmaos', nome: 'IRMÃOS', label: 'IRMÃOS', type: 'simple' }}
-                          data={localCounts?.irmaos || {}}
+                          inst={{ id: 'irmaos', nome: 'IRMÃOS', label: 'IRMÃOS' }}
+                          data={masterData}
                           onUpdate={onUpdate}
                           onToggleOwnership={() => onToggleSection('irmaos', localCounts?.irmaos?.responsibleId === userData?.uid)}
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
-                          showOwnership={true}
                         />
                       </div>
                     ) : isOrganistas ? (
-                      /* CORREÇÃO ANEXO 2: ORGANISTAS (Label ÓRGÃO + Botão Assumir) */
                       <div className="space-y-3">
                         <InstrumentCard
                           key="orgao_row"
-                          inst={{ id: 'orgao', nome: 'ÓRGÃO', label: 'ÓRGÃO', type: 'simple' }}
-                          data={localCounts?.orgao || {}}
+                          inst={{ id: 'orgao', nome: 'ÓRGÃO', label: 'ÓRGÃO' }}
+                          data={masterData}
                           onUpdate={onUpdate}
                           onToggleOwnership={() => onToggleSection('orgao', localCounts?.orgao?.responsibleId === userData?.uid)}
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
-                          showOwnership={true}
                         />
                       </div>
                     ) : (
-                      /* LISTAGEM PADRÃO DE INSTRUMENTOS (Ativando Posse Individual) */
+                      /* LISTAGEM PADRÃO DE INSTRUMENTOS */
                       <>
                         {sectionInstruments.length > 0 ? (
                           sectionInstruments.map((inst) => (
@@ -163,7 +170,6 @@ const CounterRegional = ({
                               userData={userData}
                               isClosed={isClosed}
                               isRegional={true}
-                              showOwnership={true}
                               sectionName={section}
                             />
                           ))
