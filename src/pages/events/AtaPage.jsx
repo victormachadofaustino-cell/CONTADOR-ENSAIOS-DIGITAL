@@ -168,7 +168,7 @@ const AtaPage = ({ eventId, comumId }) => {
             if (!loadedAta.palavra) {
               loadedAta.palavra = { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' };
             }
-            // Garantia de campo v8.7
+            // Garantia de campo v8.8
             if (loadedAta.hinoAbertura === undefined) loadedAta.hinoAbertura = '';
             
             setAtaData(loadedAta);
@@ -308,7 +308,16 @@ const AtaPage = ({ eventId, comumId }) => {
 
       <Accordion title={isRegionalScope ? "Ministério Regional" : "Ministério Local"} isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={isRegionalScope ? (ataData.presencaLocalFull?.length || null) : (ataData.presencaLocal?.length || null)}>
         {isRegionalScope ? (
-          <MinistryAccordion eventId={eventId} regionalId={eventMeta?.regionalId} presencaAtual={ataData.presencaLocalFull || []} onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })} isInputDisabled={isInputDisabled} userData={userData} />
+          <MinistryAccordion 
+            eventId={eventId} 
+            regionalId={eventMeta?.regionalId} 
+            cidadeId={eventMeta?.cidadeId} // SINCRONIA v8.8
+            comumId={comumId} // SINCRONIA v8.8
+            presencaAtual={ataData.presencaLocalFull || []} 
+            onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })} 
+            isInputDisabled={isInputDisabled} 
+            userData={userData} 
+          />
         ) : (
           <AtaMinisterioLocal localMinisterio={localMinisterio} presencaLocal={ataData.presencaLocal} isInputDisabled={isInputDisabled} togglePresencaLocal={togglePresencaLocal} />
         )}

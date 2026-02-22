@@ -4,15 +4,21 @@ import { X, Plus, Music, Info } from 'lucide-react'; // CORREÇÃO: ShieldInfo r
 
 /**
  * Modal para adição de instrumentos extras em um ensaio específico.
- * v1.1 - Correção de importação de ícones para compatibilidade Lucide.
+ * v1.2 - Preparação para Persistência em PDF e Dashboard.
+ * Garante que o nome seja enviado e processado como um novo campo no Firebase.
  */
 const ExtraInstrumentModal = ({ section, onConfirm, onCancel }) => {
   const [nome, setNome] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!nome.trim()) return;
-    onConfirm(nome);
+    const cleanName = nome.trim();
+    if (!cleanName) return;
+
+    // ESTRATÉGIA v1.2: Enviamos o nome limpo. 
+    // O componente pai (CounterPage) deve gerar um ID único (ex: harpa_extra) 
+    // e salvar na subcoleção ou campo 'extraInstruments' do evento para o PDF ler.
+    onConfirm(cleanName);
   };
 
   return (

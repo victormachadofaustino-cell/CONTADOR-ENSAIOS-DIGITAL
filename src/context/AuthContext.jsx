@@ -30,14 +30,14 @@ export const AuthProvider = ({ children }) => {
       
       if (currentUser) {
         try {
-          // --- SINCRONIZAÇÃO DE CRACHÁ v8.5 (FORÇADA PARA PLANO BLAZE) ---
-          // Forçamos a renovação para que o GEM e Regional tenham os poderes atualizados no Token
+          // --- SINCRONIZAÇÃO DE CRACHÁ v8.6 (ESTABILIZAÇÃO DE REGRAS) ---
+          // Forçamos a renovação para garantir que as Rules v10.3 reconheçam o usuário
           const tokenResult = await currentUser.getIdTokenResult(true);
           const claims = tokenResult.claims;
 
           const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
 
-          // REATIVIDADE TOTAL v8.5: Ouvinte do perfil no banco de dados
+          // REATIVIDADE TOTAL v8.6: Ouvinte do perfil com tratamento de latência de permissão
           const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data();
@@ -75,14 +75,20 @@ export const AuthProvider = ({ children }) => {
             }
             setLoading(false);
           }, (err) => {
-            // CORREÇÃO CRÍTICA: Se o Firebase Rules barrar a leitura inicial do perfil, 
-            // liberamos o app com dados básicos para permitir a renovação do Token.
-            console.error("Aviso: Perfil aguardando sincronização de Token...");
-            setUserData(prev => prev || { 
-              uid: currentUser.uid, 
-              email: currentUser.email,
-              isBasico: true 
-            });
+            // CORREÇÃO v8.6: Tratamento silencioso para evitar erro fatal no console
+            // Se o Firebase Rules barrar temporariamente (latência de propagação), 
+            // liberamos um perfil básico seguro para evitar a tela branca.
+            if (err.code === 'permission-denied') {
+               console.warn("AuthContext: Sincronizando permissões de segurança v10.3...");
+               setUserData(prev => prev || { 
+                 uid: currentUser.uid, 
+                 email: currentUser.email,
+                 isBasico: true,
+                 pendingSync: true 
+               });
+            } else {
+               console.error("Erro crítico no Snapshot de Perfil:", err);
+            }
             setLoading(false);
           });
 
@@ -105,7 +111,7 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => unsubAuth();
-  }, []); 
+  }, [activeRegionalId, activeCityId, activeComumId]); // Adicionado dependências para manter o GPS vivo
 
   // FUNÇÕES DE COMANDO PARA O GPS (ATUALIZAÇÃO ATÔMICA)
   const setContext = (type, id) => {
@@ -143,7 +149,7 @@ export const AuthProvider = ({ children }) => {
     user,
     userData,
     loading,
-    isAuthenticated: !!user && user.emailVerified === true && userData?.approved === true, 
+    isAuthenticated: !!user && user.emailVerified === true && (userData?.approved === true || userData?.isMaster), 
     setContext, 
   };
 

@@ -138,27 +138,35 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return () => { isMounted = false; unsubEvent(); };
   }, [currentEventId]);
 
+  // v5.1: UNIÃO DE INSTRUMENTOS NACIONAIS + EXTRAS REATIVOS
   const allInstruments = useMemo(() => {
     const ordemOficial = ['Coral', 'irmandade', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
     
-    let base = [];
-    
-    if (instrumentsNacionais.length > 0) {
-      base = instrumentsNacionais.map(instBase => {
-        const override = instrumentsConfig.find(local => local.id === instBase.id);
-        return override ? { ...instBase, ...override } : instBase;
-      });
-    } else {
-      base = Object.keys(localCounts)
-        .filter(k => !k.startsWith('meta_'))
-        .map(k => ({
-          id: k,
-          name: localCounts[k].name || k.toUpperCase(),
-          section: (localCounts[k].section || 'GERAL').toUpperCase()
-        }));
-    }
+    // Passo 1: Instrumentos base (Nacionais + Overrides locais)
+    let base = instrumentsNacionais.map(instBase => {
+      const override = instrumentsConfig.find(local => local.id === instBase.id);
+      return override ? { ...instBase, ...override } : instBase;
+    });
 
-    return base.sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
+    // Passo 2: Injeção de Extras que estão no banco (Fazer aparecer na tela na hora)
+    const extraIdsNoBanco = Object.keys(localCounts).filter(k => k.startsWith('extra_') || (!ordemOficial.includes(k) && !k.startsWith('meta_') && k !== 'irmas' && k !== 'irmaos' && k !== 'orgao'));
+    
+    const extras = extraIdsNoBanco.map(id => ({
+      id: id,
+      name: localCounts[id].name || id.replace('extra_', '').toUpperCase(),
+      section: (localCounts[id].section || 'GERAL').toUpperCase(),
+      isExtra: true
+    }));
+
+    // Passo 3: Adição das chaves de Irmandade/Órgão se não estiverem na base (Regional)
+    const specialKeys = [];
+    if (!base.find(b => b.id === 'irmas')) specialKeys.push({ id: 'irmas', name: 'IRMÃS', section: 'IRMANDADE' });
+    if (!base.find(b => b.id === 'irmaos')) specialKeys.push({ id: 'irmaos', name: 'IRMÃOS', section: 'IRMANDADE' });
+    if (!base.find(b => b.id === 'orgao')) specialKeys.push({ id: 'orgao', name: 'ÓRGÃO', section: 'ORGANISTAS' });
+
+    const final = [...base, ...extras, ...specialKeys];
+
+    return final.sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
 
   const sections = useMemo(() => {
@@ -188,6 +196,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (!nome.trim() || !extraInstrumentSection || !isGemLocal) return;
     const idSaneado = `extra_${nome.toLowerCase().replace(/\s/g, '')}_${Date.now()}`;
     try {
+      // Gravação que garante a persistência para o PDF
       await eventService.updateInstrumentCount(eventComumId, currentEventId, {
         instId: idSaneado, field: 'total', value: 0, userData, section: extraInstrumentSection, customName: nome.toUpperCase().trim()
       });
@@ -205,7 +214,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     
     if (activeGroup === sec) { setActiveGroup(null); return; }
     
-    // JUSTIFICATIVA: Se o ID do responsável no banco já for o meu, abre direto sem perguntar
     if (isMaster || responsibleId === myUID) {
       setActiveGroup(sec);
       setShowOwnershipModal(null);
@@ -218,19 +226,22 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (!eventComumId || isClosed || !currentEventId) return;
     
     try {
-      // JUSTIFICATIVA: Limpa o modal antes de gravar no banco para evitar conflito visual (Race Condition)
       setShowOwnershipModal(null);
 
       await updateDoc(doc(db, 'events_global', currentEventId), {
         [`counts.${id}.responsibleId`]: myUID,
-        [`counts.${id}.responsibleName`]: userData?.name || "Colaborador",
+        [`counts.${id}.responsibleName`]: userData?.name || userData?.nome || "Colaborador",
         [`counts.${id}.isActive`]: true,
         [`counts.${id}.updatedAt`]: Date.now()
       });
       
-      const sectionTag = id.replace('meta_', '').toUpperCase();
-      setActiveGroup(sectionTag);
-      toast.success("Você assumiu esta seção.");
+      // Suporte para o modo Regional: Ativa a visão do grupo se for posse de Naipe
+      if (id.startsWith('meta_')) {
+        const sectionTag = id.replace('meta_', '').toUpperCase();
+        setActiveGroup(sectionTag);
+      }
+      
+      toast.success("Responsabilidade assumida.");
     } catch (e) { 
       console.error("Erro de Posse:", e);
       toast.error("Falha ao assumir responsabilidade."); 
@@ -274,7 +285,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                 localCounts={localCounts}
                 sections={sections}
                 onUpdate={handleUpdateInstrument}
-                onToggleSection={setOwnership} 
+                onToggleSection={(id) => setOwnership(id, true)} 
                 onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
                 userData={userData}
                 isClosed={isClosed}
