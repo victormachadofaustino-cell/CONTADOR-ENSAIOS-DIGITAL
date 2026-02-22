@@ -1,4 +1,4 @@
-import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
+import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch, or } from '../config/firebase';
 import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
@@ -9,24 +9,57 @@ let updateBuffers = {};
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v7.9 - Protocolo de Diagnóstico e Carimbagem de Identidade
- * Adicionado console.error para visibilidade de falhas ocultas.
+ * v8.5 - Estabilização de Listeners e Gestão de Convidados
+ * Ajustado para tratar revogação de acesso reativa sem disparar exceções de permissão.
  */
 export const eventService = {
 
-  // Escuta os eventos de uma comum específica na COLEÇÃO GLOBAL
-  subscribeToEvents: (comumId, callback) => {
-    if (!comumId) return; 
+  /**
+   * BUSCA USUÁRIOS DA REGIONAL
+   * Permite que o gestor encontre irmãos de outras cidades para convidar como contadores.
+   * Baseado na permissão de leitura de perfis da mesma regional nas Rules.
+   */
+  getUsersByRegional: async (regionalId) => {
+    if (!regionalId) return [];
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('regionalId', '==', regionalId),
+        where('approved', '==', true)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    } catch (e) {
+      console.error("Erro ao buscar usuários da regional:", e);
+      return [];
+    }
+  },
+
+  // Escuta eventos da comum OU eventos onde o usuário é convidado (via UID string)
+  subscribeToEvents: (comumId, userId, callback) => {
+    if (!comumId || !userId) return; 
+    
     const q = query(
       collection(db, 'events_global'), 
-      where('comumId', '==', comumId), 
+      or(
+        where('comumId', '==', comumId),
+        where('invitedUsers', 'array-contains', userId)
+      ),
       orderBy('date', 'desc')
     );
+
     return onSnapshot(q, (snapshot) => {
       const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       callback(events);
     }, (error) => {
-      console.error("Erro no Listener de Eventos Global:", error);
+      // TRATAMENTO REATIVO: Se o acesso for revogado (ex: remoção da lista de convidados),
+      // retornamos uma lista vazia para o callback em vez de estourar erro no console.
+      if (error.code === 'permission-denied') {
+        console.warn("Sincronização encerrada: Acesso ao evento regional revogado ou finalizado.");
+        callback([]);
+      } else {
+        console.error("Erro no Listener de Eventos Global:", error);
+      }
     });
   },
 
@@ -36,7 +69,6 @@ export const eventService = {
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
     
-    // Captura o usuário logado para carimbar a autoria (Essencial para exclusão posterior)
     const auth = getAuth();
     const currentUser = auth.currentUser;
 
@@ -45,7 +77,6 @@ export const eventService = {
     let initialCounts = {};
 
     try {
-      // 1. BUSCA O SNAPSHOT LOCAL
       const localRef = collection(db, 'comuns', comumId, 'instrumentos_config');
       const localSnap = await getDocs(localRef);
       
@@ -54,7 +85,6 @@ export const eventService = {
         throw new Error("CONFIG_REQUIRED"); 
       }
 
-      // 2. MONTAGEM DO MAPA DE CONTAGEM INICIAL
       const sessoesDetectadas = new Set();
 
       localSnap.docs.forEach(docInst => {
@@ -84,14 +114,13 @@ export const eventService = {
         };
       });
       
-      // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL COM CARIMBAGEM
       const payload = {
         type: type || 'Ensaio Local',
         scope: scope || 'local', 
-        invitedUsers: invitedUsers || [], 
+        invitedUsers: Array.isArray(invitedUsers) ? invitedUsers : [], // Garante que nasce como array de strings
         date,
         responsavel: responsavel || 'Pendente',
-        createdById: currentUser?.uid || null, // Carimbo de quem criou (Proteção GEM)
+        createdById: currentUser?.uid || null, // Carimbo essencial para permissão de Delete
         comumNome: comumNome || '',
         comumId: comumId,
         cidadeId: cidadeId || '',
@@ -105,27 +134,28 @@ export const eventService = {
         },
         counts: initialCounts, 
         createdAt: Date.now(),
-        dbVersion: "7.9-identity-stamped"
+        dbVersion: "8.5-listener-stability-fix"
       };
 
       return await addDoc(collection(db, 'events_global'), payload);
 
     } catch (err) {
-      console.error("Erro detalhado na criação do evento:", err); // Agora aparece no console!
+      console.error("Erro detalhado na criação do evento:", err);
       if (err.message === "CONFIG_REQUIRED") throw err;
       throw new Error("Falha ao inicializar evento.");
     }
   },
 
   /**
-   * GESTÃO DE CONVIDADOS
+   * GESTÃO DE CONVIDADOS (Acesso por UID String)
    */
-  addGuest: async (eventId, userId) => {
-    if (!eventId || !userId) return;
+  addGuest: async (eventId, userObjectOrId) => {
+    if (!eventId || !userObjectOrId) return;
+    const uid = typeof userObjectOrId === 'object' ? userObjectOrId.uid : userObjectOrId;
     const eventRef = doc(db, 'events_global', eventId);
     try {
       return await updateDoc(eventRef, {
-        invitedUsers: arrayUnion(userId)
+        invitedUsers: arrayUnion(uid)
       });
     } catch (e) {
       console.error("Erro ao adicionar convidado:", e);
@@ -133,12 +163,13 @@ export const eventService = {
     }
   },
 
-  removeGuest: async (eventId, userId) => {
-    if (!eventId || !userId) return;
+  removeGuest: async (eventId, userObjectOrId) => {
+    if (!eventId || !userObjectOrId) return;
+    const uid = typeof userObjectOrId === 'object' ? userObjectOrId.uid : userObjectOrId;
     const eventRef = doc(db, 'events_global', eventId);
     try {
       return await updateDoc(eventRef, {
-        invitedUsers: arrayRemove(userId)
+        invitedUsers: arrayRemove(uid)
       });
     } catch (e) {
       console.error("Erro ao remover convidado:", e);
@@ -146,14 +177,13 @@ export const eventService = {
     }
   },
 
-  // Exclui um ensaio da coleção global
   deleteEvent: async (comumId, eventId) => {
     if (!eventId) return; 
     try {
       const docRef = doc(db, 'events_global', eventId);
       return await deleteDoc(docRef);
     } catch (error) {
-      console.error("ERRO FIREBASE NA EXCLUSÃO:", error); // Crucial para o diagnóstico!
+      console.error("ERRO FIREBASE NA EXCLUSÃO:", error);
       throw error;
     }
   },

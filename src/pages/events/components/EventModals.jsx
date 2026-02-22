@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+// PRESERVAÇÃO: Importações originais mantidas
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, AlertTriangle, Settings, Trash2, Globe, UserPlus, Check, Search, Clock } from 'lucide-react';
+import { X, Send, AlertTriangle, Settings, Trash2, Globe, UserPlus, Check, Search, Clock, Map } from 'lucide-react';
 import { db, collection, query, where, onSnapshot } from '../../../config/firebase';
 
 /**
  * Componente que agrupa todos os modais da página de eventos.
- * v2.1 - Separação Estrita de Escopo: GEM Local (Só Local) vs Regional (Ambos).
+ * v2.3 - Escopo Regional: Ajuste de persistência de convidados para compatibilidade com Rules.
  */
 const EventModals = ({
   showModal,
@@ -19,7 +20,7 @@ const EventModals = ({
   setShowConfigError,
   isGemLocal,
   isRegionalCidade, // Prop necessária para trava de hierarquia
-  userData, // Necessário para filtrar usuários da mesma cidade
+  userData, // Necessário para filtrar usuários
   onNavigateToSettings,
   eventToDelete,
   setEventToDelete,
@@ -41,7 +42,7 @@ const EventModals = ({
     }
     // Apenas Regional para cima pode criar eventos regionais
     if (isRegionalCidade) {
-      options.push({ id: 'regional', name: 'Ensaio Regional (Cidade)' });
+      options.push({ id: 'regional', name: 'Ensaio Regional (Cidade/Regional)' });
     }
     return options;
   }, [isGemLocal, isRegionalCidade]);
@@ -54,13 +55,14 @@ const EventModals = ({
     }
   }, [showModal, userData?.uid]);
 
-  // MONITOR DE USUÁRIOS DA CIDADE PARA CONVITES
+  // MONITOR DE USUÁRIOS DA REGIONAL PARA CONVITES (Expandido v2.2)
   useEffect(() => {
-    if (!showModal || scope !== 'regional' || !userData?.activeCityId) return;
+    // Busca usuários da mesma REGIONAL para permitir convites entre cidades (Ex: Jundiaí <-> Morato)
+    if (!showModal || scope !== 'regional' || !userData?.regionalId) return;
 
     const q = query(
       collection(db, 'users'),
-      where('cidadeId', '==', userData.activeCityId),
+      where('regionalId', '==', userData.regionalId),
       where('approved', '==', true)
     );
 
@@ -70,6 +72,7 @@ const EventModals = ({
           uid: d.id, 
           name: d.data().name, 
           comum: d.data().comum,
+          cidade: d.data().cidadeNome || 'Cidade não inf.',
           role: d.data().role 
         }))
         .filter(u => u.uid !== userData.uid); // Remove o próprio criador
@@ -82,7 +85,8 @@ const EventModals = ({
   // Lógica de filtragem em tempo real (Nome ou Comum)
   const filteredUsers = availableUsers.filter(u => 
     u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.comum?.toLowerCase().includes(searchTerm.toLowerCase())
+    u.comum?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.cidade?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // RESET DE ESTADOS AO FECHAR O MODAL
@@ -111,11 +115,15 @@ const EventModals = ({
       localStorage.setItem(`recent_guests_${userData?.uid}`, JSON.stringify(updatedRecents));
     }
 
-    // Encaminha os novos metadados de escopo para a função de criação global
+    // AJUSTE CRÍTICO: Transformamos o array de objetos em um array de IDs (Strings)
+    // Isso garante que a consulta 'array-contains' e as 'Security Rules' funcionem.
+    const invitedIds = scope === 'regional' ? invitedUsers.map(u => u.uid) : [];
+
     handleCreate({
       scope,
-      invitedUsers: scope === 'regional' ? invitedUsers : []
+      invitedUsers: invitedIds
     });
+
     setScope('local');
     setInvitedUsers([]);
     setSearchTerm('');
@@ -124,7 +132,7 @@ const EventModals = ({
   return (
     <>
       <AnimatePresence>
-        {/* MODAL 1: NOVO REGISTRO (ADAPTADO v2.1) */}
+        {/* MODAL 1: NOVO REGISTRO */}
         {showModal && (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 text-left">
             <motion.div 
@@ -140,11 +148,10 @@ const EventModals = ({
               <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8 leading-none tracking-tighter">Novo Registro</h3>
               
               <div className="space-y-5 overflow-y-auto no-scrollbar pr-1">
-                {/* SELETOR DE ESCOPO - RESTRITO v2.1: Só aparece se houver mais de uma opção (usuários Regional+) */}
                 {optionsScope.length > 1 && (
                   <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
                     <label className="text-[8px] font-black text-blue-600 uppercase ml-2 tracking-widest italic flex items-center gap-1.5">
-                      <Globe size={10} /> Tipo de Evento
+                      <Globe size={10} /> Escopo do Evento
                     </label>
                     <select 
                       value={scope} 
@@ -179,7 +186,6 @@ const EventModals = ({
                   />
                 </div>
 
-                {/* WHITELIST DE CONVIDADOS - EXCLUSIVO PARA MODO REGIONAL */}
                 <AnimatePresence>
                   {scope === 'regional' && (
                     <motion.div 
@@ -188,15 +194,18 @@ const EventModals = ({
                       exit={{ height: 0, opacity: 0 }}
                       className="space-y-3 pt-4 border-t border-slate-100 overflow-hidden"
                     >
-                      <label className="text-[8px] font-black text-slate-400 uppercase ml-2 tracking-widest italic flex items-center gap-1.5">
-                        <UserPlus size={10} /> Convidados da Cidade
-                      </label>
+                      <div className="flex justify-between items-center ml-2">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest italic flex items-center gap-1.5">
+                          <UserPlus size={10} /> Convidados (Regional)
+                        </label>
+                        <span className="text-[7px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase">Filtro Amplo</span>
+                      </div>
 
                       <div className="relative mb-2">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
                         <input 
                           type="text"
-                          placeholder="PESQUISAR POR NOME OU LOCALIDADE..."
+                          placeholder="BUSCAR POR NOME, CIDADE OU COMUM..."
                           className="w-full bg-slate-100 border-none rounded-xl py-2.5 pl-9 pr-4 text-[9px] font-black uppercase outline-none focus:ring-1 focus:ring-blue-200 transition-all"
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
@@ -204,7 +213,6 @@ const EventModals = ({
                       </div>
 
                       <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
-                        {/* VIEW DE RECENTES */}
                         {searchTerm === '' && recentUsers.length > 0 && (
                           <div className="mb-4">
                             <p className="text-[7px] font-black text-blue-500 uppercase mb-2 ml-1 flex items-center gap-1">
@@ -236,7 +244,12 @@ const EventModals = ({
                           >
                             <div className="text-left leading-none">
                               <p className="text-[10px] font-black uppercase italic">{user.name}</p>
-                              <p className={`text-[7px] font-bold uppercase mt-1 ${invitedUsers.find(i => i.uid === user.uid) ? 'text-blue-400' : 'text-slate-300'}`}>{user.role} • {user.comum}</p>
+                              <div className="flex items-center gap-1 mt-1">
+                                <Map size={6} className={invitedUsers.find(i => i.uid === user.uid) ? 'text-blue-400' : 'text-slate-300'} />
+                                <p className={`text-[7px] font-bold uppercase ${invitedUsers.find(i => i.uid === user.uid) ? 'text-blue-400' : 'text-slate-300'}`}>
+                                  {user.cidade} • {user.comum}
+                                </p>
+                              </div>
                             </div>
                             {invitedUsers.find(i => i.uid === user.uid) && <Check size={14} className="text-amber-500" />}
                           </button>
@@ -257,7 +270,7 @@ const EventModals = ({
           </div>
         )}
 
-        {/* MODAL 2: ORQUESTRA AUSENTE (ERRO DE CONFIGURAÇÃO) */}
+        {/* MODAL 2: ORQUESTRA AUSENTE */}
         {showConfigError && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-center">
             <motion.div 

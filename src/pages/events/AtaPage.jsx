@@ -38,6 +38,7 @@ const AtaPage = ({ eventId, comumId }) => {
   const [ataData, setAtaData] = useState({
     status: 'open',
     atendimentoNome: '', atendimentoMin: '',
+    hinoAbertura: '', // NOVO CAMPO v8.7
     oracaoAberturaNome: '', oracaoAberturaMin: '',
     ultimaOracaoNome: '', ultimaOracaoMin: '',
     partes: [
@@ -167,6 +168,9 @@ const AtaPage = ({ eventId, comumId }) => {
             if (!loadedAta.palavra) {
               loadedAta.palavra = { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' };
             }
+            // Garantia de campo v8.7
+            if (loadedAta.hinoAbertura === undefined) loadedAta.hinoAbertura = '';
+            
             setAtaData(loadedAta);
           }
           setLoading(false);
@@ -181,6 +185,22 @@ const AtaPage = ({ eventId, comumId }) => {
   const handleHinoChange = (pIdx, hIdx, val) => {
     if (isInputDisabled) return;
     let v = val.toUpperCase().trim();
+    
+    // Tratamento para campo especial 'Abertura' (pIdx null)
+    if (pIdx === null) {
+      if (v === '') return handleChange({ ...ataData, hinoAbertura: '' });
+      if (v.startsWith('C')) {
+        if (/^C[1-6]?$/.test(v)) return handleChange({ ...ataData, hinoAbertura: v });
+        return;
+      }
+      if (/^\d+$/.test(v)) {
+        if (parseInt(v) > 480) return;
+        return handleChange({ ...ataData, hinoAbertura: v });
+      }
+      return;
+    }
+
+    // Lógica padrão para hinos das partes
     const np = [...ataData.partes];
     if (v === '') { 
       np[pIdx].hinos[hIdx] = ''; 
@@ -246,7 +266,6 @@ const AtaPage = ({ eventId, comumId }) => {
 
       {isRegionalScope && isGemLocal && (
         <Accordion title="Equipe de Contagem" isOpen={openSection === 'guests'} onClick={() => setOpenSection(openSection === 'guests' ? null : 'guests')} icon="👥">
-          {/* JUSTIFICATIVA: Propriedade corrigida para invitedUsers (passando array de objetos carimbados) */}
           <GuestManager 
             eventId={eventId} 
             invitedUsers={eventMeta?.invitedUsers || []} 
@@ -273,7 +292,14 @@ const AtaPage = ({ eventId, comumId }) => {
       </Accordion>
 
       <Accordion title="Ocorrências" isOpen={openSection === 'ocorrencias'} onClick={() => setOpenSection(openSection === 'ocorrencias' ? null : 'ocorrencias')} icon="📝" badge={ataData.ocorrencias?.length || null}>
-        <AtaOcorrencias ocorrencias={ataData.ocorrencias} instruments={instrumentsNacionais} onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })} isClosed={isClosed || isBasico} isRegional={isRegionalScope} />
+        <AtaOcorrencias 
+          ocorrencias={ataData.ocorrencias} 
+          instruments={instrumentsNacionais} 
+          onSave={(novaLista) => handleChange({ ...ataData, ocorrencias: novaLista })} 
+          isClosed={isClosed || isBasico} 
+          isRegional={isRegionalScope} 
+          canEdit={temPermissaoEditar} 
+        />
       </Accordion>
 
       <Accordion title="Visitantes" isOpen={openSection === 'visitantes'} onClick={() => setOpenSection(openSection === 'visitantes' ? null : 'visitantes')} icon="🌍" badge={ataData.visitantes?.length || null}>
@@ -310,7 +336,6 @@ const AtaPage = ({ eventId, comumId }) => {
                   <Field label="Instrumento" val={newVisita.inst} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
 
-                {/* NOVOS CAMPOS: BAIRRO, CIDADE E CONTATO (Anexo 2) */}
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Bairro" val={newVisita.bairro} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, bairro: v})} icon={<MapPin size={10}/>} />
                   <Field label="Cidade/UF" val={newVisita.cidadeUf} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, cidadeUf: v})} />
@@ -318,10 +343,9 @@ const AtaPage = ({ eventId, comumId }) => {
 
                 <Field label="Celular / Contato" val={newVisita.contato} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
 
-                {/* AGENDAMENTO DE ENSAIO (Anexo 2) */}
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                   <Field label="Data Ensaio" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} placeholder="00/00/00" />
-                   <Field label="Horário" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} placeholder="00:00" />
+                    <Field label="Data Ensaio" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} placeholder="00/00/00" />
+                    <Field label="Horário" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} placeholder="00:00" />
                 </div>
 
                 {!isInputDisabled && (

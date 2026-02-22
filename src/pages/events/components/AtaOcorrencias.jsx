@@ -4,9 +4,10 @@ import toast from 'react-hot-toast';
 
 /**
  * Componente para Registro de Ocorrências e Notas do Ensaio.
- * v1.2 - Suporte a Modo Regional (Texto Livre Direto) e Preservação de Templates Locais.
+ * v1.3 - Trava de Interface (canEdit) para alinhar com Security Rules v10.1.
+ * Oculta botões de edição para convidados (GEM).
  */
-const AtaOcorrencias = ({ ocorrencias = [], onSave, instruments = [], isClosed, isRegional }) => {
+const AtaOcorrencias = ({ ocorrencias = [], onSave, instruments = [], isClosed, isRegional, canEdit = true }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [template, setTemplate] = useState('A'); 
 
@@ -65,7 +66,8 @@ const AtaOcorrencias = ({ ocorrencias = [], onSave, instruments = [], isClosed, 
     <div className="space-y-4 text-left">
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] italic">Ocorrências do Ensaio</h3>
-        {!isClosed && !showAdd && (
+        {/* TRAVA DE UI: Botão só aparece se o ensaio estiver aberto E o usuário tiver permissão canEdit */}
+        {!isClosed && canEdit && !showAdd && (
           <button onClick={() => setShowAdd(true)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 shadow-lg flex items-center gap-2">
             <Plus size={12} /> {isRegional ? 'Anotar' : 'Adicionar'}
           </button>
@@ -97,7 +99,6 @@ const AtaOcorrencias = ({ ocorrencias = [], onSave, instruments = [], isClosed, 
           )}
 
           <div className="space-y-4">
-            {/* Campos Dinâmicos baseados no Template (Apenas se não for Regional ou for Template C) */}
             {(!isRegional && template !== 'C') ? (
               <>
                 <input type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold uppercase outline-none" placeholder="NOME DO IRMÃO(Ã)" />
@@ -144,7 +145,12 @@ const AtaOcorrencias = ({ ocorrencias = [], onSave, instruments = [], isClosed, 
         {ocorrencias.map((item) => (
           <div key={item.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center group animate-in slide-in-from-left-2">
             <p className="text-[10px] font-bold text-slate-900 pr-4 italic leading-relaxed">{item.texto}</p>
-            {!isClosed && <button onClick={() => onSave(ocorrencias.filter(o => o.id !== item.id))} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>}
+            {/* TRAVA DE UI: Botão de lixeira só aparece se canEdit for true */}
+            {!isClosed && canEdit && (
+              <button onClick={() => onSave(ocorrencias.filter(o => o.id !== item.id))} className="text-slate-200 hover:text-red-500 transition-colors">
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
         ))}
       </div>

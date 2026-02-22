@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
-import { db, collection, onSnapshot, query, where, orderBy, auth } from '../../config/firebase';
+import { db, collection, onSnapshot, query, where, orderBy, auth, or } from '../../config/firebase';
 import { eventService } from '../../services/eventService';
 
 import toast from 'react-hot-toast';
@@ -43,7 +43,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
   const isMaster = level === 'master';
   const isComissao = isMaster || level === 'comissao';
   const isRegionalCidade = isComissao || level === 'regional_cidade';
-  // CORREÇÃO CRÍTICA: isGemLocal definida para o componente EventModals
   const isGemLocal = isRegionalCidade || level === 'gem_local';
   const isBasico = level === 'basico';
 
@@ -120,10 +119,13 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     return () => { isMounted = false; unsub(); };
   }, [selectedCityId, isRegionalCidade, permitidasIds, selectedChurchId]);
 
-  // 3. MONITOR DE CONVITES REGIONAIS (v3.5)
-  // Busca eventos onde o UID do usuário está na whitelist de convidados
+  // 3. MONITOR DE CONVITES REGIONAIS (v3.9 - Ajuste para evitar Erro de Permissão)
   useEffect(() => {
+    // Se não houver UID, não tentamos ler o banco para evitar erro de permissão
     if (!user?.uid) return;
+
+    // JUSTIFICATIVA: Para cumprir a Security Rule, a Query deve ser específica.
+    // Buscamos apenas documentos onde o usuário é explicitamente convidado.
     const qInvited = query(
       collection(db, 'events_global'),
       where('invitedUsers', 'array-contains', user.uid),
@@ -133,17 +135,19 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     const unsubInvited = onSnapshot(qInvited, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setInvitedEvents(data);
+    }, (err) => {
+      // Captura o erro mas não trava o app
+      console.error("Erro ao monitorar convites globais:", err.message);
     });
 
     return () => unsubInvited();
-  }, [user?.uid]);
+  }, [user?.uid]); // Dependência única e estável
 
-  // 4. LÓGICA DE AGRUPAMENTO POR ANO (MESCLADA COM CONVITES)
+  // 4. LÓGICA DE AGRUPAMENTO POR ANO (MESCLADA E DEDUPLICADA)
   const groupedEvents = useMemo(() => {
     const isComumValida = comuns.some(c => c.id === selectedChurchId);
     if (!selectedChurchId || comuns.length === 0 || !isComumValida) return {};
 
-    // Mescla eventos locais com eventos onde foi convidado
     const combined = [...(allEvents || [])];
     const existingIds = new Set(combined.map(e => e.id));
 
@@ -152,6 +156,8 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         combined.push(invited);
       }
     });
+
+    combined.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return combined.reduce((acc, event) => {
       const year = event.date ? event.date.split('-')[0] : 'Sem Data';
@@ -170,7 +176,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
     if (!selectedChurchId) return toast.error("Selecione uma comum");
     const comumSelecionada = comuns.find(c => c.id === selectedChurchId);
     
-    // JUSTIFICATIVA: Unifica dados básicos com dados ricos (invitedUsers como objetos) vindos do modal
     const finalEventData = {
       type: extendedData.scope === 'regional' ? 'Ensaio Regional' : 'Ensaio Local',
       date: newEventDate,
@@ -179,7 +184,7 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
       comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(),
       comumId: selectedChurchId,
       cidadeId: selectedCityId,
-      ...extendedData // Inclui scope e invitedUsers (array de objetos v7.0)
+      ...extendedData 
     };
 
     try {
@@ -230,7 +235,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         </div>
       </div>
 
-      {/* BOTÃO DE AÇÃO PRINCIPAL */}
       {temPermissaoAqui && selectedChurchId && comuns.length > 0 && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
@@ -239,7 +243,6 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         </div>
       )}
 
-      {/* LISTAGEM MODULAR - Propriedade invitedEvents injetada para destaque visual */}
       <EventsList 
         groupedEvents={groupedEvents}
         openYears={openYears}
@@ -247,10 +250,9 @@ const EventsPage = ({ userData, allEvents, onSelectEvent, onNavigateToSettings, 
         onSelectEvent={onSelectEvent}
         setEventToDelete={setEventToDelete}
         temPermissaoAqui={temPermissaoAqui}
-        invitedEvents={invitedEvents} 
+        userData={userData}
       />
 
-      {/* MODAIS MODULARES */}
       <EventModals 
         showModal={showModal} setShowModal={setShowModal}
         newEventDate={newEventDate} setNewEventDate={setNewEventDate}

@@ -1,11 +1,11 @@
 import React from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X, Music } from 'lucide-react';
 import { Field, Select } from './AtaUIComponents.jsx';
 
 /**
- * AtaLiturgia v1.4
+ * AtaLiturgia v1.6
  * Módulo especializado no registro dos condutores e hinos.
- * Ajuste: Suporte a renderização segmentada para evitar duplicidade na AtaPage.
+ * Ajuste: Blindagem rigorosa do Hino de Abertura (1-480 e C1-C6).
  */
 const AtaLiturgia = ({ 
   ataData, 
@@ -16,6 +16,31 @@ const AtaLiturgia = ({
   hidePartes = false,
   onlyPartes = false
 }) => {
+  
+  // Função interna de validação para o hino de abertura (Protocolo 480/C6)
+  const validateAbertura = (val) => {
+    if (isInputDisabled) return;
+    let v = val.toUpperCase().trim();
+    
+    if (v === '') {
+      return handleChange({...ataData, hinoAbertura: ''});
+    }
+
+    // Validação de Coros (C1 até C6)
+    if (v.startsWith('C')) {
+      if (/^C[1-6]?$/.test(v)) {
+        handleChange({...ataData, hinoAbertura: v});
+      }
+      return;
+    }
+
+    // Validação Numérica (1 até 480)
+    if (/^\d+$/.test(v)) {
+      if (parseInt(v) > 480) return;
+      handleChange({...ataData, hinoAbertura: v});
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* BLOCO: ATENDIMENTO E ORAÇÕES (Ocultado se onlyPartes for true) */}
@@ -35,6 +60,20 @@ const AtaLiturgia = ({
               disabled={isInputDisabled} 
               onChange={v => handleChange({...ataData, atendimentoMin: v})} 
             />
+          </div>
+
+          {/* NOVO CAMPO: HINO DE ABERTURA COM BLINDAGEM v1.6 */}
+          <div className="pt-2 border-t border-slate-200/50">
+            <div className="max-w-[120px]">
+                <Field 
+                  label="Hino Abertura" 
+                  val={ataData.hinoAbertura || ''} 
+                  disabled={isInputDisabled} 
+                  placeholder="000"
+                  icon={<Music size={10} className="text-blue-600"/>}
+                  onChange={v => validateAbertura(v)} 
+                />
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
@@ -131,7 +170,6 @@ const AtaLiturgia = ({
                       onChange={e => handleHinoChange(pIdx, hIdx, e.target.value)} 
                     />
                     
-                    {/* BOTÃO EXCLUIR: Visibilidade permanente e contraste aprimorado */}
                     {!isInputDisabled && hIdx >= 5 && (
                       <button 
                         onClick={() => {

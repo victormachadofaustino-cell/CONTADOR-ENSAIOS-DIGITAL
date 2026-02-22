@@ -8,7 +8,8 @@ import {
   initializeFirestore,
   memoryLocalCache, // MUDANÇA: Cache em memória para evitar QuotaExceededError
   persistentMultipleTabManager,
-  collectionGroup // ADICIONADO: Necessário para consultas escaláveis no Dashboard
+  collectionGroup,
+  or // ADICIONADO: Necessário para consultas lógicas (Minha Comum OU Convites)
 } from "firebase/firestore";
 import { 
   getAuth, signInWithEmailAndPassword, 
@@ -28,7 +29,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// CONFIGURAÇÃO REPARADA: Resolve o erro "QuotaExceededError" [cite: 1361, 1913]
+// CONFIGURAÇÃO REPARADA: Resolve o erro "QuotaExceededError"
 // Substituímos persistentLocalCache por memoryLocalCache para liberar o navegador
 const db = initializeFirestore(app, {
   localCache: memoryLocalCache(), 
@@ -44,7 +45,8 @@ export {
   query, orderBy, where,
   getDocs,
   writeBatch,
-  collectionGroup, // ADICIONADO: Exportação para uso no DashPage
+  collectionGroup, 
+  or, // EXPORTADO: Para uso no eventService e consultas de multijurisdição
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   onAuthStateChanged, signOut, sendEmailVerification,
   deleteUser // EXPORTADO: Para uso no authService no fluxo de erro de cadastro
