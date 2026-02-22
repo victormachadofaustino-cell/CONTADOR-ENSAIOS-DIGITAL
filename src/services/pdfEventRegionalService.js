@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 
+// Exportação explícita para ser usada em outros componentes
 export const toTitleCase = (str) => {
   if (!str) return "";
   return str.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -10,7 +11,7 @@ export const toTitleCase = (str) => {
 export const pdfEventRegionalService = {
   /**
    * Gera o PDF da Ata de Ensaio Regional
-   * v2.1 - Layout de Duas Colunas Otimizado (Industrial)
+   * v3.4 - Restauração do Detalhamento de Irmandade (Irmãos/Irmãs) e Ajuste de Espaços
    */
   generateAtaRegional: async (stats, ataData, userData, counts, sedeFullData) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -21,22 +22,38 @@ export const pdfEventRegionalService = {
 
     let qrImageData = null;
 
+    // --- FUNÇÕES AUXILIARES ---
+    const translateDay = (dayNum) => {
+      const days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+      return days[dayNum] || "";
+    };
+
     // 1. IDENTIDADE E DATAS
-    const sedeNome = toTitleCase(sedeFullData?.comum || ataData?.comumNome || "Sede Regional");
-    const cidadeNome = toTitleCase(sedeFullData?.cidadeNome || ataData?.cidadeNome || "Localidade");
-    const regionalNomeRaw = userData?.activeRegionalName || userData?.regional || "Regional";
-    const regionalNome = `REGIONAL ${regionalNomeRaw.toUpperCase()}`;
+    const sedeNomePura = (sedeFullData?.comum || ataData?.comumNome || userData?.comum || "Sede Regional");
+    const sedeNomeFormatado = toTitleCase(sedeNomePura);
     
-    const rawDate = ataData?.date || "2026-01-01"; 
-    const [ano, mes, dia] = rawDate.split('-');
-    const dataFormatada = `${dia}/${mes}/${ano}`;
+    let cidadeRaw = sedeFullData?.cidadeNome || ataData?.cidadeNome || userData?.cidadeNome || "Jundiaí";
+    const cidadeNome = toTitleCase(cidadeRaw);
 
+    const rawReg = (userData?.activeRegionalName || userData?.regional || "Jundiaí").toUpperCase();
+    const cleanReg = rawReg.replace("REGIONAL", "").trim();
+    const regionalNome = `REGIONAL ${cleanReg}`;
+    
+    const rawDate = ataData?.date || counts?.date || "2026-02-22"; 
+    const dateParts = rawDate.split('-');
+    const dataFormatada = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+
+    // --- GERAÇÃO DO QR CODE COM ENDEREÇO ---
+    const rua = toTitleCase(sedeFullData?.endereco?.rua || "");
+    const num = sedeFullData?.endereco?.numero || "";
+    const bairro = toTitleCase(sedeFullData?.endereco?.bairro || "");
+    
     try {
-      const mapsUrl = `http://googleusercontent.com/maps.google.com/maps?q=${encodeURIComponent(`${sedeNome} CCB ${cidadeNome}`)}`;
+      const mapsUrl = `http://googleusercontent.com/maps.google.com/maps?q=${encodeURIComponent(`${rua}, ${num} - ${bairro} ${cidadeNome} CCB`)}`;
       qrImageData = await QRCode.toDataURL(mapsUrl, { margin: 1, width: 100 });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Falha ao gerar QR:", e); }
 
-    // 2. CABEÇALHO
+    // 2. CABEÇALHO OFICIAL
     doc.setFont("times", "bold");
     doc.setFontSize(14);
     doc.text("Relatório do Serviço de Ensaio Regional", pageWidth / 2, 15, { align: "center" });
@@ -44,14 +61,14 @@ export const pdfEventRegionalService = {
     doc.text("CONGREGAÇÃO CRISTÃ NO BRASIL", pageWidth / 2, 21, { align: "center" });
     doc.setFont("times", "normal");
     doc.setFontSize(10);
-    doc.text(`${sedeNome} - ${cidadeNome}`, pageWidth / 2, 27, { align: "center" });
+    doc.text(`${sedeNomeFormatado} - ${cidadeNome}`, pageWidth / 2, 27, { align: "center" });
     doc.setFont("times", "bold");
     doc.text(regionalNome, pageWidth / 2, 32, { align: "center" });
     doc.setFontSize(9);
     doc.text(`DATA: ${dataFormatada}`, pageWidth - margin, 38, { align: "right" });
     doc.line(margin, 39, pageWidth - margin, 39);
 
-    // 3. TABELA DE INSTRUMENTOS (COLUNA ESQUERDA - TODOS INSTRUMENTOS)
+    // 3. TABELA DE INSTRUMENTOS COM SUPORTE A EXTRAS
     const families = [
       { name: 'CORDAS', keys: ['violino','viola','violoncelo'], total: stats.cordas },
       { name: 'MADEIRAS', keys: ['flauta','oboe','corneingles','fagote','clarinete','claronealto','claronebaixo','saxsoprano','saxalto','saxtenor','saxbaritono'], total: (stats.madeiras + stats.saxofones) },
@@ -59,9 +76,18 @@ export const pdfEventRegionalService = {
       { name: 'TECLAS', keys: ['acordeon'], total: stats.teclas }
     ];
 
+    Object.keys(counts || {}).forEach(key => {
+      if (key.startsWith('extra_')) {
+        const extra = counts[key];
+        const famName = (extra.section || 'GERAL').toUpperCase();
+        const famIndex = families.findIndex(f => f.name === famName || (famName === 'SAXOFONES' && f.name === 'MADEIRAS'));
+        if (famIndex !== -1) families[famIndex].keys.push(key);
+      }
+    });
+
     const orqBody = [];
     families.forEach(fam => {
-      const instruments = fam.keys.map(k => ({ key: k, data: counts?.[k] }));
+      const instruments = fam.keys.map(k => ({ key: k, data: counts?.[k] })).filter(i => i.data);
       instruments.forEach((inst, idx) => {
         const row = [];
         if (idx === 0) {
@@ -85,109 +111,153 @@ export const pdfEventRegionalService = {
       columnStyles: { 1: { halign: 'left' }, 2: { fontStyle: 'bold' } }
     });
 
-    // 4. LITURGIA E PARTES (COLUNA DIREITA)
-    let rightY = 42;
+    // 4. LITURGIA (Espaço de 1 linha acima)
+    let rightY = 43.5; 
     doc.setFont("times", "bold"); doc.setFontSize(9);
-    doc.text("LITURGIA E ATENDIMENTO", rightColX, rightY);
+    doc.text("LITURGIA", rightColX, rightY);
     
     doc.setFont("times", "normal"); doc.setFontSize(8);
     doc.text(`Atendimento: ${toTitleCase(ataData?.atendimentoNome) || "---"} (${ataData?.atendimentoMin || "---"})`, rightColX, rightY + 5);
     doc.text(`Hino de Abertura: ${ataData?.hinoAbertura || "---"}`, rightColX, rightY + 9);
     const pal = ataData?.palavra || {};
-    doc.text(`Palavra Lida: ${pal.livro || "---"}, ${pal.capitulo || "0"} : (${pal.verso || "0-0"})`, rightColX, rightY + 13);
+    doc.text(`Palavra: ${pal.livro || "---"}, ${pal.capitulo || "0"} : ${pal.verso || "0"}`, rightColX, rightY + 13);
+    const assuntoTxt = doc.splitTextToSize(`Assunto: ${pal.assunto || "---"}`, 90);
+    doc.text(assuntoTxt, rightColX, rightY + 17);
 
-    let pY = rightY + 20;
-    doc.setFont("times", "bold"); doc.text("DESENVOLVIMENTO DAS PARTES", rightColX, pY);
+    // 5. PARTE MUSICAL (Retirado espaço superior)
+    let pY = rightY + 24; 
+    doc.setFont("times", "bold"); doc.text("PARTE MUSICAL", rightColX, pY);
     doc.setFont("times", "normal");
     let totH = 0;
     (ataData?.partes || []).forEach((p, i) => {
       const hinos = (p.hinos || []).filter(h => h && h.trim() !== "");
       totH += hinos.length;
-      const txt = doc.splitTextToSize(`${i+1}ª PARTE - Condutor: ${toTitleCase(p.condutor) || "---"} | Hinos: ${hinos.join(", ")} [Qtd: ${hinos.length}]`, 90);
-      doc.text(txt, rightColX, pY + 5);
-      pY += (txt.length * 4) + 1.5;
-    });
-    doc.setFont("times", "bold"); doc.text(`TOTAL GERAL DE HINOS: ${totH}`, rightColX, pY + 2);
+      const condutor = p.nome || p.condutor || "---";
+      const txt = doc.splitTextToSize(`${p.label || (i+1 + 'ª PARTE')}: ${toTitleCase(condutor)} | Hinos: ${hinos.join(", ")}`, 90);
+      
+      const isSecondPart = p.label?.includes('2') || i === 1;
+      const topPadding = isSecondPart ? 0 : 5; 
+      const bottomPadding = isSecondPart ? 6 : 4;
 
-    // 5. GRÁFICO REF MOO (COLUNA DIREITA - LOGO ABAIXO DA LITURGIA)
+      doc.text(txt, rightColX, pY + topPadding);
+      pY += (txt.length * 4) + bottomPadding; 
+    });
+    doc.setFont("times", "bold"); doc.text(`TOTAL GERAL DE HINOS: ${totH}`, rightColX, pY);
+
+    // 6. OCORRÊNCIAS
+    if (ataData?.ocorrencias?.length > 0) {
+      pY += 6;
+      doc.setFont("times", "bold"); doc.text("OCORRÊNCIAS DO ENSAIO", rightColX, pY);
+      doc.setFont("times", "italic"); doc.setFontSize(7);
+      ataData.ocorrencias.forEach((oc) => {
+        const ocTxt = doc.splitTextToSize(`• ${oc.texto}`, 90);
+        doc.text(ocTxt, rightColX, pY + 4);
+        pY += (ocTxt.length * 3.5);
+      });
+    }
+
+    // 7. ESTATÍSTICA REF MOO (Espaço de 1 linha acima)
     const mooY = pY + 10;
-    doc.setFont("times", "bold"); doc.text("ESTATÍSTICA REF. MOO (EQUILÍBRIO)", rightColX, mooY);
-    const pSum = Math.max(1, stats.cordas + stats.madeiras + stats.saxofones + stats.metais);
-    const chartItems = [
-      { label: "CORDAS", val: stats.cordas, ref: 50, color: [217, 119, 6] },
-      { label: "MADEIRAS*", val: stats.madeiras + stats.saxofones, ref: 25, color: [5, 150, 105] },
-      { label: "METAIS", val: stats.metais, ref: 25, color: [220, 38, 38] }
-    ];
-
-    chartItems.forEach((item, i) => {
-      const rowY = mooY + 6 + (i * 9);
-      const percReal = (item.val / pSum) * 100;
-      doc.setFontSize(7); doc.text(`${item.label} [${item.val}/${pSum}]`, rightColX, rowY);
+    doc.setFont("times", "bold"); doc.setFontSize(9);
+    doc.text("ESTATÍSTICA REF. MOO (EQUILÍBRIO)", rightColX, mooY);
+    const pSum = Math.max(1, stats.musicos);
+    const totalMadeiras = Math.max(1, stats.madeiras + stats.saxofones);
+    
+    const renderBar = (label, val, base, y, color, isSub = false) => {
+      const percReal = (val / base) * 100;
+      doc.setFontSize(isSub ? 6 : 7);
+      doc.setFont("times", isSub ? "italic" : "bold");
+      doc.text(`${label} [${val}/${base}]`, isSub ? rightColX + 4 : rightColX, y);
       doc.setFont("times", "normal");
-      doc.text(`${percReal.toFixed(0)}% / Meta ${item.ref}%`, pageWidth - margin, rowY, { align: 'right' });
-      doc.setFillColor(245, 245, 245); doc.rect(rightColX, rowY + 1.5, 90, 2.5, 'F');
-      doc.setFillColor(item.color[0], item.color[1], item.color[2]);
-      doc.rect(rightColX, rowY + 1.5, Math.min(90, (percReal / 100) * 90), 2.5, 'F');
-    });
+      doc.text(`${percReal.toFixed(0)}%`, pageWidth - margin, y, { align: 'right' });
+      doc.setFillColor(245, 245, 245); doc.rect(rightColX, y + 1.5, 90, 2, 'F');
+      doc.setFillColor(color[0], color[1], color[2]);
+      doc.rect(rightColX, y + 1.5, Math.min(90, (percReal / 100) * 90), 2, 'F');
+      return y + 8;
+    };
 
-    // 6. ORGANISTAS E IRMANDADE (COLUNA ESQUERDA - ABAIXO DA TABELA PRINCIPAL)
-    const tabY = doc.lastAutoTable.finalY + 3;
+    let nextMooY = mooY + 6;
+    nextMooY = renderBar("CORDAS", stats.cordas, pSum, nextMooY, [217, 119, 6]);
+    nextMooY = renderBar("MADEIRAS*", (stats.madeiras + stats.saxofones), pSum, nextMooY, [5, 150, 105]);
+    nextMooY = renderBar("SAXOFONES (SOBRE MADEIRAS)", stats.saxofones, totalMadeiras, nextMooY - 2, [16, 185, 129], true);
+    nextMooY = renderBar("METAIS", stats.metais, pSum, nextMooY, [220, 38, 38]);
+
+    // 8. ÓRGÃO E IRMANDADE (Restauração do detalhamento de Irmãos/Irmãs)
+    const tabY = doc.lastAutoTable.finalY + 5;
     autoTable(doc, {
       startY: tabY, margin: { right: pageWidth / 2 + 3 },
-      head: [['ORGANISTAS', 'CASA', 'VISITA', 'TOTAL']],
-      body: [['ÓRGÃO ELETRÔNICO', stats.organistasCasa, stats.organistasVisitas, stats.organistas]],
-      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center', cellPadding: 0.5 },
-      headStyles: { fillColor: [60, 60, 60] }
+      head: [['ORGANISTAS', 'TOTAL']],
+      body: [['ÓRGÃO', stats.organistas]],
+      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center', cellPadding: 0.8 },
+      headStyles: { fillColor: [60, 60, 60] },
+      columnStyles: { 0: { halign: 'left' } }
     });
 
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 2, margin: { right: pageWidth / 2 + 3 },
-      head: [['CORAL / IRMANDADE', 'IRMÃOS', 'IRMÃS', 'TOTAL']],
-      body: [['VOCAL / VIRTUAL', stats.irmaos, stats.irmas, stats.irmandade]],
-      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center', cellPadding: 0.5 },
-      headStyles: { fillColor: [80, 80, 80] }
+      startY: doc.lastAutoTable.finalY + 3, margin: { right: pageWidth / 2 + 3 },
+      head: [['IRMANDADE', 'IRMÃOS', 'IRMÃS', 'TOTAL']],
+      body: [['CORAL', stats.irmaos, stats.irmas, stats.irmandade]],
+      theme: 'grid', styles: { fontSize: 6.5, font: "times", halign: 'center', cellPadding: 0.8 },
+      headStyles: { fillColor: [80, 80, 80] },
+      columnStyles: { 0: { halign: 'left' } }
     });
 
-    // 7. RESUMO DE PRESENÇA E TOTALIZADORES
-    const resY = Math.max(doc.lastAutoTable.finalY + 8, mooY + 35);
-    doc.setFont("times", "bold"); doc.setFontSize(9);
-    doc.text("RESUMO DE PRESENÇA MINISTERIAL", margin, resY);
-    
-    doc.setFontSize(8); doc.setFont("times", "normal");
-    const cW = (pageWidth - 20) / 2;
-    doc.text(`ANCIÃO: ${stats.ancianosCasa + stats.ancianosVisitas}  |  DIÁCONO: ${stats.diaconosCasa + stats.diaconosVisitas}  |  COOP. OFÍCIO: ${stats.coopOficioCasa + stats.coopOficioVisitas}  |  COOP. JOVENS: ${stats.coopJovensCasa + stats.coopJovensVisitas}`, margin, resY + 5);
-    doc.text(`ENC. REGIONAL: ${stats.encRegionalCasa + stats.encRegionalVisitas}  |  EXAMINADORAS: ${stats.examinadorasCasa + stats.examinadorasVisitas}  |  ENC. LOCAL: ${stats.encLocalCasa + stats.encLocalVisitas}`, margin, resY + 9);
-
-    const totY = resY + 16;
+    // 9. TOTAIS E RESUMO MINISTERIAL
+    const totY = Math.max(doc.lastAutoTable.finalY + 10, nextMooY + 5);
     doc.setFillColor(30, 30, 30); doc.rect(margin, totY, pageWidth - 20, 8, 'F');
-    doc.setFont("times", "bold"); doc.setFontSize(10); doc.setTextColor(255);
+    doc.setFont("times", "bold"); doc.setFontSize(9); doc.setTextColor(255);
     doc.text(`MÚSICOS: ${stats.musicos}  |  ORGANISTAS: ${stats.organistas}  |  CORAL: ~ ${stats.irmandade}  |  TOTAL GERAL: ${stats.geral}`, pageWidth / 2, totY + 5.5, { align: 'center' });
 
-    // 8. TABELA MINISTERIAL (FIRMASS)
     doc.setTextColor(0);
-    const pesos = { 'Ancião': 1, 'Diácono': 2, 'Cooperador do Ofício': 3, 'Cooperador RJM': 4, 'Encarregado Regional': 5, 'Examinadora': 6, 'Encarregado Local': 7 };
-    const allMin = [
-      ...(ataData?.presencaLocalFull || []).map(p => ({cargo: p.role, nome: p.nome, ori: 'CASA'})),
-      ...(ataData?.visitantes || []).map(p => ({cargo: p.min, nome: p.nome, ori: (p.comum || p.cidadeUf || "VISITA")}))
-    ].sort((a, b) => (pesos[a.cargo] || 99) - (pesos[b.cargo] || 99));
+    const resY = totY + 14;
+    doc.setFontSize(8); doc.setFont("times", "bold");
+    doc.text("RESUMO DA PRESENÇA MINISTERIAL", margin, resY);
+    doc.setFont("times", "normal");
+    doc.text(`ANCIÃES: ${stats.ancianosCasa + stats.ancianosVisitas}`, margin, resY + 5);
+    doc.text(`DIÁCONOS: ${stats.diaconosCasa + stats.diaconosVisitas}`, margin, resY + 9);
+    doc.text(`COOP. OFÍCIO: ${stats.coopOficioCasa + stats.coopOficioVisitas}`, margin, resY + 13);
+    doc.text(`COOP. RJM: ${stats.coopJovensCasa + stats.coopJovensVisitas}`, margin, resY + 17);
+
+    doc.text(`ENC. REGIONAIS: ${stats.encRegionalCasa + stats.encRegionalVisitas}`, rightColX, resY + 5);
+    doc.text(`EXAMINADORAS: ${stats.examinadorasCasa + stats.examinadorasVisitas}`, rightColX, resY + 9);
+    doc.text(`ENC. LOCAIS: ${stats.encLocalCasa + stats.encLocalVisitas}`, rightColX, resY + 13);
+
+    // 10. TABELA MINISTERIAL
+    const localRows = (ataData?.presencaLocalFull || []).map(p => [p.role, toTitleCase(p.nome), sedeNomeFormatado.toUpperCase(), cidadeNome.toUpperCase(), "-", "-"]);
+    const visitRows = (ataData?.visitantes || []).map(v => [v.min, toTitleCase(v.nome), (v.bairro || v.comum || "---").toUpperCase(), (v.cidadeUf || "---").toUpperCase(), v.dataEnsaio || "-", v.hora || "-"]);
+
+    const finalMinBody = [];
+    if (localRows.length > 0) {
+      finalMinBody.push([{ content: 'LOCAL', colSpan: 6, styles: { fillColor: [240, 240, 240], fontStyle: 'bold', halign: 'left' } }]);
+      localRows.forEach(r => finalMinBody.push(r));
+    }
+    if (visitRows.length > 0) {
+      finalMinBody.push([{ content: 'VISITAS', colSpan: 6, styles: { fillColor: [240, 240, 240], fontStyle: 'bold', halign: 'left' } }]);
+      visitRows.forEach(r => finalMinBody.push(r));
+    }
 
     autoTable(doc, {
-      startY: totY + 12,
-      head: [['MINISTÉRIO / CARGO', 'NOME COMPLETO', 'LOCALIDADE DE ORIGEM']],
-      body: allMin.map(m => [m.cargo, toTitleCase(m.nome), m.ori.toUpperCase()]),
-      theme: 'grid', styles: { fontSize: 6.5, font: "times", cellPadding: 0.8 },
+      startY: resY + 22,
+      head: [['MINISTÉRIO', 'NOME COMPLETO', 'COMUM/BAIRRO', 'CIDADE/UF', 'ENSAIO', 'HORA']],
+      body: finalMinBody,
+      theme: 'grid', styles: { fontSize: 6, font: "times", cellPadding: 0.8, halign: 'center' },
       headStyles: { fillColor: [40, 40, 40] },
-      margin: { bottom: 20 }
+      columnStyles: { 0: { halign: 'center' }, 1: { halign: 'left' }, 2: { halign: 'left' } },
+      margin: { bottom: 35 },
+      didDrawPage: (data) => {
+        const footerY = pageHeight - 18;
+        if (qrImageData) {
+          doc.addImage(qrImageData, 'PNG', margin + 2, footerY - 5, 12, 12);
+        }
+        doc.setFontSize(7); doc.setFont("times", "bold");
+        doc.text(sedeNomeFormatado.toUpperCase(), margin + 17, footerY - 2);
+        doc.setFontSize(6.5); doc.setFont("times", "normal");
+        doc.text(`${rua}, ${num} - ${bairro} • ${cidadeNome}`, margin + 17, footerY + 1);
+        doc.text(`Culto: ${sedeFullData?.diasSelecao?.map(d => translateDay(d)).join(' e ') || "---"} às ${sedeFullData?.horaCulto || '---'} | Ensaio Local: ${sedeFullData?.ensaioLocal || '---'} às ${sedeFullData?.horaEnsaio || '---'}`, margin + 17, footerY + 4);
+        doc.setFontSize(6.5); doc.text(`Secretaria de Música ${toTitleCase(regionalNome)} • Sistema de Gestão Digital`, pageWidth / 2, pageHeight - 5, { align: "center" });
+      }
     });
 
-    // 9. RODAPÉ
-    const footerY = pageHeight - 15;
-    if (qrImageData) doc.addImage(qrImageData, 'PNG', margin, footerY - 8, 12, 12);
-    doc.setFontSize(7); doc.setFont("times", "bold");
-    doc.text(`SECRETARIA DE MÚSICA - ${regionalNome}`, margin + 15, footerY - 2);
-    doc.setFont("times", "normal");
-    doc.text(`Relatório Regional Digital • Emitido em ${new Date().toLocaleString()} • Página ${doc.internal.getNumberOfPages()}`, margin + 15, footerY + 2);
-
-    doc.save(`${ano}-${mes}-${dia} - ATA REGIONAL ${sedeNome.toUpperCase()}.pdf`);
+    doc.save(`${dateParts[0]}-${dateParts[1]}-${dateParts[2]} - ATA REGIONAL ${sedeNomePura.toUpperCase()}.pdf`);
   }
 };

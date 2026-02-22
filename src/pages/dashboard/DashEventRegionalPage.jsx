@@ -48,15 +48,18 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         const section = (data.section || "GERAL").toUpperCase();
         const saneId = id.toLowerCase();
 
-        if (section === 'CORAL' || section === 'IRMANDADE' || saneId === 'coral' || saneId === 'irmandade') {
+        // 1. Agrupamento Robusto de Coral e Irmandade (Evita vazamento para músicos)
+        if (section.includes('CORAL') || section.includes('IRMANDADE') || saneId.includes('coral') || saneId.includes('irmandade')) {
           totals.irmaos += valIrmaos || (effectiveTotal - valIrmas);
           totals.irmas += valIrmas;
         } 
-        else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') {
+        // 2. Agrupamento de Organistas
+        else if (section.includes('ORGANISTA') || saneId.includes('orgao') || saneId.includes('org')) {
           totals.organistas += effectiveTotal;
           totals.organistasCasa += effectiveComum;
           totals.organistasVisitas += effectiveVisita;
         } 
+        // 3. Bloco de Músicos (Protegido contra captura indevida de Irmandade)
         else {
           totals.musicos += effectiveTotal;
           totals.musicosCasa += effectiveComum;
@@ -195,7 +198,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
-      {/* 1. TOTAIS ESTRATÉGICOS (MOVIDOS PARA CIMA) */}
+      {/* 1. TOTAIS ESTRATÉGICOS */}
       <div className="space-y-3">
         <BigNumberCard title="Total Músicos" total={stats.musicos} hideDetails icon={<Music size={20} strokeWidth={3} />} color="text-slate-600" />
         <BigNumberCard title="Total Organistas" total={stats.organistas} hideDetails icon={<PieChart size={20} strokeWidth={3} />} color="text-slate-600" />
@@ -221,7 +224,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         />
       </div>
 
-      {/* 2. EQUILÍBRIO ORQUESTRAL (CENTRALIZADO) */}
+      {/* 2. EQUILÍBRIO ORQUESTRAL */}
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-8 opacity-5"><Activity size={120} className="text-slate-900" /></div>
         
@@ -258,7 +261,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
-      {/* 3. DETALHAMENTO DE MINISTÉRIO E GOVERNANÇA (MOVIDO PARA BAIXO) */}
+      {/* 3. DETALHAMENTO DE MINISTÉRIO E GOVERNANÇA */}
       <div className="space-y-3 pb-20">
         <BigNumberCard title="Anciães" total={totalAncianos} casa={stats.ancianosCasa} visita={stats.ancianosVisitas} icon={<Landmark size={20} strokeWidth={3} />} variant="dark" />
         <BigNumberCard title="Diáconos" total={totalDiaconos} casa={stats.diaconosCasa} visita={stats.diaconosVisitas} icon={<Briefcase size={20} strokeWidth={3} />} />
