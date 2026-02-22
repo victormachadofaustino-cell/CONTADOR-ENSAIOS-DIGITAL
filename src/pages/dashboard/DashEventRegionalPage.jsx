@@ -159,7 +159,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       const comumId = ataData?.comumId || userData?.activeComumId;
       const comumSnap = await getDoc(doc(db, 'comuns', comumId));
       const sedeData = comumSnap.exists() ? comumSnap.data() : null;
-      // Chamada para o serviço regional especializado
       pdfEventRegionalService.generateAtaRegional(stats, ataData, userData, counts, sedeData);
       toast.dismiss(loadingToast);
       toast.success("Ata Regional Gerada!");
@@ -196,56 +195,8 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
-      {/* BIG NUMBERS MINISTERIAIS */}
-      <BigNumberCard title="Anciães" total={totalAncianos} casa={stats.ancianosCasa} visita={stats.ancianosVisitas} icon={<Landmark size={20} strokeWidth={3} />} variant="dark" />
-      <BigNumberCard title="Diáconos" total={totalDiaconos} casa={stats.diaconosCasa} visita={stats.diaconosVisitas} icon={<Briefcase size={20} strokeWidth={3} />} />
-      <BigNumberCard title="Coop. Ofício" total={totalCoopOficio} casa={stats.coopOficioCasa} visita={stats.coopOficioVisitas} icon={<UserCheck size={20} strokeWidth={3} />} />
-      <BigNumberCard title="Coop. Jovens" total={totalCoopJovens} casa={stats.coopJovensCasa} visita={stats.coopJovensVisitas} icon={<Users size={20} strokeWidth={3} />} />
-      
-      {/* BIG NUMBERS TÉCNICOS */}
-      <BigNumberCard title="Enc. Regionais" total={totalEncRegional} casa={stats.encRegionalCasa} visita={stats.encRegionalVisitas} icon={<ShieldCheck size={20} strokeWidth={3} />} color="text-slate-600" />
-      <BigNumberCard title="Examinadoras" total={totalExaminadoras} casa={stats.examinadorasCasa} visita={stats.examinadorasVisitas} icon={<Star size={20} strokeWidth={3} />} color="text-slate-600" />
-      <BigNumberCard title="Enc. Locais" total={totalEncLocal} casa={stats.encLocalCasa} visita={stats.encLocalVisitas} icon={<ShieldCheck size={20} strokeWidth={3} />} color="text-slate-600" />
-
-      {/* SEÇÃO DE EQUILÍBRIO ORQUESTRAL COM BOTÕES DE AÇÃO */}
-      <div className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-5"><Activity size={120} className="text-slate-900" /></div>
-        
-        <div className="flex items-center justify-between relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-950 p-2.5 rounded-2xl text-white shadow-lg"><Target size={20} /></div>
-            <div>
-              <h3 className="text-[14px] font-[1000] text-slate-950 uppercase italic tracking-tighter leading-none">Equilíbrio Orquestral</h3>
-              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Ref. Naipes: {totalPrincipais} instrumentos</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-2">
-            <button onClick={handleShareEstatistico} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl active:scale-90 border border-emerald-100 transition-all shadow-sm">
-              <Share2 size={18} />
-            </button>
-            <button onClick={handleGeneratePDF} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl active:scale-90 border border-blue-100 transition-all shadow-sm">
-              <FileText size={18} />
-            </button>
-          </div>
-        </div>
-        
-        <div className="space-y-7 relative z-10">
-          <ProgressBar label="Família das Cordas" value={getPerc(stats.cordas, totalPrincipais)} refVal="50" color="bg-amber-400" racional={stats.cordas} total={totalPrincipais} />
-          <ProgressBar label="Família das Madeiras" value={getPerc(stats.madeiras + stats.saxofones, totalPrincipais)} refVal="25" color="bg-emerald-500" racional={stats.madeiras + stats.saxofones} total={totalPrincipais} />
-          <ProgressBar label="Família dos Metais" value={getPerc(stats.metais, totalPrincipais)} refVal="25" color="bg-rose-500" racional={stats.metais} total={totalPrincipais} />
-          
-          <ProgressBar label="Teclas (Acordeon)" value={getPerc(stats.teclas, stats.orquestra)} color="bg-slate-400" racional={stats.teclas} total={stats.orquestra} />
-          <ProgressBar label="Organistas" value={getPerc(stats.organistas, stats.orquestra)} color="bg-slate-400" racional={stats.organistas} total={stats.orquestra} />
-        </div>
-
-        <div className="pt-6 border-t border-slate-100 space-y-4">
-           <ProgressBar label="Irmandade (Geral)" value={getPerc(stats.irmandade, stats.geral)} color="bg-slate-900" racional={stats.irmandade} total={stats.geral} />
-        </div>
-      </div>
-
-      {/* BIG NUMBERS DE TOTAIS ESTRATÉGICOS (SOBRIEDADE COM CONTORNO REFORÇADO) */}
-      <div className="space-y-3 pb-20">
+      {/* 1. TOTAIS ESTRATÉGICOS (MOVIDOS PARA CIMA) */}
+      <div className="space-y-3">
         <BigNumberCard title="Total Músicos" total={stats.musicos} hideDetails icon={<Music size={20} strokeWidth={3} />} color="text-slate-600" />
         <BigNumberCard title="Total Organistas" total={stats.organistas} hideDetails icon={<PieChart size={20} strokeWidth={3} />} color="text-slate-600" />
         
@@ -269,6 +220,56 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
           bgColor="bg-slate-200/80 border-l-4 border-l-emerald-600 shadow-md" 
         />
       </div>
+
+      {/* 2. EQUILÍBRIO ORQUESTRAL (CENTRALIZADO) */}
+      <div className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-5"><Activity size={120} className="text-slate-900" /></div>
+        
+        <div className="flex items-center justify-between relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-950 p-2.5 rounded-2xl text-white shadow-lg"><Target size={20} /></div>
+            <div>
+              <h3 className="text-[14px] font-[1000] text-slate-950 uppercase italic tracking-tighter leading-none">Equilíbrio Orquestral</h3>
+              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Ref. Naipes: {totalPrincipais} instrumentos</p>
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <button onClick={handleShareEstatistico} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl active:scale-90 border border-emerald-100 transition-all shadow-sm">
+              <Share2 size={18} />
+            </button>
+            <button onClick={handleGeneratePDF} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl active:scale-90 border border-blue-100 transition-all shadow-sm">
+              <FileText size={18} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="space-y-7 relative z-10">
+          <ProgressBar label="Cordas" value={getPerc(stats.cordas, totalPrincipais)} refVal="50" color="bg-amber-400" racional={stats.cordas} total={totalPrincipais} />
+          <ProgressBar label="Madeiras" value={getPerc(stats.madeiras + stats.saxofones, totalPrincipais)} refVal="25" color="bg-emerald-500" racional={stats.madeiras + stats.saxofones} total={totalPrincipais} />
+          <ProgressBar label="Metais" value={getPerc(stats.metais, totalPrincipais)} refVal="25" color="bg-rose-500" racional={stats.metais} total={totalPrincipais} />
+          
+          <ProgressBar label="Teclas (Acordeon)" value={getPerc(stats.teclas, stats.orquestra)} color="bg-slate-400" racional={stats.teclas} total={stats.orquestra} />
+          <ProgressBar label="Organistas" value={getPerc(stats.organistas, stats.orquestra)} color="bg-slate-400" racional={stats.organistas} total={stats.orquestra} />
+        </div>
+
+        <div className="pt-6 border-t border-slate-100 space-y-4">
+           <ProgressBar label="Irmandade (Geral)" value={getPerc(stats.irmandade, stats.geral)} color="bg-slate-900" racional={stats.irmandade} total={stats.geral} />
+        </div>
+      </div>
+
+      {/* 3. DETALHAMENTO DE MINISTÉRIO E GOVERNANÇA (MOVIDO PARA BAIXO) */}
+      <div className="space-y-3 pb-20">
+        <BigNumberCard title="Anciães" total={totalAncianos} casa={stats.ancianosCasa} visita={stats.ancianosVisitas} icon={<Landmark size={20} strokeWidth={3} />} variant="dark" />
+        <BigNumberCard title="Diáconos" total={totalDiaconos} casa={stats.diaconosCasa} visita={stats.diaconosVisitas} icon={<Briefcase size={20} strokeWidth={3} />} />
+        <BigNumberCard title="Coop. Ofício" total={totalCoopOficio} casa={stats.coopOficioCasa} visita={stats.coopOficioVisitas} icon={<UserCheck size={20} strokeWidth={3} />} />
+        <BigNumberCard title="Coop. Jovens" total={totalCoopJovens} casa={stats.coopJovensCasa} visita={stats.coopJovensVisitas} icon={<Users size={20} strokeWidth={3} />} />
+        
+        <BigNumberCard title="Enc. Regionais" total={totalEncRegional} casa={stats.encRegionalCasa} visita={stats.encRegionalVisitas} icon={<ShieldCheck size={20} strokeWidth={3} />} color="text-slate-600" />
+        <BigNumberCard title="Examinadoras" total={totalExaminadoras} casa={stats.examinadorasCasa} visita={stats.examinadorasVisitas} icon={<Star size={20} strokeWidth={3} />} color="text-slate-600" />
+        <BigNumberCard title="Enc. Locais" total={totalEncLocal} casa={stats.encLocalCasa} visita={stats.encLocalVisitas} icon={<ShieldCheck size={20} strokeWidth={3} />} color="text-slate-600" />
+      </div>
+
     </div>
   );
 };

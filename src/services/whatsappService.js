@@ -1,9 +1,9 @@
 /**
- * SERVIÇO DE FORMATAÇÃO PARA COMPARTILHAMENTO v1.3
+ * SERVIÇO DE FORMATAÇÃO PARA COMPARTILHAMENTO v1.4
  * Centraliza a geração de templates para alimentação e estatística.
  * Resolve o bug de localidade utilizando o 'source of truth' do evento.
- * Nota: Funções alteradas para retornar strings (compatível com navigator.share).
- * v1.3: Adicionada Blindagem de Dados via parâmetro 'stats' para evitar valores zerados.
+ * v1.4: Adicionada lógica de discernimento entre Ensaio Local e Regional.
+ * Blindagem de dados para evitar 'undefined' em diferentes níveis de acesso.
  */
 
 const formatarData = (dateStr) => {
@@ -23,10 +23,13 @@ export const whatsappService = {
     const counts = event?.counts || {};
     const data = formatarData(event?.date);
     
-    // O pulo do gato: Buscamos o nome que está gravado no evento, não no perfil do usuário
+    // Discernimento de título baseada no escopo do evento
+    const tipoEnsaio = event?.scope === 'regional' ? 'Regional' : 'Local';
+    
+    // Busca o nome que está gravado no evento (Denormalização)
     const localidade = (event?.comumNome || "LOCALIDADE NÃO IDENTIFICADA").toUpperCase();
 
-    // BLINDAGEM v1.3: Prioriza os stats calculados na tela para evitar delay do Firebase
+    // Cálculos com Blindagem v1.4
     const totalMusicos = stats ? stats.musicos : Object.keys(counts)
       .filter(key => !['irmandade', 'Coral', 'orgao'].includes(key) && !key.startsWith('meta_'))
       .reduce((acc, key) => acc + (parseInt(counts[key]?.total) || 0), 0);
@@ -38,7 +41,7 @@ export const whatsappService = {
     
     const totalGeral = stats ? stats.geral : (totalMusicos + totalOrganistas + totalIrmandade);
 
-    return `Serviço de Ensaio Local - ${data} 🎵
+    return `Serviço de Ensaio ${tipoEnsaio} - ${data} 🎵
 ${localidade}
 
 Resumo da Contagem para Alimentação: 🍽️
@@ -61,6 +64,9 @@ Deus abençoe grandemente. 🙏`;
     const counts = event?.counts || {};
     const data = formatarData(event?.date);
     const localidade = (event?.comumNome || "LOCALIDADE NÃO IDENTIFICADA").toUpperCase();
+    
+    // Discernimento de título baseada no escopo do evento
+    const tipoEnsaio = event?.scope === 'regional' ? 'Regional' : 'Local';
 
     // Somas Técnicas com Fallback para Stats da Tela
     const totalMusicos = stats ? stats.musicos : Object.keys(counts)
@@ -74,16 +80,19 @@ Deus abençoe grandemente. 🙏`;
     
     const totalGeral = stats ? stats.geral : (totalMusicos + totalOrganistas + totalIrmandadeCoral);
 
-    // Busca de Cargos nos Metadados
-    const totalEncLoc = stats ? stats.encLocal : Object.keys(counts)
+    // Busca de Cargos nos Metadados com compatibilidade Local/Regional
+    const totalEncLoc = stats ? (stats.encLocal || 0) : Object.keys(counts)
       .filter(key => !key.startsWith('meta_'))
       .reduce((acc, key) => acc + (parseInt(counts[key]?.enc) || 0), 0);
     
-    const totalEncReg = stats ? stats.encRegional : (event?.ata?.presencaLocalFull?.filter(m => m.role === 'Encarregado Regional').length || 0);
-    const totalMinisterio = stats ? stats.ministerio_oficio : (event?.ata?.presencaLocal?.length || 0);
-    const totalExam = stats ? stats.examinadoras : (parseInt(counts['orgao']?.enc) || 0);
+    const totalEncReg = stats ? (stats.encRegional || 0) : (event?.ata?.presencaLocalFull?.filter(m => m.role === 'Encarregado Regional').length || 0);
+    
+    // Correção do Undefined: Tenta buscar 'ministerio_total' (Regional) ou 'ministerio_oficio' (Local)
+    const totalMinisterio = stats ? (stats.ministerio_total || stats.ministerio_oficio || 0) : (event?.ata?.presencaLocal?.length || 0);
+    
+    const totalExam = stats ? (stats.examinadoras || 0) : (parseInt(counts['orgao']?.enc) || 0);
 
-    return `Serviço de Ensaio Local - ${data} 🎵
+    return `Serviço de Ensaio ${tipoEnsaio} - ${data} 🎵
 ${localidade} 📍
 
 Resumo Estatístico: 📊
