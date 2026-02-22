@@ -67,7 +67,6 @@ const AtaPage = ({ eventId, comumId }) => {
   const [editIndex, setEditIndex] = useState(null);
   const saveTimeoutRef = useRef(null);
 
-  // v1.1: Expandido com os campos solicitados no Anexo 2
   const [newVisita, setNewVisita] = useState({ 
     nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
   });
@@ -108,7 +107,8 @@ const AtaPage = ({ eventId, comumId }) => {
       const nomeDaComum = eventMeta?.comumNome || userData?.comum || "LOCALIDADE";
       eventService.saveAtaData(comumId, eventId, {
         ...newData,
-        comumNome: nomeDaComum
+        comumNome: nomeDaComum,
+        cidadeId: eventMeta?.cidadeId || userData?.cidadeId // Garante o vínculo geográfico v8.8
       });
     }, 1500);
   }, [comumId, eventId, eventMeta, userData, isInputDisabled]);
@@ -121,7 +121,12 @@ const AtaPage = ({ eventId, comumId }) => {
 
   const saveStatus = async (newStatus) => {
     if (isBasico) return;
-    const updated = { ...ataData, status: newStatus, comumNome: eventMeta?.comumNome || userData?.comum || "LOCALIDADE" };
+    const updated = { 
+      ...ataData, 
+      status: newStatus, 
+      comumNome: eventMeta?.comumNome || userData?.comum || "LOCALIDADE",
+      cidadeId: eventMeta?.cidadeId || userData?.cidadeId // Preserva ID no Lacre v8.8
+    };
     setAtaData(updated);
     try {
       await eventService.saveAtaData(comumId, eventId, updated);
@@ -168,7 +173,6 @@ const AtaPage = ({ eventId, comumId }) => {
             if (!loadedAta.palavra) {
               loadedAta.palavra = { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' };
             }
-            // Garantia de campo v8.8
             if (loadedAta.hinoAbertura === undefined) loadedAta.hinoAbertura = '';
             
             setAtaData(loadedAta);
@@ -186,7 +190,6 @@ const AtaPage = ({ eventId, comumId }) => {
     if (isInputDisabled) return;
     let v = val.toUpperCase().trim();
     
-    // Tratamento para campo especial 'Abertura' (pIdx null)
     if (pIdx === null) {
       if (v === '') return handleChange({ ...ataData, hinoAbertura: '' });
       if (v.startsWith('C')) {
@@ -200,7 +203,6 @@ const AtaPage = ({ eventId, comumId }) => {
       return;
     }
 
-    // Lógica padrão para hinos das partes
     const np = [...ataData.partes];
     if (v === '') { 
       np[pIdx].hinos[hIdx] = ''; 
@@ -310,13 +312,14 @@ const AtaPage = ({ eventId, comumId }) => {
         {isRegionalScope ? (
           <MinistryAccordion 
             eventId={eventId} 
-            regionalId={eventMeta?.regionalId} 
-            cidadeId={eventMeta?.cidadeId} // SINCRONIA v8.8
-            comumId={comumId} // SINCRONIA v8.8
+            regionalId={eventMeta?.regionalId || ""} 
+            cidadeId={eventMeta?.cidadeId || ""} 
+            comumId={comumId || ""} 
             presencaAtual={ataData.presencaLocalFull || []} 
             onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })} 
             isInputDisabled={isInputDisabled} 
             userData={userData} 
+            isReady={!!eventMeta} // Protocolo de Estabilidade v3.4
           />
         ) : (
           <AtaMinisterioLocal localMinisterio={localMinisterio} presencaLocal={ataData.presencaLocal} isInputDisabled={isInputDisabled} togglePresencaLocal={togglePresencaLocal} />

@@ -5,10 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 /**
  * Módulo de Seleção Nominal de Ministério para Ensaios Regionais
- * v2.5 - Protocolo de Visibilidade Universal (Master Fix)
- * Resolve o problema de lista vazia sincronizando com o ID da sede em tempo real.
+ * v3.5 - Protocolo Deep Scan Cidade (Sub-collection Crawler)
+ * Realiza uma varredura em todas as sub-coleções de ministério das comuns da cidade.
  */
-const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtual = [], onChange, isInputDisabled, userData }) => {
+const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtual = [], onChange, isInputDisabled, userData, isReady }) => {
   const [regionalUsers, setRegionalUsers] = useState([]);
   const [openGroup, setOpenGroup] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,49 +30,46 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
     str?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() || "";
 
   useEffect(() => {
-    // ESTRATÉGIA v2.5: Reatividade Total. 
-    // Só prosseguimos se houver um ID de cidade válido.
-    if (!cidadeId || isBasico) return; 
+    // ESTRATÉGIA v3.5: Varredura profunda por Cidade.
+    // Ignora a busca global e foca nas listas locais de todas as igrejas da cidade do evento.
+    if (!isReady || !cidadeId || isBasico) return; 
     
     let isMounted = true;
 
-    const syncMinistryData = async () => {
+    const deepScanCityMinistry = async () => {
       setIsSyncing(true);
       try {
-        // BUSCA A: Todos os aprovados vinculados à CIDADE do evento
-        const qGlobal = query(
-          collection(db, 'users'),
-          where('cidadeId', '==', cidadeId),
-          where('approved', '==', true)
+        // 1. Localiza todas as Comuns vinculadas a esta Cidade
+        const qComuns = query(
+          collection(db, 'comuns'),
+          where('cidadeId', '==', cidadeId)
         );
+        const snapComuns = await getDocs(qComuns);
         
-        const snapGlobal = await getDocs(qGlobal);
-        const usersGlobal = snapGlobal.docs.map(d => ({
-          id: d.id,
-          nome: d.data().name || d.data().nome,
-          role: d.data().role || d.data().cargo,
-          comum: d.data().comum || "Cidade Sede"
-        }));
+        const allNamesFound = [];
 
-        // BUSCA B: Lista manual da Igreja Sede (Se o ID da comum estiver presente)
-        let usersLocalSede = [];
-        if (comumId) {
-          const snapLocal = await getDocs(collection(db, 'comuns', comumId, 'ministerio_lista'));
-          usersLocalSede = snapLocal.docs.map(d => ({
+        // 2. Dispara varredura paralela em todas as sub-coleções detectadas
+        const promises = snapComuns.docs.map(async (docComum) => {
+          const comumNome = docComum.data().comum || "Local";
+          const snapMin = await getDocs(collection(db, 'comuns', docComum.id, 'ministerio_lista'));
+          
+          return snapMin.docs.map(d => ({
             id: d.id,
             nome: d.data().nome,
             role: d.data().cargo,
-            comum: "Sede do Ensaio"
+            comum: comumNome
           }));
-        }
+        });
 
-        // Consolidação Inteligente: De-duplicação por nome normalizado
+        const results = await Promise.all(promises);
+        results.forEach(list => allNamesFound.push(...list));
+
+        // 3. Consolidação e De-duplicação por nome (Irmãos com cargos em múltiplas frentes)
         const usersMap = new Map();
-        [...usersGlobal, ...usersLocalSede].forEach(u => {
+        allNamesFound.forEach(u => {
           if (!u.nome) return;
           const key = normalize(u.nome);
-          // Prioridade para documentos com ID real do Firebase (longos)
-          if (!usersMap.has(key) || u.id.length > 15) {
+          if (!usersMap.has(key)) {
             usersMap.set(key, u);
           }
         });
@@ -82,15 +79,15 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
           setRegionalUsers(finalAuthList);
         }
       } catch (err) {
-        console.warn("MinistryAccordion: Sincronizando acesso regional v10.4...");
+        console.warn("MinistryAccordion: Deep Scan interrompido ou falhou.");
       } finally {
         if (isMounted) setIsSyncing(false);
       }
     };
 
-    syncMinistryData();
+    deepScanCityMinistry();
     return () => { isMounted = false; };
-  }, [cidadeId, comumId, isBasico]); // Re-sincroniza se trocar de igreja ou cidade
+  }, [isReady, cidadeId, isBasico]); 
 
   const processedGroups = useMemo(() => {
     const term = normalize(searchTerm);
@@ -100,9 +97,11 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
         const matchBusca = !term || normalize(u.nome).includes(term);
         return matchCargo && matchBusca;
       });
+      
       const selecionados = presencaAtual.filter(p => 
         grupo.roles.some(r => normalize(r) === normalize(p.role))
       );
+      
       return { ...grupo, membros, selecionados };
     });
   }, [regionalUsers, presencaAtual, searchTerm]);
@@ -116,7 +115,7 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
     onChange(novaLista);
   };
 
-  if (isSyncing) return <div className="py-10 text-center font-black text-slate-300 text-[9px] uppercase animate-pulse tracking-widest italic">Buscando Ministério Local...</div>;
+  if (isSyncing) return <div className="py-10 text-center font-black text-slate-300 text-[9px] uppercase animate-pulse tracking-widest italic">Varrendo Ministério de Francisco Morato...</div>;
 
   if (isBasico) {
     return (
@@ -138,7 +137,7 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
               <Check size={14} className="text-blue-500" strokeWidth={3} />
             </div>
           )) : (
-            <p className="text-center py-8 text-[8px] font-bold text-slate-300 uppercase italic">Aguardando confirmações da sede</p>
+            <p className="text-center py-8 text-[8px] font-bold text-slate-300 uppercase italic">Aguardando confirmações...</p>
           )}
         </div>
       </div>
@@ -151,7 +150,7 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
         <input 
           type="text"
-          placeholder="BUSCAR NA SEDE DO EVENTO..."
+          placeholder="BUSCAR MINISTÉRIO NA CIDADE..."
           className="w-full bg-white border border-slate-100 p-3.5 pl-10 rounded-2xl text-[10px] font-black uppercase italic outline-none shadow-sm focus:border-blue-200 transition-all"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -179,7 +178,7 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
                 <div className="text-left">
                   <h4 className="text-[11px] font-black uppercase italic text-slate-950">{grupo.label}</h4>
                   <p className="text-[7px] font-bold text-slate-400 uppercase mt-1">
-                    {grupo.selecionados.length} Confirmados na Sede
+                    {grupo.selecionados.length} Confirmados na Cidade
                   </p>
                 </div>
               </div>
