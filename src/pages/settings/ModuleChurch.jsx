@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, collection, onSnapshot, doc } from '../../config/firebase';
-import { churchService } from '../../services/churchService'; // Importação do motor de serviço
+import { db, collection, onSnapshot, doc, addDoc, deleteDoc, updateDoc } from '../../config/firebase';
+import { churchService } from '../../services/churchService'; 
 import toast from 'react-hot-toast';
 import { MapPin, Clock, ChevronDown, Plus, Trash2, Home, X, Shield, Calendar, AlertTriangle, Save, Lock, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,10 +17,9 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     const isRegionalCidade = level === 'regional_cidade';
     const isGemLocal = level === 'gem_local';
 
-    if (isComissao) return true;
+    if (isMaster || isComissao) return true;
     if (isRegionalCidade) return userData?.cidadeId === localData?.cidadeId;
     
-    // Para o GEM Local, validamos se o "Crachá" dele bate com o ID da igreja selecionada
     return isGemLocal && userData?.comumId === localData?.id;
   }, [userData, localData]);
 
@@ -32,6 +31,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
   const diasSemana = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
   const cargosOrdem = ['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM', 'Encarregado Regional', 'Examinadora', 'Encarregado Local'];
 
+  // Listener para dados da Comum
   useEffect(() => {
     if (!localData?.id) return;
     setFormData(localData);
@@ -49,6 +49,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     return () => unsubDoc();
   }, [localData?.id]);
 
+  // Listener reativo para a subcoleção de Ministério (Onde o card nasce)
   useEffect(() => {
     if (!localData?.id) return;
     const unsubMin = onSnapshot(collection(db, 'comuns', localData.id, 'ministerio_lista'), (s) => {
@@ -69,25 +70,24 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     }
   };
 
-  // v5.0 - Agora utiliza o churchService para garantir salvamento com Custom Claims
   const saveToDatabase = async () => {
     if (!localData?.id || !temPoderEdicao) return; 
     try {
+      const docRef = doc(db, 'comuns', localData.id);
       const updatePayload = {
         endereco: formData.endereco || {},
         horaCulto: formData.horaCulto || '',
         horaCultoDomingo: formData.horaCultoDomingo || '',
         ensaioLocal: formData.ensaioLocal || '',
         horaEnsaio: formData.horaEnsaio || '',
+        updatedAt: Date.now()
       };
-      
-      await churchService.updateChurchDetails(localData.id, updatePayload);
-      
+      await updateDoc(docRef, updatePayload);
       if (onUpdate) onUpdate(formData);
-      toast.success("Dados da comum salvos");
+      toast.success("Dados salvos");
     } catch (e) { 
       console.error(e);
-      toast.error("Erro de permissão ou conexão."); 
+      toast.error("Erro ao salvar."); 
     }
   };
 
@@ -96,7 +96,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     const current = formData.diasSelecao || [];
     const updated = current.includes(idx) ? current.filter(i => i !== idx) : [...current, idx];
     try {
-        await churchService.updateChurchDetails(localData.id, { diasSelecao: updated });
+        await updateDoc(doc(db, 'comuns', localData.id), { diasSelecao: updated });
     } catch (e) { toast.error("Erro ao alterar agenda."); }
   };
 
@@ -181,7 +181,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
         </div>
       </div>
 
-      {/* SEÇÃO 4: MINISTÉRIO LOCAL (v5.0 SANEADO) */}
+      {/* SEÇÃO 4: MINISTÉRIO LOCAL (v5.1 CORREÇÃO SUBCOLEÇÃO) */}
       <div className="bg-slate-950 rounded-[2.5rem] overflow-hidden shadow-xl border border-white/5">
         <button onClick={() => setIsMinListOpen(!isMinListOpen)} className="w-full p-6 flex justify-between items-center text-amber-500 transition-colors">
           <div className="flex items-center gap-3 text-left">
@@ -202,13 +202,17 @@ const ModuleChurch = ({ localData, onUpdate }) => {
                         {cargosOrdem.map(c => <option key={c} value={c} className="text-slate-950">{c}</option>)}
                     </select>
                     <button onClick={async () => {
-                        if(!newMin.nome || !newMin.cargo) return toast.error("Preencha nome e cargo");
+                        if(!newMin.nome.trim() || !newMin.cargo) return toast.error("Preencha nome e cargo");
                         try {
-                            // Uso do serviço centralizado para evitar Permission Denied
-                            const listAtualizada = [...ministerio, { nome: newMin.nome.toUpperCase(), cargo: newMin.cargo }];
-                            await churchService.updateMinistryList(localData.id, listAtualizada);
+                            // CORREÇÃO: Gravação direta na subcoleção para evitar cards vazios
+                            await addDoc(collection(db, 'comuns', localData.id, 'ministerio_lista'), { 
+                              nome: newMin.nome.trim().toUpperCase(), 
+                              cargo: newMin.cargo,
+                              updatedAt: Date.now() 
+                            });
                             setNewMin({nome: '', cargo: ''});
-                        } catch (err) { toast.error("Falha ao salvar membro."); }
+                            toast.success("Adicionado");
+                        } catch (err) { toast.error("Falha ao salvar."); }
                     }} className="w-full bg-blue-600 text-white py-4 rounded-2xl flex items-center justify-center gap-2 font-black uppercase italic text-[10px] shadow-lg active:scale-95 transition-all">
                       <Plus size={16}/> Adicionar ao Ministério
                     </button>
@@ -216,18 +220,19 @@ const ModuleChurch = ({ localData, onUpdate }) => {
               )}
               
               <div className="space-y-2 pt-4 border-t border-white/10">
-                {ministerio.map((m, index) => (
-                  <div key={index} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 transition-all">
+                {ministerio.map((m) => (
+                  <div key={m.id} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 transition-all">
                     <div className="leading-tight text-left flex-1 min-w-0 pr-4">
-                      <p className="text-[10px] font-[900] text-white uppercase italic truncate">{m.nome}</p>
-                      <p className="text-[7px] font-bold text-blue-400 uppercase tracking-widest mt-1 truncate">{m.cargo}</p>
+                      <p className="text-[10px] font-[900] text-white uppercase italic truncate">{m.nome || 'SEM NOME'}</p>
+                      <p className="text-[7px] font-bold text-blue-400 uppercase tracking-widest mt-1 truncate">{m.cargo || 'SEM CARGO'}</p>
                     </div>
                     {temPoderEdicao && (
                         <button onClick={async () => { 
                             if(confirm('Remover do Ministério Local?')) {
                                 try {
-                                    const listNova = ministerio.filter((_, i) => i !== index);
-                                    await churchService.updateMinistryList(localData.id, listNova);
+                                    // CORREÇÃO: Deleta usando o ID real do documento da subcoleção
+                                    await deleteDoc(doc(db, 'comuns', localData.id, 'ministerio_lista', m.id));
+                                    toast.success("Removido");
                                 } catch (err) { toast.error("Erro ao remover."); }
                             }
                         }} className="p-2 text-white/10 hover:text-red-400 transition-colors shrink-0">

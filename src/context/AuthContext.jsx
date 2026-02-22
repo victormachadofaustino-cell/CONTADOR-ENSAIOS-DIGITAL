@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, db, doc, onSnapshot, onAuthStateChanged } from '../config/firebase';
+import { auth, db, doc, getDoc, onAuthStateChanged } from '../config/firebase';
 
 // Criação do Contexto (O reservatório de dados)
 const AuthContext = createContext();
@@ -29,23 +29,20 @@ export const AuthProvider = ({ children }) => {
       setUser(currentUser);
       
       if (currentUser) {
-        // --- EXTRAÇÃO DO CRACHÁ (Custom Claims) ---
-        // SINCRONIZAÇÃO v5.0: Forçamos a renovação do token para que o Firebase Rules 
-        // leia o nível de acesso mais atualizado do banco.
-        await currentUser.getIdToken(true);
-        const tokenResult = await currentUser.getIdTokenResult();
-        const claims = tokenResult.claims;
+        try {
+          // --- EXTRAÇÃO DO CRACHÁ (Custom Claims) ---
+          // SINCRONIZAÇÃO v5.0: Forçamos a renovação do token para que o Firebase Rules 
+          // leia o nível de acesso mais atualizado do banco.
+          await currentUser.getIdToken(true);
+          const tokenResult = await currentUser.getIdTokenResult();
+          const claims = tokenResult.claims;
 
-        // Se o e-mail logado for o seu, garantimos Master via Token
-        const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
+          // Se o e-mail logado for o seu, garantimos Master via Token
+          const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
 
-        // Se estiver logado e verificado, busca os "poderes" dele no banco de dados
-        const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
-          // Proteção contra processamento de snapshot em estado de logout iminente
-          if (!auth.currentUser || !auth.currentUser.emailVerified) {
-            setLoading(false);
-            return;
-          }
+          // ECONOMIA DE COTA v7.0: Substituído onSnapshot por getDoc (Leitura Única)
+          // Isso evita que o app consuma cota de leitura a cada segundo enquanto está aberto.
+          const docSnap = await getDoc(doc(db, 'users', currentUser.uid));
 
           if (docSnap.exists()) {
             const data = docSnap.data();
@@ -83,13 +80,11 @@ export const AuthProvider = ({ children }) => {
               emailVerified: currentUser.emailVerified 
             });
           }
+        } catch (err) {
+          console.error("Erro ao carregar perfil do usuário:", err);
+        } finally {
           setLoading(false);
-        }, (err) => {
-          console.error("Erro no Listener de Perfil:", err);
-          setLoading(false);
-        });
-
-        return () => unsubSnap();
+        }
       } else {
         // --- LIMPEZA DE SEGURANÇA NO LOGOUT ---
         setUserData(null);
@@ -107,14 +102,18 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => unsubAuth();
-  }, [activeRegionalId, activeCityId, activeComumId]); 
+  }, []); // Dependências limpas para evitar loops de leitura
 
   // FUNÇÕES DE COMANDO
   const setContext = (type, id) => {
     if (type === 'regional') {
       setActiveRegionalId(id);
-      if (id) localStorage.setItem('activeRegionalId', id);
-      else localStorage.removeItem('activeRegionalId');
+      if (id) {
+        localStorage.setItem('activeRegionalId', id);
+        setUserData(prev => ({ ...prev, activeRegionalId: id, activeCityId: null, activeComumId: null }));
+      } else {
+        localStorage.removeItem('activeRegionalId');
+      }
       
       setActiveCityId(null);
       setActiveComumId(null);
@@ -124,8 +123,12 @@ export const AuthProvider = ({ children }) => {
     
     if (type === 'city') {
       setActiveCityId(id);
-      if (id) localStorage.setItem('activeCityId', id);
-      else localStorage.removeItem('activeCityId');
+      if (id) {
+        localStorage.setItem('activeCityId', id);
+        setUserData(prev => ({ ...prev, activeCityId: id, activeComumId: null }));
+      } else {
+        localStorage.removeItem('activeCityId');
+      }
       
       setActiveComumId(null);
       localStorage.removeItem('activeComumId');
@@ -133,8 +136,12 @@ export const AuthProvider = ({ children }) => {
     
     if (type === 'comum') {
       setActiveComumId(id);
-      if (id) localStorage.setItem('activeComumId', id);
-      else localStorage.removeItem('activeComumId');
+      if (id) {
+        localStorage.setItem('activeComumId', id);
+        setUserData(prev => ({ ...prev, activeComumId: id }));
+      } else {
+        localStorage.removeItem('activeComumId');
+      }
     }
   };
 
