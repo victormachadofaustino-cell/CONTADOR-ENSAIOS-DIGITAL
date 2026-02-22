@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, db, doc, getDoc, onAuthStateChanged } from '../config/firebase';
+import { auth, db, doc, onSnapshot, onAuthStateChanged } from '../config/firebase';
 
 // Criação do Contexto (O reservatório de dados)
 const AuthContext = createContext();
@@ -15,10 +15,10 @@ export const AuthProvider = ({ children }) => {
   const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId'));
 
   useEffect(() => {
-    // Fica ouvindo se o usuário está logado ou não
+    // Monitor de autenticação
     const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       
-      // TRAVA DE SEGURANÇA v2.2: Impede a entrada reativa se o e-mail não estiver verificado
+      // TRAVA DE SEGURANÇA v2.2: Impede a entrada se o e-mail não estiver verificado
       if (currentUser && !currentUser.emailVerified) {
         setUser(null);
         setUserData(null);
@@ -30,118 +30,112 @@ export const AuthProvider = ({ children }) => {
       
       if (currentUser) {
         try {
-          // --- EXTRAÇÃO DO CRACHÁ (Custom Claims) ---
-          // SINCRONIZAÇÃO v5.0: Forçamos a renovação do token para que o Firebase Rules 
-          // leia o nível de acesso mais atualizado do banco.
-          await currentUser.getIdToken(true);
-          const tokenResult = await currentUser.getIdTokenResult();
+          // --- SINCRONIZAÇÃO DE CRACHÁ v8.5 (FORÇADA PARA PLANO BLAZE) ---
+          // Forçamos a renovação para que o GEM e Regional tenham os poderes atualizados no Token
+          const tokenResult = await currentUser.getIdTokenResult(true);
           const claims = tokenResult.claims;
 
-          // Se o e-mail logado for o seu, garantimos Master via Token
           const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
 
-          // ECONOMIA DE COTA v7.0: Substituído onSnapshot por getDoc (Leitura Única)
-          // Isso evita que o app consuma cota de leitura a cada segundo enquanto está aberto.
-          const docSnap = await getDoc(doc(db, 'users', currentUser.uid));
+          // REATIVIDADE TOTAL v8.5: Ouvinte do perfil no banco de dados
+          const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              
+              // --- CÉREBRO DE PERMISSÕES HÍBRIDO (Crachá + Banco) ---
+              const level = claims.accessLevel || data.accessLevel || 'basico';
 
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            
-            // --- CÉREBRO DE PERMISSÕES HÍBRIDO (Crachá + Banco) ---
-            // Prioriza o AccessLevel do Token (Seguro) ou o do Banco (Reativo)
-            const level = claims.accessLevel || data.accessLevel || 'basico';
+              const permissions = {
+                isMaster: level === 'master' || isOwner, 
+                isComissao: level === 'master' || isOwner || level === 'comissao', 
+                isRegionalCidade: level === 'master' || isOwner || level === 'comissao' || level === 'regional_cidade', 
+                isGemLocal: level === 'master' || isOwner || level === 'comissao' || level === 'regional_cidade' || level === 'gem_local', 
+                isBasico: level === 'basico',
+                isAdmin: level !== 'basico' 
+              };
 
-            const permissions = {
-              isMaster: level === 'master' || isOwner, 
-              isComissao: level === 'master' || isOwner || level === 'comissao', 
-              isRegionalCidade: level === 'master' || isOwner || level === 'comissao' || level === 'regional_cidade', 
-              isGemLocal: level === 'master' || isOwner || level === 'comissao' || level === 'regional_cidade' || level === 'gem_local', 
-              isBasico: level === 'basico',
-              isAdmin: level !== 'basico' 
-            };
+              // GPS REATIVO: Sincroniza o que está no banco com o que está selecionado no menu
+              const storedReg = localStorage.getItem('activeRegionalId');
+              const storedCity = localStorage.getItem('activeCityId');
+              const storedComum = localStorage.getItem('activeComumId');
 
-            // TRAVA DE SEGURANÇA MULTITENANCY (GPS CORRIGIDO)
-            const storedReg = localStorage.getItem('activeRegionalId');
-            const storedCity = localStorage.getItem('activeCityId');
-            const storedComum = localStorage.getItem('activeComumId');
+              const validRegionalId = (permissions.isComissao) ? (activeRegionalId || storedReg || data.regionalId) : data.regionalId;
+              const validCityId = (permissions.isRegionalCidade) ? (activeCityId || storedCity || data.cidadeId) : data.cidadeId;
+              const validComumId = (permissions.isRegionalCidade) ? (activeComumId || storedComum || data.comumId) : data.comumId;
 
-            const validRegionalId = (permissions.isComissao) ? (activeRegionalId || storedReg || data.regionalId) : data.regionalId;
-            const validCityId = (permissions.isRegionalCidade) ? (activeCityId || storedCity || data.cidadeId) : data.cidadeId;
-            const validComumId = (permissions.isRegionalCidade) ? (activeComumId || storedComum || data.comumId) : data.comumId;
-
-            // Injeta os IDs ativos no userData para que todo o app seja reativo
-            setUserData({ 
-              ...data, 
+              setUserData({ 
+                ...data, 
+                uid: currentUser.uid, 
+                ...permissions,
+                activeRegionalId: validRegionalId, 
+                activeCityId: validCityId,
+                activeComumId: validComumId,
+                emailVerified: currentUser.emailVerified 
+              });
+            }
+            setLoading(false);
+          }, (err) => {
+            // CORREÇÃO CRÍTICA: Se o Firebase Rules barrar a leitura inicial do perfil, 
+            // liberamos o app com dados básicos para permitir a renovação do Token.
+            console.error("Aviso: Perfil aguardando sincronização de Token...");
+            setUserData(prev => prev || { 
               uid: currentUser.uid, 
-              ...permissions,
-              activeRegionalId: validRegionalId, 
-              activeCityId: validCityId,
-              activeComumId: validComumId,
-              emailVerified: currentUser.emailVerified 
+              email: currentUser.email,
+              isBasico: true 
             });
-          }
+            setLoading(false);
+          });
+
+          return () => unsubSnap();
         } catch (err) {
-          console.error("Erro ao carregar perfil do usuário:", err);
-        } finally {
+          console.error("Erro ao processar Claims:", err);
           setLoading(false);
         }
       } else {
         // --- LIMPEZA DE SEGURANÇA NO LOGOUT ---
         setUserData(null);
-        
         setActiveRegionalId(null);
         setActiveCityId(null);
         setActiveComumId(null);
-
         localStorage.removeItem('activeRegionalId');
         localStorage.removeItem('activeCityId');
         localStorage.removeItem('activeComumId');
-
         setLoading(false);
       }
     });
 
     return () => unsubAuth();
-  }, []); // Dependências limpas para evitar loops de leitura
+  }, []); 
 
-  // FUNÇÕES DE COMANDO
+  // FUNÇÕES DE COMANDO PARA O GPS (ATUALIZAÇÃO ATÔMICA)
   const setContext = (type, id) => {
     if (type === 'regional') {
       setActiveRegionalId(id);
-      if (id) {
-        localStorage.setItem('activeRegionalId', id);
-        setUserData(prev => ({ ...prev, activeRegionalId: id, activeCityId: null, activeComumId: null }));
-      } else {
-        localStorage.removeItem('activeRegionalId');
-      }
+      if (id) localStorage.setItem('activeRegionalId', id);
+      else localStorage.removeItem('activeRegionalId');
       
       setActiveCityId(null);
       setActiveComumId(null);
       localStorage.removeItem('activeCityId');
       localStorage.removeItem('activeComumId');
+      setUserData(prev => prev ? { ...prev, activeRegionalId: id, activeCityId: null, activeComumId: null } : null);
     }
     
     if (type === 'city') {
       setActiveCityId(id);
-      if (id) {
-        localStorage.setItem('activeCityId', id);
-        setUserData(prev => ({ ...prev, activeCityId: id, activeComumId: null }));
-      } else {
-        localStorage.removeItem('activeCityId');
-      }
+      if (id) localStorage.setItem('activeCityId', id);
+      else localStorage.removeItem('activeCityId');
       
       setActiveComumId(null);
       localStorage.removeItem('activeComumId');
+      setUserData(prev => prev ? { ...prev, activeCityId: id, activeComumId: null } : null);
     }
     
     if (type === 'comum') {
       setActiveComumId(id);
-      if (id) {
-        localStorage.setItem('activeComumId', id);
-        setUserData(prev => ({ ...prev, activeComumId: id }));
-      } else {
-        localStorage.removeItem('activeComumId');
-      }
+      if (id) localStorage.setItem('activeComumId', id);
+      else localStorage.removeItem('activeComumId');
+      setUserData(prev => prev ? { ...prev, activeComumId: id } : null);
     }
   };
 

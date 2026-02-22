@@ -1,5 +1,6 @@
 import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch } from '../config/firebase';
 import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 // Variável de controle para o acumulador de cliques (Debounce)
 let debounceTimers = {};
@@ -8,8 +9,8 @@ let updateBuffers = {};
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v7.1 - Otimização Anti-Duplicidade e Carimbagem de Convidados
- * Agrupa atualizações e garante economia de cota via denormalização.
+ * v7.9 - Protocolo de Diagnóstico e Carimbagem de Identidade
+ * Adicionado console.error para visibilidade de falhas ocultas.
  */
 export const eventService = {
 
@@ -31,10 +32,14 @@ export const eventService = {
 
   /**
    * Cria um novo ensaio na Coleção Global
-   * LÓGICA BLUEPRINT: Captura um SNAPSHOT da configuração local e CARIMBA nomes de Cidade/Regional.
    */
   createEvent: async (comumId, eventData) => {
     if (!comumId) throw new Error("ID da Localidade ausente.");
+    
+    // Captura o usuário logado para carimbar a autoria (Essencial para exclusão posterior)
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+
     const { type, date, responsavel, regionalId, regionalNome, comumNome, cidadeId, cidadeNome, scope, invitedUsers } = eventData;
     
     let initialCounts = {};
@@ -69,7 +74,6 @@ export const eventService = {
         };
       });
 
-      // INICIALIZAÇÃO DE SEÇÕES
       sessoesDetectadas.forEach(sec => {
         const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
         initialCounts[metaKey] = {
@@ -80,13 +84,14 @@ export const eventService = {
         };
       });
       
-      // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL COM CARIMBAGEM (Denormalização)
-      return await addDoc(collection(db, 'events_global'), {
+      // 3. PERSISTÊNCIA NA COLEÇÃO GLOBAL COM CARIMBAGEM
+      const payload = {
         type: type || 'Ensaio Local',
         scope: scope || 'local', 
-        invitedUsers: invitedUsers || [], // Pode vir como array de objetos v7.0
+        invitedUsers: invitedUsers || [], 
         date,
         responsavel: responsavel || 'Pendente',
+        createdById: currentUser?.uid || null, // Carimbo de quem criou (Proteção GEM)
         comumNome: comumNome || '',
         comumId: comumId,
         cidadeId: cidadeId || '',
@@ -95,86 +100,66 @@ export const eventService = {
         regionalNome: regionalNome || '', 
         ata: { 
           status: 'open',
-          palavra: {
-            anciao: '',
-            livro: '',
-            capitulo: '',
-            verso: '',
-            assunto: ''
-          },
+          palavra: { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' },
           ocorrencias: [] 
         },
         counts: initialCounts, 
         createdAt: Date.now(),
-        dbVersion: "7.1-global-rich-guests-antidup"
-      });
+        dbVersion: "7.9-identity-stamped"
+      };
+
+      return await addDoc(collection(db, 'events_global'), payload);
 
     } catch (err) {
+      console.error("Erro detalhado na criação do evento:", err); // Agora aparece no console!
       if (err.message === "CONFIG_REQUIRED") throw err;
-      console.error("Erro ao processar criação de evento:", err);
-      throw new Error("Falha ao inicializar evento na localidade.");
+      throw new Error("Falha ao inicializar evento.");
     }
   },
 
   /**
-   * GESTÃO DE CONVIDADOS (CARIMBAGEM RICA)
-   * v7.1 - Removido timestamp interno do objeto para garantir funcionamento do arrayUnion (Anti-Duplicidade)
+   * GESTÃO DE CONVIDADOS
    */
-  addGuest: async (eventId, userFullData) => {
-    if (!eventId || !userFullData?.uid) return;
+  addGuest: async (eventId, userId) => {
+    if (!eventId || !userId) return;
     const eventRef = doc(db, 'events_global', eventId);
-    
-    // JUSTIFICATIVA: Sem o 'timestamp' interno, o objeto é único por usuário.
-    // O Firebase agora impede a inserção do mesmo Osvaldo ou Jonas duas vezes no array.
-    const guestStamp = {
-      uid: userFullData.uid,
-      name: userFullData.name || userFullData.nome || 'Convidado',
-      comum: userFullData.comumNome || userFullData.comum || 'Não informada'
-    };
-
-    return await updateDoc(eventRef, {
-      invitedUsers: arrayUnion(guestStamp),
-      updatedAt: Date.now() // Carimbo de tempo movido para o nível do documento
-    });
+    try {
+      return await updateDoc(eventRef, {
+        invitedUsers: arrayUnion(userId)
+      });
+    } catch (e) {
+      console.error("Erro ao adicionar convidado:", e);
+      throw e;
+    }
   },
 
-  removeGuest: async (eventId, userFullData) => {
-    if (!eventId || !userFullData) return;
+  removeGuest: async (eventId, userId) => {
+    if (!eventId || !userId) return;
     const eventRef = doc(db, 'events_global', eventId);
-    return await updateDoc(eventRef, {
-      invitedUsers: arrayRemove(userFullData),
-      updatedAt: Date.now()
-    });
-  },
-
-  /**
-   * LÓGICA DE POSSE ÚNICA (Take Ownership)
-   * Substitui o responsável atual pelo novo sem deixar o campo vago.
-   */
-  takeOwnership: async (eventId, instId, userData) => {
-    if (!eventId || !instId || !userData) return;
-    const eventRef = doc(db, 'events_global', eventId);
-    
-    const isMeta = instId.startsWith('meta_');
-    const updatePath = isMeta ? `counts.${instId}` : `counts.${instId}`;
-
-    return await updateDoc(eventRef, {
-      [`${updatePath}.responsibleId`]: userData.uid || userData.id,
-      [`${updatePath}.responsibleName`]: userData.name || userData.nome,
-      [`${updatePath}.updatedAt`]: Date.now(),
-      [`${updatePath}.isActive`]: true
-    });
+    try {
+      return await updateDoc(eventRef, {
+        invitedUsers: arrayRemove(userId)
+      });
+    } catch (e) {
+      console.error("Erro ao remover convidado:", e);
+      throw e;
+    }
   },
 
   // Exclui um ensaio da coleção global
   deleteEvent: async (comumId, eventId) => {
     if (!eventId) return; 
-    return await deleteDoc(doc(db, 'events_global', eventId));
+    try {
+      const docRef = doc(db, 'events_global', eventId);
+      return await deleteDoc(docRef);
+    } catch (error) {
+      console.error("ERRO FIREBASE NA EXCLUSÃO:", error); // Crucial para o diagnóstico!
+      throw error;
+    }
   },
 
   /**
    * Atualiza a contagem na COLEÇÃO GLOBAL
-   * v6.5 - Otimização Consolidada: Agrupa múltiplos campos em uma única escrita por instrumento.
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
     if (!eventId || !instId) return;
@@ -194,7 +179,6 @@ export const eventService = {
       
       try {
         const finalUpdates = { ...updateBuffers[timerKey] };
-        
         finalUpdates[`counts.${instId}.lastEditBy`] = userData?.name || 'Sistema';
         finalUpdates[`counts.${instId}.timestamp`] = Date.now();
         
@@ -202,23 +186,24 @@ export const eventService = {
         if (customName) finalUpdates[`counts.${instId}.name`] = customName;
 
         await updateDoc(eventRef, finalUpdates);
-        
         delete debounceTimers[timerKey];
         delete updateBuffers[timerKey];
-
       } catch (e) {
-        console.error("Erro ao consolidar contagem:", e);
+        console.error("Erro ao sincronizar contagem:", e);
       }
     }, 600);
   },
 
-  // Remove um instrumento extra da contagem global
   removeExtraInstrument: async (comumId, eventId, instId) => {
     if (!eventId || !instId) return;
     const eventRef = doc(db, 'events_global', eventId);
-    return await updateDoc(eventRef, { 
-      [`counts.${instId}`]: deleteField() 
-    });
+    try {
+      return await updateDoc(eventRef, { 
+        [`counts.${instId}`]: deleteField() 
+      });
+    } catch (e) {
+      console.error("Erro ao remover extra:", e);
+    }
   },
 
   /**
@@ -235,7 +220,6 @@ export const eventService = {
       }
     });
 
-    // Limpeza de campos para garantir integridade do documento
     const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData;
 
     const finalAta = {
