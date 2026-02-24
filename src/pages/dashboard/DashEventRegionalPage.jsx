@@ -48,8 +48,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         const section = (data.section || "GERAL").toUpperCase();
         const saneId = id.toLowerCase();
 
-        // 1. Agrupamento Robusto de Coral e Irmandade (v5.6 - Blindagem de Soma)
-        // Alteração de Lógica: Identificação estrita para evitar que Coral entre em Músicos
         const ehIrmandadeOuCoral = section.includes('CORAL') || 
                                    section.includes('IRMANDADE') || 
                                    saneId.includes('coral') || 
@@ -60,18 +58,15 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         if (ehIrmandadeOuCoral) {
           totals.irmaos += valIrmaos || (saneId === 'irmaos' ? effectiveTotal : 0);
           totals.irmas += valIrmas || (saneId === 'irmas' ? effectiveTotal : 0);
-          // Soma apenas no total de irmandade, bloqueando o acesso ao bloco de músicos
           if (saneId === 'coral' && !counts.irmas && !counts.irmaos) {
              totals.irmandade += effectiveTotal;
           }
         } 
-        // 2. Agrupamento de Organistas
         else if (section.includes('ORGANISTA') || saneId.includes('orgao') || saneId.includes('org')) {
           totals.organistas += effectiveTotal;
           totals.organistasCasa += effectiveComum;
           totals.organistasVisitas += effectiveVisita;
         } 
-        // 3. Bloco de Músicos (Protegido: Se chegou aqui, não é Irmandade nem Organista)
         else {
           totals.musicos += effectiveTotal;
           totals.musicosCasa += effectiveComum;
@@ -86,15 +81,21 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       });
     }
 
-    // Consolidação Final dos Totais de Público
     totals.irmandade = totals.irmaos + totals.irmas;
     totals.orquestra = totals.musicos + totals.organistas;
+
+    // v5.7 - TRAVA DE UNICIDADE: Impede registros fantasmas e mapeia localidades reais
+    const nomesProcessados = new Set();
 
     const processarPessoas = (lista, isVisitante = false) => {
       if (!lista || !Array.isArray(lista)) return;
       lista.forEach(p => {
+        const nomeSaneado = (p.nome || p.name || "").trim().toUpperCase();
         const cargo = (p.min || p.role || "");
         
+        if (!nomeSaneado || nomesProcessados.has(nomeSaneado)) return;
+        nomesProcessados.add(nomeSaneado);
+
         if (cargo === 'Ancião') {
           if (isVisitante) totals.ancianosVisitas++;
           else totals.ancianosCasa++;
@@ -124,8 +125,10 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
           else totals.examinadorasCasa++;
         }
         
-        if (isVisitante && (p.cidadeUf || p.comum || p.bairro)) {
-          totals.localidadesUnicas.add((p.cidadeUf || p.comum || p.bairro).toUpperCase());
+        // v5.8: Mapeia a localidade real (seja visitante ou da casa/cidade)
+        const localidade = (p.comum || p.cidadeUf || p.bairro || "").toUpperCase();
+        if (localidade) {
+          totals.localidadesUnicas.add(localidade);
         }
       });
     };
@@ -175,7 +178,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       const comumId = ataData?.comumId || userData?.activeComumId;
       const comumSnap = await getDoc(doc(db, 'comuns', comumId));
       const sedeData = comumSnap.exists() ? comumSnap.data() : null;
-      // v5.6: Envia os dados processados para o PDF, garantindo que o PDF receba os Big Numbers corretos
       pdfEventRegionalService.generateAtaRegional(stats, ataData, userData, counts, sedeData);
       toast.dismiss(loadingToast);
       toast.success("Ata Regional Gerada!");
@@ -212,7 +214,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
-      {/* 1. TOTAIS ESTRATÉGICOS */}
       <div className="space-y-3">
         <BigNumberCard title="Total Músicos" total={stats.musicos} hideDetails icon={<Music size={20} strokeWidth={3} />} color="text-slate-600" />
         <BigNumberCard title="Total Organistas" total={stats.organistas} hideDetails icon={<PieChart size={20} strokeWidth={3} />} color="text-slate-600" />
@@ -238,7 +239,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         />
       </div>
 
-      {/* 2. EQUILÍBRIO ORQUESTRAL */}
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-8 opacity-5"><Activity size={120} className="text-slate-900" /></div>
         
@@ -275,7 +275,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         </div>
       </div>
 
-      {/* 3. DETALHAMENTO DE MINISTÉRIO E GOVERNANÇA */}
       <div className="space-y-3 pb-20">
         <BigNumberCard title="Anciães" total={totalAncianos} casa={stats.ancianosCasa} visita={stats.ancianosVisitas} icon={<Landmark size={20} strokeWidth={3} />} variant="dark" />
         <BigNumberCard title="Diáconos" total={totalDiaconos} casa={stats.diaconosCasa} visita={stats.diaconosVisitas} icon={<Briefcase size={20} strokeWidth={3} />} />
@@ -291,7 +290,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
   );
 };
 
-/* --- SUB-COMPONENTES AUXILIARES --- */
 const BigNumberCard = ({ title, total, casa, visita, icon, variant, color, hideDetails, bgColor }) => (
   <div className={`px-5 py-2 rounded-[2rem] shadow-sm border flex items-center min-h-[84px] overflow-hidden ${bgColor ? bgColor : 'bg-white'} ${variant === 'dark' ? 'border-slate-200' : 'border-slate-100'}`}>
     <div className="w-[35%] flex items-center gap-3">

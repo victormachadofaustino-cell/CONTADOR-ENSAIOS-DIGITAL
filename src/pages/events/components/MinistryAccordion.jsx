@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, collection, query, where, getDocs } from '../../../config/firebase';
 import { ChevronDown, Check, Shield, Search, X, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
  * Módulo de Seleção Nominal de Ministério para Ensaios Regionais
- * v3.5 - Protocolo Deep Scan Cidade (Sub-collection Crawler)
- * Realiza uma varredura em todas as sub-coleções de ministério das comuns da cidade.
+ * v3.7 - Protocolo de Persistência Local e Anti-Duplicidade
+ * Garante que a Comum correta de cada irmão seja salva e exibida no Dashboard.
  */
 const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtual = [], onChange, isInputDisabled, userData, isReady }) => {
   const [regionalUsers, setRegionalUsers] = useState([]);
   const [openGroup, setOpenGroup] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // JUSTIFICATIVA: Ref para evitar disparos múltiplos (double-tap)
+  const lastClickRef = useRef(0);
 
   const isBasico = userData?.accessLevel === 'basico';
 
@@ -30,8 +33,6 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
     str?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() || "";
 
   useEffect(() => {
-    // ESTRATÉGIA v3.5: Varredura profunda por Cidade.
-    // Ignora a busca global e foca nas listas locais de todas as igrejas da cidade do evento.
     if (!isReady || !cidadeId || isBasico) return; 
     
     let isMounted = true;
@@ -39,7 +40,6 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
     const deepScanCityMinistry = async () => {
       setIsSyncing(true);
       try {
-        // 1. Localiza todas as Comuns vinculadas a esta Cidade
         const qComuns = query(
           collection(db, 'comuns'),
           where('cidadeId', '==', cidadeId)
@@ -48,7 +48,6 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
         
         const allNamesFound = [];
 
-        // 2. Dispara varredura paralela em todas as sub-coleções detectadas
         const promises = snapComuns.docs.map(async (docComum) => {
           const comumNome = docComum.data().comum || "Local";
           const snapMin = await getDocs(collection(db, 'comuns', docComum.id, 'ministerio_lista'));
@@ -64,11 +63,11 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
         const results = await Promise.all(promises);
         results.forEach(list => allNamesFound.push(...list));
 
-        // 3. Consolidação e De-duplicação por nome (Irmãos com cargos em múltiplas frentes)
         const usersMap = new Map();
         allNamesFound.forEach(u => {
           if (!u.nome) return;
-          const key = normalize(u.nome);
+          // v3.7: Diferencia irmãos pelo nome, cargo e comum para permitir seleção correta no Accordion
+          const key = `${normalize(u.nome)}_${normalize(u.role)}_${normalize(u.comum)}`;
           if (!usersMap.has(key)) {
             usersMap.set(key, u);
           }
@@ -79,7 +78,7 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
           setRegionalUsers(finalAuthList);
         }
       } catch (err) {
-        console.warn("MinistryAccordion: Deep Scan interrompido ou falhou.");
+        console.warn("MinistryAccordion: Deep Scan interrompido.");
       } finally {
         if (isMounted) setIsSyncing(false);
       }
@@ -106,13 +105,38 @@ const MinistryAccordion = ({ eventId, regionalId, cidadeId, comumId, presencaAtu
     });
   }, [regionalUsers, presencaAtual, searchTerm]);
 
+  /**
+   * handleToggle v3.7 - Blindagem de Clique e Persistência de Localidade
+   */
   const handleToggle = (person) => {
     if (isInputDisabled || isBasico) return;
-    const isPresent = presencaAtual.some(p => normalize(p.nome) === normalize(person.nome));
-    const novaLista = isPresent 
-      ? presencaAtual.filter(p => normalize(p.nome) !== normalize(person.nome))
-      : [...presencaAtual, { nome: person.nome, role: person.role, isExternal: false }];
-    onChange(novaLista);
+
+    const now = Date.now();
+    if (now - lastClickRef.current < 500) return;
+    lastClickRef.current = now;
+
+    // v3.7: Identificação para toggle baseada no nome único do card selecionado
+    const personKey = normalize(person.nome);
+    const isPresent = presencaAtual.some(p => normalize(p.nome) === personKey);
+
+    let novaLista;
+    if (isPresent) {
+      novaLista = presencaAtual.filter(p => normalize(p.nome) !== personKey);
+    } else {
+      // v3.7: Agora salvamos explicitamente a 'comum' para que o Dashboard não use o nome da sede
+      novaLista = [...presencaAtual, { 
+        nome: person.nome.trim(), 
+        role: person.role, 
+        comum: person.comum, // CAMPO CRÍTICO PARA O DASHBOARD
+        isExternal: false,
+        idRef: person.id 
+      }];
+    }
+
+    // Higienização para evitar qualquer duplicidade acidental no array final
+    const uniqueList = Array.from(new Map(novaLista.map(item => [normalize(item.nome), item])).values());
+    
+    onChange(uniqueList);
   };
 
   if (isSyncing) return <div className="py-10 text-center font-black text-slate-300 text-[9px] uppercase animate-pulse tracking-widest italic">Varrendo Ministério de Francisco Morato...</div>;
