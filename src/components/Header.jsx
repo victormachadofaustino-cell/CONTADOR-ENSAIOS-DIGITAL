@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 // PRESERVAÇÃO: Importações originais mantidas
 import { db, collection, onSnapshot, query, orderBy } from '../config/firebase';
-import { ChevronDown, RefreshCw } from 'lucide-react'; // Injetado RefreshCw para o Anexo 5
+import { ChevronDown, RefreshCw } from 'lucide-react'; 
 import { useAuth } from '../context/AuthContext';
 import ProfileMenu from './ProfileMenu'; 
+import toast from 'react-hot-toast'; // Importado para feedback real da sincronização
 
 const Header = ({ onChurchChange, onRegionalChange }) => {
   const { userData } = useAuth();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [listaRegionais, setListaRegionais] = useState([]);
   const [pendingTickets, setPendingTickets] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false); // Estado visual para o Sync
+  const [isSyncing, setIsSyncing] = useState(false); 
 
   const isMaster = userData?.accessLevel === 'master';
 
@@ -34,12 +35,26 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
 
   const regionalAtivaNome = listaRegionais.find(r => r.id === (userData?.activeRegionalId || userData?.regionalId))?.nome || userData?.regionalNome || userData?.regional || "Navegar...";
 
-  // Função para simular ou disparar a sincronização (Anexo 5)
+  // Função de Sincronização Real v8.9.6 com Restauração de Sessão
   const handleSync = () => {
+    if (isSyncing) return;
+    
     setIsSyncing(true);
-    // Aqui o app já faz a reativação via onSnapshot, 
-    // apenas damos o feedback visual de 1s para o usuário.
-    setTimeout(() => setIsSyncing(false), 1000);
+    const toastId = toast.loading("Sincronizando e salvando sessão...", {
+      style: { borderRadius: '1rem', background: '#0f172a', color: '#fff', fontSize: '12px', fontWeight: '900' }
+    });
+
+    // O reload força o Firebase a reestabelecer todos os listeners onSnapshot
+    // A Memória de Navegação no App.js garantirá que voltaremos para a mesma tela.
+    setTimeout(() => {
+      setIsSyncing(false);
+      toast.success("Dados prontos! Restaurando...", { id: toastId });
+      
+      // Delay estratégico para o usuário ver o sucesso antes do reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 600);
+    }, 1500);
   };
 
   return (
@@ -48,8 +63,8 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
         
         {/* SELETOR DE REGIONAL DIRETO NO HEADER (Protegido v2.1) */}
         <button 
-          onClick={() => isMaster && setIsProfileOpen(true)} // Só abre troca se for Master
-          disabled={!isMaster} // Desabilita interação para GEM
+          onClick={() => isMaster && setIsProfileOpen(true)} 
+          disabled={!isMaster} 
           className={`flex flex-col items-start leading-none text-left transition-all group ${isMaster ? 'active:opacity-60' : 'cursor-default'}`}
         >
           <span className="text-[10px] font-black text-blue-600 uppercase italic tracking-tighter flex items-center gap-1 leading-none">
@@ -61,11 +76,12 @@ const Header = ({ onChurchChange, onRegionalChange }) => {
         </button>
 
         <div className="flex items-center gap-4">
-          {/* BOTÃO SINCRONIZAR DISCRETO (Anexo 5) */}
+          {/* BOTÃO SINCRONIZAR REAL (v8.9.6) */}
           <button 
             onClick={handleSync}
+            disabled={isSyncing}
             className={`p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all ${isSyncing ? 'animate-spin text-blue-600' : ''}`}
-            title="Sincronizar Dados"
+            title="Sincronizar e Restaurar Sessão"
           >
             <RefreshCw size={18} />
           </button>

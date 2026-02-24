@@ -6,16 +6,16 @@ import {
   getDocs,
   writeBatch,
   initializeFirestore,
-  memoryLocalCache, // MUDANÇA: Cache em memória para evitar QuotaExceededError
+  persistentLocalCache, // MUDANÇA: Voltando para persistência física com limite de cota
   persistentMultipleTabManager,
   collectionGroup,
-  or // ADICIONADO: Necessário para consultas lógicas (Minha Comum OU Convites)
+  or 
 } from "firebase/firestore";
 import { 
   getAuth, signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, onAuthStateChanged, signOut,
   sendEmailVerification,
-  deleteUser // ADICIONADO: Essencial para o sistema de Rollback v2.2
+  deleteUser 
 } from "firebase/auth";
 
 const firebaseConfig = {
@@ -29,10 +29,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// CONFIGURAÇÃO REPARADA: Resolve o erro "QuotaExceededError"
-// Substituímos persistentLocalCache por memoryLocalCache para liberar o navegador
+// CONFIGURAÇÃO REPARADA v8.9.8: Ativa Offline real com limite de 50MB para evitar QuotaExceeded
 const db = initializeFirestore(app, {
-  localCache: memoryLocalCache(), 
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: 50 * 1024 * 1024 // Limite de 50MB para proteção do armazenamento
+  }),
   experimentalForceLongPolling: true,
   useFetchStreams: false
 });
@@ -46,8 +48,8 @@ export {
   getDocs,
   writeBatch,
   collectionGroup, 
-  or, // EXPORTADO: Para uso no eventService e consultas de multijurisdição
+  or, 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   onAuthStateChanged, signOut, sendEmailVerification,
-  deleteUser // EXPORTADO: Para uso no authService no fluxo de erro de cadastro
+  deleteUser 
 };

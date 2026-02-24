@@ -29,8 +29,9 @@ function App() {
   const [userData, setUserData] = useState(null);
   const [view, setView] = useState('loading');
   const [showSplash, setShowSplash] = useState(true); 
-  const [lobbyTab, setLobbyTab] = useState('ensaios');
-  const [currentEventId, setCurrentEventId] = useState(null);
+  // v8.9.6: Inicialização via Memória de Navegação
+  const [lobbyTab, setLobbyTab] = useState(localStorage.getItem('lastTab') || 'ensaios');
+  const [currentEventId, setCurrentEventId] = useState(localStorage.getItem('lastEventId') || null);
   const [counts, setCounts] = useState({});
   const [direcao, setDirecao] = useState(0);
   const [events, setEvents] = useState([]);
@@ -68,6 +69,19 @@ function App() {
     const temAcessoAjustes = isGemLocal; 
     return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
   }, [isGemLocal]);
+
+  // v8.9.6: Persistência de Navegação
+  useEffect(() => {
+    localStorage.setItem('lastTab', lobbyTab);
+  }, [lobbyTab]);
+
+  useEffect(() => {
+    if (currentEventId) {
+      localStorage.setItem('lastEventId', currentEventId);
+    } else {
+      localStorage.removeItem('lastEventId');
+    }
+  }, [currentEventId]);
 
   useEffect(() => {
     if ((authContextData || userData) && !ORDEM_TABS.includes(lobbyTab)) {
@@ -107,7 +121,6 @@ function App() {
     let unsubSnap = null;
     const unsubAuth = onAuthStateChanged(auth, u => {
       
-      // TRAVA DE SEGURANÇA v2.2: Se o e-mail não for verificado, nem tenta sincronizar jurisdição.
       if (u && !u.emailVerified) {
         setUser(null);
         setUserData(null);
@@ -158,7 +171,10 @@ function App() {
               setActiveRegionalName(data.regionalNome || data.regional || "Regional");
             }
             
-            setView(data.approved || data.accessLevel === 'master' ? 'lobby' : 'waiting-approval');
+            // v8.9.6: Lógica de restauração de View após Sync
+            const savedView = localStorage.getItem('lastEventId') ? 'app' : 'lobby';
+            setView(data.approved || data.accessLevel === 'master' ? savedView : 'waiting-approval');
+            
           } else { 
             setView('login'); 
           }
@@ -182,7 +198,6 @@ function App() {
   }, []); 
 
   useEffect(() => {
-    // FAXINA DE MEMÓRIA v4.2: Bloqueio de sincronização fantasma e limpeza obrigatória
     if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !(authContextData || userData)) return;
 
     setEvents([]); 
@@ -204,11 +219,9 @@ function App() {
       console.warn("Snapshot de eventos interrompido:", err.message);
     });
 
-    // LIMPEZA CRÍTICA: Desliga o sensor de eventos ao sair da tela ou mudar de comum
     return () => unsub();
   }, [comumIdEfetivo, user?.uid, user?.emailVerified, level]); 
 
-  // --- TRATAMENTO VISUAL DE CARREGAMENTO ---
   if (view === 'loading') {
     return (
       <div className="h-dvh flex flex-col items-center justify-center bg-[#F1F5F9] p-8 text-center space-y-4">
@@ -294,7 +307,10 @@ function App() {
           <CounterPage 
             currentEventId={currentEventId} 
             counts={counts} 
-            onBack={() => setView('lobby')} 
+            onBack={() => {
+              setCurrentEventId(null);
+              setView('lobby');
+            }} 
             isAdmin={isAdmin} 
             isMaster={isMaster} 
             userData={authContextData || { 
