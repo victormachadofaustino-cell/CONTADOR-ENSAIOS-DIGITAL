@@ -4,7 +4,7 @@ import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, order
 import { eventService } from '../../services/eventService';
 import AtaPage from './AtaPage';
 import DashEventPage from '../dashboard/DashEventPage';
-import DashEventRegionalPage from '../dashboard/DashEventRegionalPage'; // Nova importação para suporte regional
+import DashEventRegionalPage from '../dashboard/DashEventRegionalPage'; // Suporte regional preservado
 import toast from 'react-hot-toast';
 import { 
   ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3
@@ -188,38 +188,44 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return [...new Set(allInstruments.map(i => (i.section || "GERAL").toUpperCase()))].sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
   }, [allInstruments]);
 
+  // v8.15.2: ATUALIZAÇÃO OTIMISTA HÍBRIDA (TOTAL COMO TETO)
   const handleUpdateInstrument = (id, field, value, section) => {
     if (isClosed) return;
 
     if (isUpdatingRef.current) clearTimeout(isUpdatingRef.current);
-    isUpdatingRef.current = setTimeout(() => { isUpdatingRef.current = null; }, 1500);
+    isUpdatingRef.current = setTimeout(() => { isUpdatingRef.current = null; }, 1000);
 
-    // v8.13.0: ATUALIZAÇÃO OTIMISTA - Muda o número na tela IMEDIATAMENTE
     setLocalCounts(prev => {
       const sectionKey = section?.toUpperCase();
-      const isIrmandade = id === 'irmas' || id === 'irmaos' || sectionKey === 'IRMANDADE';
-      const isOrganistas = id === 'orgao' || sectionKey === 'ORGANISTAS';
-
+      
       let targetId = id;
-      if (isIrmandade || isOrganistas) {
-        // Localiza o ID mestre (Ex: Coral) para atualizar o estado local em sincronia com o InstrumentCard
-        targetId = Object.keys(prev).find(k => 
-          prev[k].section?.toUpperCase() === sectionKey && !k.startsWith('meta_')
-        ) || (isIrmandade ? 'Coral' : 'orgao');
+      if (sectionKey === 'IRMANDADE') targetId = 'Coral';
+      if (sectionKey === 'ORGANISTAS') targetId = 'orgao';
+
+      const currentData = prev[targetId] || {};
+      const newVal = Math.max(0, parseInt(value) || 0);
+
+      // LÓGICA DE PROTEÇÃO: Se estiver alterando Comum ou Enc, limita ao Total
+      if ((field === 'comum' || field === 'enc') && newVal > (currentData.total || 0)) {
+        return prev; 
       }
 
-      return { 
-        ...prev, 
-        [targetId]: { 
-          ...prev[targetId], 
-          [field]: value,
-          // Se for irmandade, já pré-calcula o total localmente para o Dashboard não piscar
-          total: (field === 'irmas' || field === 'irmaos') ? 
-            ((field === 'irmas' ? value : (prev[targetId]?.irmas || 0)) + 
-             (field === 'irmaos' ? value : (prev[targetId]?.irmaos || 0))) : 
-            (field === 'total' ? value : (prev[targetId]?.total || 0))
-        } 
-      };
+      const updatedObj = { ...currentData, [field]: newVal };
+
+      // REGRA DE CASCATA: Se baixar o Total, reduz Comum e Enc
+      if (field === 'total') {
+        if ((currentData.comum || 0) > newVal) updatedObj.comum = newVal;
+        if ((currentData.enc || 0) > newVal) updatedObj.enc = newVal;
+        
+        updatedObj.total = (id === 'irmas' || id === 'irmaos') ? 
+          ((field === 'irmas' ? newVal : (currentData.irmas || 0)) + 
+           (field === 'irmaos' ? newVal : (currentData.irmaos || 0))) : newVal;
+      } else if (field === 'irmas' || field === 'irmaos') {
+          updatedObj.total = (field === 'irmas' ? newVal : (currentData.irmas || 0)) + 
+                             (field === 'irmaos' ? newVal : (currentData.irmaos || 0));
+      }
+
+      return { ...prev, [targetId]: updatedObj };
     });
     
     eventService.updateInstrumentCount(eventComumId, currentEventId, { 
@@ -285,10 +291,18 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
+  // v8.15.2: CORREÇÃO DEFINITIVA DE PERMISSÃO HÍBRIDA
   const isEditingEnabled = (sec, subInstId = null) => {
     if (isClosed) return false;
     if (isComissao) return true;
     
+    // MODO LOCAL: Valida se é dono do Naipe (metaKey)
+    const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
+    if (ataData?.scope !== 'regional') {
+      return localCounts?.[metaKey]?.responsibleId === myUID;
+    }
+
+    // MODO REGIONAL: Valida sub-posse (Irmãs/Irmãos/Órgão)
     const sectionInstruments = allInstruments.filter(i => (i.section || '').toUpperCase() === sec.toUpperCase());
     const mestre = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()));
     const masterData = localCounts?.[mestre?.id];

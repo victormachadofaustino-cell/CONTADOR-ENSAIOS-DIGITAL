@@ -2,9 +2,9 @@ import React from 'react';
 import { Minus, Plus, Lock, User, UserCheck, ShieldCheck, UserPlus } from 'lucide-react';
 
 /**
- * InstrumentCard v3.13 - MODO HÍBRIDO (LOCAL/REGIONAL)
- * v3.13 - FIX DEFINITIVO: Resposta visual instantânea e sincronia de IDs Mestre.
- * Resolve o problema do número não mover no + e - sem refresh.
+ * InstrumentCard v3.15 - MODO HÍBRIDO (LOCAL/REGIONAL)
+ * v3.15 - RESTAURAÇÃO DE REGRAS: Implementação do "Total como Teto".
+ * Garante que campos secundários (Comum/Enc) nunca ultrapassem o Total.
  */
 const InstrumentCard = ({ 
   inst, 
@@ -20,7 +20,7 @@ const InstrumentCard = ({
   // BLINDAGEM CRÍTICA
   if (!inst || !inst.id) return null;
 
-  const isIrmandade = ['irmandade', 'irmas', 'irmaos', 'Coral', 'coral'].includes(inst.id.toLowerCase() || '');
+  const isIrmandade = ['irmandade', 'irmas', 'irmaos', 'coral'].includes(inst.id.toLowerCase() || '');
   
   const isOrganista = inst.id?.toLowerCase().includes('organista') || 
                       inst.name?.toLowerCase().includes('organ') || 
@@ -33,7 +33,6 @@ const InstrumentCard = ({
   const myUID = userData?.uid || userData?.id;
   const subId = inst.id.toLowerCase();
   
-  // v3.13: Verifica a posse específica para garantir o trato de individualidade
   const isMyTurn = (subId === 'irmas' || subId === 'irmaos') 
     ? data?.[`responsibleId_${subId}`] === myUID
     : data?.responsibleId === myUID;
@@ -51,18 +50,30 @@ const InstrumentCard = ({
   const irmaos = parseInt(data?.irmaos) || 0;
   const irmas = parseInt(data?.irmas) || 0;
   
-  // v3.13: Define o valor de exibição garantindo que o card de irmãs leia 'irmas' e não o 'total' do Coral
   const displayVal = subId === 'irmas' ? irmas : subId === 'irmaos' ? irmaos : total;
   
   const visitas = Math.max(0, total - comum);
   const isSubFieldDisabled = !canEdit || total === 0;
 
+  /**
+   * handleUpdate v3.15 - Lógica de Saneamento Hierárquico
+   */
   const handleUpdate = (field, value) => {
     if (!canEdit) return;
-    const finalValue = Math.max(0, parseInt(value) || 0);
+    let finalValue = Math.max(0, parseInt(value) || 0);
     
-    // Dispara a atualização para o pai (CounterPage) que atualizará o localCounts e o Firebase
-    onUpdate(inst.id, field, finalValue);
+    // REGRA 1: Comum e Liderança não podem ultrapassar o Total
+    if ((field === 'comum' || field === 'enc') && finalValue > total) {
+      finalValue = total;
+    }
+
+    // REGRA 2: Se o Total diminuir, puxa Comum e Liderança para baixo
+    if (field === 'total') {
+      if (comum > finalValue) onUpdate(inst.id, 'comum', finalValue, sectionName);
+      if (enc > finalValue) onUpdate(inst.id, 'enc', finalValue, sectionName);
+    }
+
+    onUpdate(inst.id, field, finalValue, sectionName);
   };
 
   return (
@@ -134,7 +145,15 @@ const InstrumentCard = ({
               
               {!isRegional && !isGovernance && (
                 <>
-                  <CounterBox label="COMUM" color="white" val={comum} onChange={v => handleUpdate('comum', v)} disabled={isSubFieldDisabled} isMain={false} />
+                  <CounterBox 
+                    label="COMUM" 
+                    color="white" 
+                    val={comum} 
+                    onChange={v => handleUpdate('comum', v)} 
+                    disabled={isSubFieldDisabled} 
+                    isMain={false} 
+                    maxLimit={total} // Trava visual v3.15
+                  />
                   <div className={`flex-[0.5] flex flex-col items-center justify-center rounded-[1.5rem] border transition-colors ${total === 0 ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}>
                     <span className={`text-[7px] font-black uppercase tracking-widest mb-1 italic ${total === 0 ? 'text-slate-300' : 'text-blue-400'}`}>Visitas</span>
                     <span className={`text-2xl font-[900] italic leading-none ${total === 0 ? 'text-slate-200' : 'text-blue-600'}`}>{visitas}</span>
@@ -159,7 +178,12 @@ const InstrumentCard = ({
                     <Minus size={14} strokeWidth={4}/>
                   </button>
                   <span className={`text-lg font-[900] italic w-6 text-center ${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-950'}`}>{enc}</span>
-                  <button type="button" disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc + 1)} className={`${isSubFieldDisabled ? 'opacity-0' : 'text-slate-950'} p-1.5`}>
+                  <button 
+                    type="button" 
+                    disabled={isSubFieldDisabled || enc >= total} // Trava Plus v3.15
+                    onClick={() => handleUpdate('enc', enc + 1)} 
+                    className={`${(isSubFieldDisabled || enc >= total) ? 'opacity-20' : 'text-slate-950'} p-1.5 transition-opacity`}
+                  >
                     <Plus size={14} strokeWidth={4}/>
                   </button>
                 </div>
@@ -172,7 +196,7 @@ const InstrumentCard = ({
   );
 };
 
-const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) => (
+const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, maxLimit = null }) => (
   <div className={`flex-1 rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden ${
     disabled ? 'bg-slate-50 border-slate-100 shadow-inner' : 
     color === 'slate' ? 'bg-slate-950 text-white border-slate-800 shadow-lg' : 
@@ -203,10 +227,10 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) =
         </div>
 
         <button 
-          disabled={disabled} 
+          disabled={disabled || (maxLimit !== null && val >= maxLimit)} 
           type="button"
           onClick={() => onChange(val + 1)} 
-          className={`w-10 h-full flex items-center justify-center transition-all ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
+          className={`w-10 h-full flex items-center justify-center transition-all ${(disabled || (maxLimit !== null && val >= maxLimit)) ? 'opacity-10 pointer-events-none' : 'active:bg-black/10'}`}
         >
           <Plus size={isMain ? 16 : 12} strokeWidth={4} className={color === 'slate' ? 'text-white/80' : 'text-slate-950'}/>
         </button>

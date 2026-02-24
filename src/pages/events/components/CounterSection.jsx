@@ -5,7 +5,7 @@ import InstrumentCard from './InstrumentCard';
 
 /**
  * Componente que agrupa instrumentos por seção (Naipe).
- * v2.5.1 - Zeladoria de TOPO: Refinamento de acessibilidade e consistência visual.
+ * v2.5.2 - CORREÇÃO DE TRAVA: Ajuste na hierarquia de permissões para evento Local.
  */
 const CounterSection = ({ 
   sec, 
@@ -132,8 +132,10 @@ const CounterSection = ({
                   inst={inst} 
                   data={instrumentData} 
                   onUpdate={(id, f, v) => handleUpdateInstrument(id, f, v, sec)} 
-                  // Edição bloqueada se não for dono do naipe (isClosed=true)
+                  // CORREÇÃO v2.5.2: Não invertemos a lógica. A edição interna do Card agora depende 
+                  // da função isEditingEnabled de forma direta, sem simular um "evento fechado".
                   isClosed={!isEditingEnabled(sec)} 
+                  onToggleOwnership={() => handleToggleGroup(sec)}
                   isRegional={false} 
                   userData={{uid: myUID}}
                   sectionName={sec}

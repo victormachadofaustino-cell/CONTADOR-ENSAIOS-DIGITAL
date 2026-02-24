@@ -8,8 +8,8 @@ import InstrumentCard from './InstrumentCard';
 
 /**
  * Módulo de Contagem para Ensaios Regionais
- * v8.12.5 - FIX DEFINITIVO: Individualização de posse Irmãs vs Irmãos.
- * Garante que o trato de individualidade seja respeitado no objeto mestre Coral.
+ * v8.12.6 - FIX REATIVIDADE: Estabilização de IDs Mestre (Coral/Orgao).
+ * Garante que a interface Regional reaja instantaneamente ao toque.
  */
 const CounterRegional = ({ 
   instruments, 
@@ -44,18 +44,23 @@ const CounterRegional = ({
   };
 
   const getSectionTotal = (sectionName) => {
+    const sName = sectionName.toUpperCase();
+    
+    // v8.12.6: Localização agressiva do ID Mestre para soma correta do cabeçalho
     const masterInst = (instruments || []).find(i => 
       i && i.id && !i.id.startsWith('meta_') && 
-      (i.section || '').toUpperCase() === sectionName.toUpperCase() &&
+      (i.section || '').toUpperCase() === sName &&
       !['irmas', 'irmaos'].includes(i.id.toLowerCase())
     );
 
-    if (sectionName.toUpperCase() === 'IRMANDADE' || sectionName.toUpperCase() === 'ORGANISTAS') {
-      return parseInt(localCounts?.[masterInst?.id]?.total) || 0;
+    // Se for seção protegida, o total vem do campo 'total' do objeto mestre (Coral ou orgao)
+    if (sName === 'IRMANDADE' || sName === 'ORGANISTAS') {
+      const mId = masterInst?.id || (sName === 'IRMANDADE' ? 'Coral' : 'orgao');
+      return parseInt(localCounts?.[mId]?.total) || 0;
     }
     
     return (instruments || [])
-      .filter(i => i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === sectionName.toUpperCase())
+      .filter(i => i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === sName)
       .reduce((acc, inst) => acc + (parseInt(localCounts?.[inst.id]?.total) || 0), 0);
   };
 
@@ -69,7 +74,7 @@ const CounterRegional = ({
           i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase()
         );
 
-        // Identifica o ID Mestre real (Ex: Coral ou orgao). Se não achar, usa um fallback seguro.
+        // v8.12.6: Sincronização de ID Mestre com o banco de dados
         const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id || (isIrmandade ? 'Coral' : isOrganistas ? 'orgao' : null);
         const masterData = localCounts?.[masterId] || {};
 
@@ -114,6 +119,7 @@ const CounterRegional = ({
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-6 space-y-3 pt-2">
