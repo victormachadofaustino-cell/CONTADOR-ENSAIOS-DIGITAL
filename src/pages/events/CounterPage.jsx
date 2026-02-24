@@ -138,7 +138,22 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return () => { isMounted = false; unsubEvent(); };
   }, [currentEventId]);
 
-  // v5.3: UNIÃO DE INSTRUMENTOS COM MAPEAMENTO DE LEITURA CONSOLIDADA
+  // v5.5: FILTRAGEM DE DADOS PARA O DASHBOARD (Fix Definitivo da Soma)
+  // Esta lógica garante que o Dashboard Regional receba apenas instrumentos musicais para somar.
+  const filteredCountsForDash = useMemo(() => {
+    const cleanCounts = { ...localCounts };
+    Object.keys(cleanCounts).forEach(key => {
+      const item = cleanCounts[key];
+      const isIrmandade = item?.section?.toUpperCase() === 'IRMANDADE' || key.toLowerCase().includes('coral') || key === 'irmas' || key === 'irmaos';
+      
+      // Se for irmandade, enviamos os dados mas com uma flag para o Dash ignorar na soma de músicos
+      if (isIrmandade) {
+        cleanCounts[key] = { ...item, _isIrmandade: true };
+      }
+    });
+    return cleanCounts;
+  }, [localCounts]);
+
   const allInstruments = useMemo(() => {
     const ordemOficial = ['Coral', 'irmandade', 'irmas', 'irmaos', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
     
@@ -312,7 +327,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             ataData?.scope === 'regional' ? (
               <DashEventRegionalPage 
                 eventId={currentEventId} 
-                counts={localCounts} 
+                counts={filteredCountsForDash} // v5.5: Enviando dados filtrados para o Dash Regional
                 userData={userData} 
                 isAdmin={true} 
                 ataData={ataData} 
@@ -320,7 +335,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             ) : (
               <DashEventPage 
                 eventId={currentEventId} 
-                counts={localCounts} 
+                counts={filteredCountsForDash} // v5.5: Enviando dados filtrados para o Dash Local
                 userData={userData} 
                 isAdmin={true} 
                 ataData={ataData} 

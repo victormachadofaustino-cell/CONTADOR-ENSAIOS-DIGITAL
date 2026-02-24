@@ -3,9 +3,9 @@ import { Plus, Trash2, X, Music } from 'lucide-react';
 import { Field, Select } from './AtaUIComponents.jsx';
 
 /**
- * AtaLiturgia v1.6
+ * AtaLiturgia v1.7
  * Módulo especializado no registro dos condutores e hinos.
- * Ajuste: Blindagem rigorosa do Hino de Abertura (1-480 e C1-C6).
+ * Ajuste v8.8: Unificação visual de cargos para todos os níveis e contexto regional.
  */
 const AtaLiturgia = ({ 
   ataData, 
@@ -14,7 +14,8 @@ const AtaLiturgia = ({
   referenciaMinisterio, 
   handleHinoChange,
   hidePartes = false,
-  onlyPartes = false
+  onlyPartes = false,
+  isRegional = false // Contexto Geográfico v8.8
 }) => {
   
   // Função interna de validação para o hino de abertura (Protocolo 480/C6)
@@ -45,7 +46,7 @@ const AtaLiturgia = ({
     <div className="space-y-6">
       {/* BLOCO: ATENDIMENTO E ORAÇÕES (Ocultado se onlyPartes for true) */}
       {!onlyPartes && (
-        <div className="grid grid-cols-1 gap-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner">
+        <div className="grid grid-cols-1 gap-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner text-left">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field 
               label="Atendimento" 
@@ -62,19 +63,21 @@ const AtaLiturgia = ({
             />
           </div>
 
-          {/* NOVO CAMPO: HINO DE ABERTURA COM BLINDAGEM v1.6 */}
-          <div className="pt-2 border-t border-slate-200/50">
-            <div className="max-w-[120px]">
-                <Field 
-                  label="Hino Abertura" 
-                  val={ataData.hinoAbertura || ''} 
-                  disabled={isInputDisabled} 
-                  placeholder="000"
-                  icon={<Music size={10} className="text-blue-600"/>}
-                  onChange={v => validateAbertura(v)} 
-                />
+          {/* AJUSTE v8.8: HINO DE ABERTURA DISPONÍVEL APENAS EM EVENTO REGIONAL */}
+          {isRegional && (
+            <div className="pt-2 border-t border-slate-200/50">
+              <div className="max-w-[120px]">
+                  <Field 
+                    label="Hino Abertura" 
+                    val={ataData.hinoAbertura || ''} 
+                    disabled={isInputDisabled} 
+                    placeholder="000"
+                    icon={<Music size={10} className="text-blue-600"/>}
+                    onChange={v => validateAbertura(v)} 
+                  />
+              </div>
             </div>
-          </div>
+          )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
             <Field 
@@ -114,7 +117,7 @@ const AtaLiturgia = ({
       {!hidePartes && (
         <div className="space-y-4">
           {(ataData.partes || []).map((parte, pIdx) => (
-            <div key={pIdx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative animate-premium">
+            <div key={pIdx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative animate-premium text-left">
               <div className="flex justify-between items-center mb-6">
                 <h4 className="font-black italic uppercase text-[10px] tracking-widest text-blue-600 leading-none">
                   {parte.label}

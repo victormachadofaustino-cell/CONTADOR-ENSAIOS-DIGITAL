@@ -2,9 +2,9 @@ import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 
 /**
- * AtaMinisterioLocal v1.2
+ * AtaMinisterioLocal v1.3
  * Módulo para controle de presença do ministério da comum.
- * Ajuste: Expansão do dicionário de variantes para paridade com subcoleções locais.
+ * v8.8: Ajustado para permitir visualização passiva em todos os níveis de acesso.
  */
 const AtaMinisterioLocal = ({ 
   localMinisterio, 

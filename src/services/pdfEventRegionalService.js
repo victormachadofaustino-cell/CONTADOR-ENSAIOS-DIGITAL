@@ -11,7 +11,8 @@ export const toTitleCase = (str) => {
 export const pdfEventRegionalService = {
   /**
    * Gera o PDF da Ata de Ensaio Regional
-   * v3.4 - Restauração do Detalhamento de Irmandade (Irmãos/Irmãs) e Ajuste de Espaços
+   * v4.0 - Protocolo de Equilíbrio Visual (Balanced Totals Banner)
+   * Ajusta a faixa para 14mm e fonte para 14pt. Mantém Comum Local em branco.
    */
   generateAtaRegional: async (stats, ataData, userData, counts, sedeFullData) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -182,7 +183,7 @@ export const pdfEventRegionalService = {
     nextMooY = renderBar("SAXOFONES (SOBRE MADEIRAS)", stats.saxofones, totalMadeiras, nextMooY - 2, [16, 185, 129], true);
     nextMooY = renderBar("METAIS", stats.metais, pSum, nextMooY, [220, 38, 38]);
 
-    // 8. ÓRGÃO E IRMANDADE (Restauração do detalhamento de Irmãos/Irmãs)
+    // 8. ÓRGÃO E IRMANDADE
     const tabY = doc.lastAutoTable.finalY + 5;
     autoTable(doc, {
       startY: tabY, margin: { right: pageWidth / 2 + 3 },
@@ -202,14 +203,17 @@ export const pdfEventRegionalService = {
       columnStyles: { 0: { halign: 'left' } }
     });
 
-    // 9. TOTAIS E RESUMO MINISTERIAL
+    // 9. TOTAIS E RESUMO MINISTERIAL (v4.0 - FAIXA BALANCED IMPACT)
     const totY = Math.max(doc.lastAutoTable.finalY + 10, nextMooY + 5);
-    doc.setFillColor(30, 30, 30); doc.rect(margin, totY, pageWidth - 20, 8, 'F');
-    doc.setFont("times", "bold"); doc.setFontSize(9); doc.setTextColor(255);
-    doc.text(`MÚSICOS: ${stats.musicos}  |  ORGANISTAS: ${stats.organistas}  |  CORAL: ~ ${stats.irmandade}  |  TOTAL GERAL: ${stats.geral}`, pageWidth / 2, totY + 5.5, { align: 'center' });
+    // MEDIDA: Retângulo ajustado para 14mm de altura para equilíbrio estético
+    doc.setFillColor(30, 30, 30); doc.rect(margin, totY, pageWidth - 20, 14, 'F'); 
+    // FONTE: Definida em 14pt para máxima legibilidade sem exagero
+    doc.setFont("times", "bold"); doc.setFontSize(14); doc.setTextColor(255);
+    // POSIÇÃO: Centralização vertical ajustada para +9mm Y
+    doc.text(`MÚSICOS: ${stats.musicos}  |  ORGANISTAS: ${stats.organistas}  |  CORAL: ~ ${stats.irmandade}  |  TOTAL GERAL: ${stats.geral}`, pageWidth / 2, totY + 9, { align: 'center' });
 
     doc.setTextColor(0);
-    const resY = totY + 14;
+    const resY = totY + 20; // Espaço de respiro após a faixa
     doc.setFontSize(8); doc.setFont("times", "bold");
     doc.text("RESUMO DA PRESENÇA MINISTERIAL", margin, resY);
     doc.setFont("times", "normal");
@@ -222,8 +226,11 @@ export const pdfEventRegionalService = {
     doc.text(`EXAMINADORAS: ${stats.examinadorasCasa + stats.examinadorasVisitas}`, rightColX, resY + 9);
     doc.text(`ENC. LOCAIS: ${stats.encLocalCasa + stats.encLocalVisitas}`, rightColX, resY + 13);
 
-    // 10. TABELA MINISTERIAL
-    const localRows = (ataData?.presencaLocalFull || []).map(p => [p.role, toTitleCase(p.nome), sedeNomeFormatado.toUpperCase(), cidadeNome.toUpperCase(), "-", "-"]);
+    // 10. TABELA MINISTERIAL (LOCAL EM BRANCO)
+    const localRows = (ataData?.presencaLocalFull || []).map(p => [
+      p.role, toTitleCase(p.nome), "", cidadeNome.toUpperCase(), "-", "-"
+    ]);
+
     const visitRows = (ataData?.visitantes || []).map(v => [v.min, toTitleCase(v.nome), (v.bairro || v.comum || "---").toUpperCase(), (v.cidadeUf || "---").toUpperCase(), v.dataEnsaio || "-", v.hora || "-"]);
 
     const finalMinBody = [];

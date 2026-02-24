@@ -99,6 +99,22 @@ const AtaPage = ({ eventId, comumId }) => {
     });
   };
 
+  // AJUSTE v8.8: Cálculo dinâmico para limpar o badge de "presenças fantasmas"
+  const badgeMinisterioLocal = useMemo(() => {
+    if (!ataData.presencaLocal || !localMinisterio.length) return null;
+    // Conta apenas quem está marcado E ainda existe na lista oficial da igreja
+    const reais = ataData.presencaLocal.filter(nome => 
+      localMinisterio.some(m => m.name === nome)
+    );
+    return reais.length || null;
+  }, [ataData.presencaLocal, localMinisterio]);
+
+  const badgeMinisterioRegional = useMemo(() => {
+    if (!ataData.presencaLocalFull) return null;
+    const válidos = ataData.presencaLocalFull.filter(p => p.nome && p.role);
+    return válidos.length || null;
+  }, [ataData.presencaLocalFull]);
+
   const debouncedSave = useCallback((newData) => {
     if (isInputDisabled) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -108,7 +124,7 @@ const AtaPage = ({ eventId, comumId }) => {
       eventService.saveAtaData(comumId, eventId, {
         ...newData,
         comumNome: nomeDaComum,
-        cidadeId: eventMeta?.cidadeId || userData?.cidadeId // Garante o vínculo geográfico v8.8
+        cidadeId: eventMeta?.cidadeId || userData?.cidadeId 
       });
     }, 1500);
   }, [comumId, eventId, eventMeta, userData, isInputDisabled]);
@@ -125,7 +141,7 @@ const AtaPage = ({ eventId, comumId }) => {
       ...ataData, 
       status: newStatus, 
       comumNome: eventMeta?.comumNome || userData?.comum || "LOCALIDADE",
-      cidadeId: eventMeta?.cidadeId || userData?.cidadeId // Preserva ID no Lacre v8.8
+      cidadeId: eventMeta?.cidadeId || userData?.cidadeId 
     };
     setAtaData(updated);
     try {
@@ -138,22 +154,25 @@ const AtaPage = ({ eventId, comumId }) => {
     if (!comumId || !eventId) return;
     let isMounted = true;
     
+    // CARREGAMENTO DE REFERÊNCIA GLOBAL (Liberado v8.8 para todos os níveis)
+    const unsubReferencia = onSnapshot(collection(db, 'referencia_cargos'), (s) => {
+      if (!isMounted) return;
+      const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
+      setReferenciaMinisterio(lista);
+    });
+
+    // CARREGAMENTO DE MINISTÉRIO DA COMUM (Liberado v8.8 para visualização de todos os níveis)
+    const unsubMin = onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
+      if (!isMounted) return;
+      const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
+      setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
+    });
+
+    // CARREGAMENTOS RESTRITOS (Apenas para Administradores de Orquestra)
     if (!isBasico) {
       onSnapshot(collection(db, 'config_instrumentos_nacional'), (s) => {
         if (!isMounted) return;
         setInstrumentsNacionais(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-
-      onSnapshot(collection(db, 'referencia_cargos'), (s) => {
-        if (!isMounted) return;
-        const lista = s.docs.map(d => d.data().nome).sort((a, b) => (pesosMinisterio[a] || 99) - (pesosMinisterio[b] || 99));
-        setReferenciaMinisterio(lista);
-      });
-
-      onSnapshot(collection(db, 'comuns', comumId, 'ministerio_lista'), (s) => {
-        if (!isMounted) return;
-        const lista = s.docs.map(d => ({ id: d.id, name: d.data().nome, role: d.data().cargo }));
-        setLocalMinisterio(ordenarLista(lista, 'name', 'role'));
       });
     }
 
@@ -180,10 +199,16 @@ const AtaPage = ({ eventId, comumId }) => {
           setLoading(false);
         }
       },
-      (err) => console.warn("Listener de Ata restrito.")
+      (err) => console.warn("Erro no Listener de Evento Global.")
     );
 
-    return () => { isMounted = false; unsubEvent(); if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+    return () => { 
+      isMounted = false; 
+      unsubReferencia(); 
+      unsubMin();
+      unsubEvent(); 
+      if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); 
+    };
   }, [eventId, comumId, isBasico]);
 
   const handleHinoChange = (pIdx, hIdx, val) => {
@@ -279,7 +304,15 @@ const AtaPage = ({ eventId, comumId }) => {
 
       <Accordion title="Liturgia do Ensaio" isOpen={openSection === 'liturgia'} onClick={() => setOpenSection(openSection === 'liturgia' ? null : 'liturgia')} icon="🎼">
         <div className="space-y-6">
-          <AtaLiturgia ataData={ataData} handleChange={handleChange} isInputDisabled={isInputDisabled} referenciaMinisterio={referenciaMinisterio} handleHinoChange={handleHinoChange} hidePartes={true} />
+          <AtaLiturgia 
+            ataData={ataData} 
+            handleChange={handleChange} 
+            isInputDisabled={isInputDisabled} 
+            referenciaMinisterio={referenciaMinisterio} 
+            handleHinoChange={handleHinoChange} 
+            hidePartes={true} 
+            isRegional={isRegionalScope} 
+          />
           {isRegionalScope && (
             <div className="pt-4 border-t border-slate-100">
               <div className="px-2 mb-4">
@@ -289,7 +322,15 @@ const AtaPage = ({ eventId, comumId }) => {
               <AtaPalavra ataData={ataData} handleChange={handleChange} isInputDisabled={isInputDisabled} />
             </div>
           )}
-          <AtaLiturgia ataData={ataData} handleChange={handleChange} isInputDisabled={isInputDisabled} referenciaMinisterio={referenciaMinisterio} handleHinoChange={handleHinoChange} onlyPartes={true} />
+          <AtaLiturgia 
+            ataData={ataData} 
+            handleChange={handleChange} 
+            isInputDisabled={isInputDisabled} 
+            referenciaMinisterio={referenciaMinisterio} 
+            handleHinoChange={handleHinoChange} 
+            onlyPartes={true} 
+            isRegional={isRegionalScope} 
+          />
         </div>
       </Accordion>
 
@@ -308,7 +349,13 @@ const AtaPage = ({ eventId, comumId }) => {
         <AtaVisitantes visitantes={ataData.visitantes} isInputDisabled={isInputDisabled} isClosed={isClosed || isBasico} handleOpenVisitaModal={handleOpenVisitaModal} setVisitaToDelete={setVisitaToDelete} />
       </Accordion>
 
-      <Accordion title={isRegionalScope ? "Ministério Regional" : "Ministério Local"} isOpen={openSection === 'ministerio'} onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} icon="🏛️" badge={isRegionalScope ? (ataData.presencaLocalFull?.length || null) : (ataData.presencaLocal?.length || null)}>
+      <Accordion 
+        title={isRegionalScope ? "Ministério Regional" : "Ministério Local"} 
+        isOpen={openSection === 'ministerio'} 
+        onClick={() => setOpenSection(openSection === 'ministerio' ? null : 'ministerio')} 
+        icon="🏛️" 
+        badge={isRegionalScope ? badgeMinisterioRegional : badgeMinisterioLocal}
+      >
         {isRegionalScope ? (
           <MinistryAccordion 
             eventId={eventId} 
@@ -319,7 +366,7 @@ const AtaPage = ({ eventId, comumId }) => {
             onChange={(novaLista) => handleChange({ ...ataData, presencaLocalFull: novaLista })} 
             isInputDisabled={isInputDisabled} 
             userData={userData} 
-            isReady={!!eventMeta} // Protocolo de Estabilidade v3.4
+            isReady={!!eventMeta} 
           />
         ) : (
           <AtaMinisterioLocal localMinisterio={localMinisterio} presencaLocal={ataData.presencaLocal} isInputDisabled={isInputDisabled} togglePresencaLocal={togglePresencaLocal} />
@@ -332,7 +379,6 @@ const AtaPage = ({ eventId, comumId }) => {
         </div>
       )}
 
-      {/* MODAL DE VISITA REESTRUTURADO (Anexo 2) */}
       <AnimatePresence>
         {showVisitaModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">

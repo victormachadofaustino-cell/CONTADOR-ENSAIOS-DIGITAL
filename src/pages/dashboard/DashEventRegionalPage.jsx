@@ -48,10 +48,22 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         const section = (data.section || "GERAL").toUpperCase();
         const saneId = id.toLowerCase();
 
-        // 1. Agrupamento Robusto de Coral e Irmandade (Evita vazamento para músicos)
-        if (section.includes('CORAL') || section.includes('IRMANDADE') || saneId.includes('coral') || saneId.includes('irmandade')) {
-          totals.irmaos += valIrmaos || (effectiveTotal - valIrmas);
-          totals.irmas += valIrmas;
+        // 1. Agrupamento Robusto de Coral e Irmandade (v5.6 - Blindagem de Soma)
+        // Alteração de Lógica: Identificação estrita para evitar que Coral entre em Músicos
+        const ehIrmandadeOuCoral = section.includes('CORAL') || 
+                                   section.includes('IRMANDADE') || 
+                                   saneId.includes('coral') || 
+                                   saneId.includes('irmandade') || 
+                                   saneId === 'irmas' || 
+                                   saneId === 'irmaos';
+
+        if (ehIrmandadeOuCoral) {
+          totals.irmaos += valIrmaos || (saneId === 'irmaos' ? effectiveTotal : 0);
+          totals.irmas += valIrmas || (saneId === 'irmas' ? effectiveTotal : 0);
+          // Soma apenas no total de irmandade, bloqueando o acesso ao bloco de músicos
+          if (saneId === 'coral' && !counts.irmas && !counts.irmaos) {
+             totals.irmandade += effectiveTotal;
+          }
         } 
         // 2. Agrupamento de Organistas
         else if (section.includes('ORGANISTA') || saneId.includes('orgao') || saneId.includes('org')) {
@@ -59,7 +71,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
           totals.organistasCasa += effectiveComum;
           totals.organistasVisitas += effectiveVisita;
         } 
-        // 3. Bloco de Músicos (Protegido contra captura indevida de Irmandade)
+        // 3. Bloco de Músicos (Protegido: Se chegou aqui, não é Irmandade nem Organista)
         else {
           totals.musicos += effectiveTotal;
           totals.musicosCasa += effectiveComum;
@@ -69,11 +81,12 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
           else if (section.includes('SAX')) totals.saxofones += effectiveTotal;
           else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt'].includes(saneId)) totals.madeiras += effectiveTotal;
           else if (section.includes('METAI') || ['tpt', 'tbn', 'trp', 'euf', 'tub'].includes(saneId)) totals.metais += effectiveTotal;
-          else if (section === 'TECLAS' || saneId === 'acordeon' || saneId === 'acd') totals.teclas += effectiveTotal;
+          else if (section === 'TECLAS' || saneId === 'acordeon' || saneId === 'acd'.includes(saneId)) totals.teclas += effectiveTotal;
         }
       });
     }
 
+    // Consolidação Final dos Totais de Público
     totals.irmandade = totals.irmaos + totals.irmas;
     totals.orquestra = totals.musicos + totals.organistas;
 
@@ -121,12 +134,12 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
     processarPessoas(ataData?.visitantes, true);
 
     totals.ministerio_total = (totals.ancianosCasa + totals.ancianosVisitas) + 
-                             (totals.diaconosCasa + totals.diaconosVisitas) + 
-                             (totals.coopOficioCasa + totals.coopOficioVisitas) + 
-                             (totals.coopJovensCasa + totals.coopJovensVisitas) + 
-                             (totals.encRegionalCasa + totals.encRegionalVisitas) + 
-                             (totals.encLocalCasa + totals.encLocalVisitas) + 
-                             (totals.examinadorasCasa + totals.examinadorasVisitas);
+                              (totals.diaconosCasa + totals.diaconosVisitas) + 
+                              (totals.coopOficioCasa + totals.coopOficioVisitas) + 
+                              (totals.coopJovensCasa + totals.coopJovensVisitas) + 
+                              (totals.encRegionalCasa + totals.encRegionalVisitas) + 
+                              (totals.encLocalCasa + totals.encLocalVisitas) + 
+                              (totals.examinadorasCasa + totals.examinadorasVisitas);
 
     totals.geral = totals.orquestra + totals.irmandade + totals.ministerio_total;
 
@@ -162,6 +175,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       const comumId = ataData?.comumId || userData?.activeComumId;
       const comumSnap = await getDoc(doc(db, 'comuns', comumId));
       const sedeData = comumSnap.exists() ? comumSnap.data() : null;
+      // v5.6: Envia os dados processados para o PDF, garantindo que o PDF receba os Big Numbers corretos
       pdfEventRegionalService.generateAtaRegional(stats, ataData, userData, counts, sedeData);
       toast.dismiss(loadingToast);
       toast.success("Ata Regional Gerada!");
