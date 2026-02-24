@@ -9,8 +9,8 @@ let updateBuffers = {};
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v8.8 - FIX: Resiliência em Escrita Concorrente e Desentupimento de Buffer
- * Garante que falhas de leitura/permissão não travem o app para múltiplos usuários.
+ * v8.12.0 - FIX: Posse Individualizada e Soma Atômica no Objeto Mestre (Coral)
+ * Resolve conflitos de concorrência entre contagem de irmãs e irmãos.
  */
 export const eventService = {
 
@@ -130,7 +130,7 @@ export const eventService = {
         },
         counts: initialCounts, 
         createdAt: Date.now(),
-        dbVersion: "8.8-resilience-fix"
+        dbVersion: "8.12.0-atomic-master"
       };
 
       return await addDoc(collection(db, 'events_global'), payload);
@@ -185,8 +185,8 @@ export const eventService = {
   },
 
   /**
-   * v8.8 - ATUALIZAÇÃO RESILIENTE COM AUTO-LIMPEZA
-   * Garante que falhas não "entupam" o buffer global de cliques.
+   * v8.12.0 - ATUALIZAÇÃO RESILIENTE COM SOMA ATÔMICA
+   * Garante que contagens de irmãs e irmãos não se sobreponham no Coral.
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => {
     if (!eventId || !instId) return;
@@ -211,48 +211,52 @@ export const eventService = {
         const counts = snap.data().counts || {};
         let targetId = instId;
 
-        // --- LÓGICA DE REDIRECIONAMENTO RESILIENTE ---
-        const isPublico = instId.toLowerCase() === 'irmas' || instId.toLowerCase() === 'irmaos';
+        // --- AMARRAÇÃO COMPULSÓRIA DA SEÇÃO MESTRE ---
+        const sectionKey = (section || counts[instId]?.section || '').toUpperCase();
+        const isIrmandade = instId.toLowerCase() === 'irmas' || instId.toLowerCase() === 'irmaos' || sectionKey === 'IRMANDADE';
+        const isOrganistas = instId.toLowerCase() === 'orgao' || sectionKey === 'ORGANISTAS';
         
-        if (isPublico) {
-          const oficialId = Object.keys(counts).find(key => counts[key].section?.toUpperCase() === 'IRMANDADE' && !key.startsWith('meta_'));
-          // Se encontrar o Coral/Irmandade oficial, redireciona. Senão, mantém o instId original.
-          if (oficialId) targetId = oficialId;
+        if (isIrmandade || isOrganistas) {
+          const mestreId = Object.keys(counts).find(key => 
+            counts[key].section?.toUpperCase() === sectionKey && !key.startsWith('meta_')
+          ) || (isIrmandade ? 'Coral' : 'orgao');
+          
+          targetId = mestreId;
         }
 
         const currentInstData = counts[targetId] || {};
         const finalUpdates = {};
         const baseKey = `counts.${targetId}`;
 
-        // Aplica o que está no buffer
+        // Aplica o buffer ao objeto mestre
         Object.keys(bufferCopy).forEach(f => {
           finalUpdates[`${baseKey}.${f}`] = bufferCopy[f];
         });
 
-        // AUTO-SOMA (Lógica de Totalizador Mestre)
-        const totalIrmaos = fieldToUpdate === 'irmaos' ? val : (currentInstData.irmaos || 0);
-        const totalIrmas = fieldToUpdate === 'irmas' ? val : (currentInstData.irmas || 0);
-        
-        if (isPublico || targetId.toLowerCase().includes('coral') || targetId.toLowerCase().includes('irmandade')) {
-          finalUpdates[`${baseKey}.total`] = totalIrmaos + totalIrmas;
-          finalUpdates[`${baseKey}.section`] = 'IRMANDADE';
+        // RECALCULO ATÔMICO DE TOTAL (Dash/PDF)
+        if (isIrmandade) {
+          // Usa o valor do banco como base se o campo não estiver no buffer atual
+          const vIrmaos = fieldToUpdate === 'irmaos' ? val : (currentInstData.irmaos || 0);
+          const vIrmas = fieldToUpdate === 'irmas' ? val : (currentInstData.irmas || 0);
+          finalUpdates[`${baseKey}.total`] = vIrmaos + vIrmas;
         }
 
         finalUpdates[`${baseKey}.lastEditBy`] = userData?.name || 'Sistema';
         finalUpdates[`${baseKey}.timestamp`] = Date.now();
-        if (section && !isPublico) finalUpdates[`${baseKey}.section`] = section;
+        finalUpdates[`${baseKey}.updatedAt`] = Date.now();
+        
+        if (section) finalUpdates[`${baseKey}.section`] = section;
         if (customName) finalUpdates[`${baseKey}.name`] = customName;
 
         await updateDoc(eventRef, finalUpdates);
         
       } catch (e) {
-        console.error("Gargalo detectado no Service v8.8:", e.message);
+        console.error("Falha na atualização atômica v8.12.0:", e.message);
       } finally {
-        // LIMPEZA CRÍTICA: Desentope o cano independente de sucesso ou falha
         delete debounceTimers[timerKey];
         delete updateBuffers[timerKey];
       }
-    }, 600);
+    }, 300); 
   },
 
   removeExtraInstrument: async (comumId, eventId, instId) => {

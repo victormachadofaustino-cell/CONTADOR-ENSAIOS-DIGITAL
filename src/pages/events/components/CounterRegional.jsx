@@ -8,8 +8,8 @@ import InstrumentCard from './InstrumentCard';
 
 /**
  * Módulo de Contagem para Ensaios Regionais
- * v3.7 - Sincronização de Leitura Consolidada (Irmandade/Órgão)
- * Garante que os cards individuais leiam o 'total' do ID mestre da seção.
+ * v8.12.5 - FIX DEFINITIVO: Individualização de posse Irmãs vs Irmãos.
+ * Garante que o trato de individualidade seja respeitado no objeto mestre Coral.
  */
 const CounterRegional = ({ 
   instruments, 
@@ -44,7 +44,6 @@ const CounterRegional = ({
   };
 
   const getSectionTotal = (sectionName) => {
-    // Busca o ID oficial que detém o campo 'total' consolidado da seção
     const masterInst = (instruments || []).find(i => 
       i && i.id && !i.id.startsWith('meta_') && 
       (i.section || '').toUpperCase() === sectionName.toUpperCase() &&
@@ -70,8 +69,8 @@ const CounterRegional = ({
           i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase()
         );
 
-        // Identifica o ID oficial da seção para prover dados consolidados aos cards parciais
-        const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id;
+        // Identifica o ID Mestre real (Ex: Coral ou orgao). Se não achar, usa um fallback seguro.
+        const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id || (isIrmandade ? 'Coral' : isOrganistas ? 'orgao' : null);
         const masterData = localCounts?.[masterId] || {};
 
         const totalNaipe = getSectionTotal(section);
@@ -119,41 +118,44 @@ const CounterRegional = ({
                 >
                   <div className="px-4 pb-6 space-y-3 pt-2">
                     
-                    {/* IRMANDADE: Vincula os cards ao masterData para exibir o Total correto */}
+                    {/* IRMANDADE: AMARRAÇÃO MESTRE - Diferencia posse Irmãs vs Irmãos no masterId */}
                     {isIrmandade ? (
                       <div className="space-y-3">
                         <InstrumentCard
                           key="irmas_row"
-                          inst={{ id: 'irmas', nome: 'IRMÃS', label: 'IRMÃS' }}
+                          inst={{ id: 'irmas', nome: 'IRMÃS', label: 'IRMÃS', section: 'IRMANDADE' }}
                           data={masterData}
                           onUpdate={onUpdate}
-                          onToggleOwnership={() => onToggleSection('irmas', localCounts?.irmas?.responsibleId === userData?.uid)}
+                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId_irmas === userData?.uid, 'irmas')}
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
+                          sectionName={section}
                         />
                         <InstrumentCard
                           key="irmaos_row"
-                          inst={{ id: 'irmaos', nome: 'IRMÃOS', label: 'IRMÃOS' }}
+                          inst={{ id: 'irmaos', nome: 'IRMÃOS', label: 'IRMÃOS', section: 'IRMANDADE' }}
                           data={masterData}
                           onUpdate={onUpdate}
-                          onToggleOwnership={() => onToggleSection('irmaos', localCounts?.irmaos?.responsibleId === userData?.uid)}
+                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId_irmaos === userData?.uid, 'irmaos')}
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
+                          sectionName={section}
                         />
                       </div>
                     ) : isOrganistas ? (
                       <div className="space-y-3">
                         <InstrumentCard
                           key="orgao_row"
-                          inst={{ id: 'orgao', nome: 'ÓRGÃO', label: 'ÓRGÃO' }}
+                          inst={{ id: 'orgao', nome: 'ÓRGÃO', label: 'ÓRGÃO', section: 'ORGANISTAS' }}
                           data={masterData}
                           onUpdate={onUpdate}
-                          onToggleOwnership={() => onToggleSection('orgao', localCounts?.orgao?.responsibleId === userData?.uid)}
+                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId === userData?.uid)}
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
+                          sectionName={section}
                         />
                       </div>
                     ) : (

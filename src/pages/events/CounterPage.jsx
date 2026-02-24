@@ -139,14 +139,12 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   }, [currentEventId]);
 
   // v5.5: FILTRAGEM DE DADOS PARA O DASHBOARD (Fix Definitivo da Soma)
-  // Esta lógica garante que o Dashboard Regional receba apenas instrumentos musicais para somar.
   const filteredCountsForDash = useMemo(() => {
     const cleanCounts = { ...localCounts };
     Object.keys(cleanCounts).forEach(key => {
       const item = cleanCounts[key];
       const isIrmandade = item?.section?.toUpperCase() === 'IRMANDADE' || key.toLowerCase().includes('coral') || key === 'irmas' || key === 'irmaos';
       
-      // Se for irmandade, enviamos os dados mas com uma flag para o Dash ignorar na soma de músicos
       if (isIrmandade) {
         cleanCounts[key] = { ...item, _isIrmandade: true };
       }
@@ -196,10 +194,33 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (isUpdatingRef.current) clearTimeout(isUpdatingRef.current);
     isUpdatingRef.current = setTimeout(() => { isUpdatingRef.current = null; }, 1500);
 
-    setLocalCounts(prev => ({ 
-      ...prev, 
-      [id]: { ...prev[id], [field]: value } 
-    }));
+    // v8.13.0: ATUALIZAÇÃO OTIMISTA - Muda o número na tela IMEDIATAMENTE
+    setLocalCounts(prev => {
+      const sectionKey = section?.toUpperCase();
+      const isIrmandade = id === 'irmas' || id === 'irmaos' || sectionKey === 'IRMANDADE';
+      const isOrganistas = id === 'orgao' || sectionKey === 'ORGANISTAS';
+
+      let targetId = id;
+      if (isIrmandade || isOrganistas) {
+        // Localiza o ID mestre (Ex: Coral) para atualizar o estado local em sincronia com o InstrumentCard
+        targetId = Object.keys(prev).find(k => 
+          prev[k].section?.toUpperCase() === sectionKey && !k.startsWith('meta_')
+        ) || (isIrmandade ? 'Coral' : 'orgao');
+      }
+
+      return { 
+        ...prev, 
+        [targetId]: { 
+          ...prev[targetId], 
+          [field]: value,
+          // Se for irmandade, já pré-calcula o total localmente para o Dashboard não piscar
+          total: (field === 'irmas' || field === 'irmaos') ? 
+            ((field === 'irmas' ? value : (prev[targetId]?.irmas || 0)) + 
+             (field === 'irmaos' ? value : (prev[targetId]?.irmaos || 0))) : 
+            (field === 'total' ? value : (prev[targetId]?.total || 0))
+        } 
+      };
+    });
     
     eventService.updateInstrumentCount(eventComumId, currentEventId, { 
        instId: id, field, value, userData, section 
@@ -229,7 +250,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     
     if (activeGroup === sec) { setActiveGroup(null); return; }
     
-    if (isMaster || responsibleId === myUID) {
+    if (isComissao || responsibleId === myUID) {
       setActiveGroup(sec);
       setShowOwnershipModal(null);
     } else {
@@ -237,16 +258,18 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
-  const setOwnership = async (id, currentOwnerStatus) => {
+  const setOwnership = async (id, currentOwnerStatus, subRole = null) => {
     if (!eventComumId || isClosed || !currentEventId) return;
     
     try {
       setShowOwnershipModal(null);
 
+      const respKey = subRole ? `responsibleId_${subRole}` : `responsibleId`;
+      const nameKey = subRole ? `responsibleName_${subRole}` : `responsibleName`;
+
       await updateDoc(doc(db, 'events_global', currentEventId), {
-        [`counts.${id}.responsibleId`]: myUID,
-        [`counts.${id}.responsibleName`]: userData?.name || userData?.nome || "Colaborador",
-        [`counts.${id}.isActive`]: true,
+        [`counts.${id}.${respKey}`]: myUID,
+        [`counts.${id}.${nameKey}`]: userData?.name || userData?.nome || "Colaborador",
         [`counts.${id}.updatedAt`]: Date.now()
       });
       
@@ -262,7 +285,20 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
-  const isEditingEnabled = (sec) => isMaster || (!isClosed && localCounts?.[`meta_${sec.toLowerCase().replace(/\s/g, '_')}`]?.responsibleId === myUID);
+  const isEditingEnabled = (sec, subInstId = null) => {
+    if (isClosed) return false;
+    if (isComissao) return true;
+    
+    const sectionInstruments = allInstruments.filter(i => (i.section || '').toUpperCase() === sec.toUpperCase());
+    const mestre = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()));
+    const masterData = localCounts?.[mestre?.id];
+    
+    if (subInstId === 'irmas' || subInstId === 'irmaos') {
+      return masterData?.[`responsibleId_${subInstId}`] === myUID;
+    }
+
+    return masterData?.responsibleId === myUID;
+  };
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-[#F1F5F9] font-black text-slate-400 uppercase text-[10px]">Sincronizando...</div>;
 
@@ -299,7 +335,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                 localCounts={localCounts}
                 sections={sections}
                 onUpdate={handleUpdateInstrument}
-                onToggleSection={(id) => setOwnership(id, true)} 
+                onToggleSection={(id, status, role) => setOwnership(id, status, role)} 
                 onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
                 userData={userData}
                 isClosed={isClosed}
@@ -327,7 +363,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             ataData?.scope === 'regional' ? (
               <DashEventRegionalPage 
                 eventId={currentEventId} 
-                counts={filteredCountsForDash} // v5.5: Enviando dados filtrados para o Dash Regional
+                counts={filteredCountsForDash} 
                 userData={userData} 
                 isAdmin={true} 
                 ataData={ataData} 
@@ -335,7 +371,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             ) : (
               <DashEventPage 
                 eventId={currentEventId} 
-                counts={filteredCountsForDash} // v5.5: Enviando dados filtrados para o Dash Local
+                counts={filteredCountsForDash} 
                 userData={userData} 
                 isAdmin={true} 
                 ataData={ataData} 

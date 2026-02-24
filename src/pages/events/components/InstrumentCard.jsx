@@ -2,8 +2,9 @@ import React from 'react';
 import { Minus, Plus, Lock, User, UserCheck, ShieldCheck, UserPlus } from 'lucide-react';
 
 /**
- * InstrumentCard v3.7 - MODO HÍBRIDO (LOCAL/REGIONAL)
- * v3.7 - Suporta micro-responsabilidade individual e rótulos contextuais.
+ * InstrumentCard v3.13 - MODO HÍBRIDO (LOCAL/REGIONAL)
+ * v3.13 - FIX DEFINITIVO: Resposta visual instantânea e sincronia de IDs Mestre.
+ * Resolve o problema do número não mover no + e - sem refresh.
  */
 const InstrumentCard = ({ 
   inst, 
@@ -19,39 +20,48 @@ const InstrumentCard = ({
   // BLINDAGEM CRÍTICA
   if (!inst || !inst.id) return null;
 
-  const isIrmandade = ['irmandade', 'irmas', 'irmaos', 'Coral', 'coral'].includes(inst.id.toLowerCase());
+  const isIrmandade = ['irmandade', 'irmas', 'irmaos', 'Coral', 'coral'].includes(inst.id.toLowerCase() || '');
   
-  const isOrganista = inst.id.toLowerCase().includes('organista') || 
+  const isOrganista = inst.id?.toLowerCase().includes('organista') || 
                       inst.name?.toLowerCase().includes('organ') || 
                       inst.label?.toLowerCase().includes('orgao') ||
-                      inst.id.toLowerCase().includes('orgao');
+                      inst.id?.toLowerCase().includes('orgao');
 
-  const isGovernance = (inst.isGovernance || inst.id.includes('enc_local') || inst.evalType === 'Examinadora') && !isOrganista;
+  const isGovernance = (inst.isGovernance || inst.id?.includes('enc_local') || inst.evalType === 'Examinadora') && !isOrganista;
   
-  // LÓGICA DE POSSE INDIVIDUAL
+  // LÓGICA DE POSSE INDIVIDUALIZADA (Regional)
   const myUID = userData?.uid || userData?.id;
-  const isMyTurn = data?.responsibleId === myUID;
-  const isOtherTurn = data?.responsibleId && data?.responsibleId !== myUID;
+  const subId = inst.id.toLowerCase();
   
-  // No Regional, se não for seu turno e já houver um dono, você não edita sem "Assumir" antes
-  const canEdit = !isClosed && (!isRegional || isMyTurn || !data?.responsibleId);
+  // v3.13: Verifica a posse específica para garantir o trato de individualidade
+  const isMyTurn = (subId === 'irmas' || subId === 'irmaos') 
+    ? data?.[`responsibleId_${subId}`] === myUID
+    : data?.responsibleId === myUID;
 
-  // SANEAMENTO DE DADOS
+  const isOtherTurn = (subId === 'irmas' || subId === 'irmaos')
+    ? data?.[`responsibleId_${subId}`] && data?.[`responsibleId_${subId}`] !== myUID
+    : data?.responsibleId && data?.responsibleId !== myUID;
+  
+  const canEdit = !isClosed && (isRegional ? isMyTurn : (userData?.accessLevel !== 'basico'));
+
+  // SANEAMENTO DE DADOS COM RESPOSTA INSTANTÂNEA
   const total = parseInt(data?.total) || 0;
   const comum = parseInt(data?.comum) || 0;
   const enc = parseInt(data?.enc) || 0; 
   const irmaos = parseInt(data?.irmaos) || 0;
   const irmas = parseInt(data?.irmas) || 0;
   
+  // v3.13: Define o valor de exibição garantindo que o card de irmãs leia 'irmas' e não o 'total' do Coral
+  const displayVal = subId === 'irmas' ? irmas : subId === 'irmaos' ? irmaos : total;
+  
   const visitas = Math.max(0, total - comum);
   const isSubFieldDisabled = !canEdit || total === 0;
 
   const handleUpdate = (field, value) => {
     if (!canEdit) return;
-    let finalValue = Math.max(0, parseInt(value) || 0);
-    if ((field === 'comum' || field === 'enc') && finalValue > total) {
-      finalValue = total;
-    }
+    const finalValue = Math.max(0, parseInt(value) || 0);
+    
+    // Dispara a atualização para o pai (CounterPage) que atualizará o localCounts e o Firebase
     onUpdate(inst.id, field, finalValue);
   };
 
@@ -67,20 +77,19 @@ const InstrumentCard = ({
             {(isGovernance || isOrganista) && <ShieldCheck size={12} className="text-blue-500" />}
           </h5>
           
-          {/* TAG DE IDENTIFICAÇÃO NOMINAL */}
           {(isOtherTurn || isMyTurn) && (
             <div className="flex items-center gap-1.5 mt-1">
               <div className={`w-1.5 h-1.5 rounded-full ${isMyTurn ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'}`} />
               <span className={`text-[7px] font-black uppercase italic ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}>
-                {isMyTurn ? 'No seu comando' : `Com: ${data.responsibleName || 'Colaborador'}`}
+                {isMyTurn ? 'No seu comando' : `Com: ${data?.[`responsibleName_${subId}`] || data?.responsibleName || 'Colaborador'}`}
               </span>
             </div>
           )}
         </div>
 
-        {/* BOTÃO ASSUMIR INDIVIDUAL (EXCLUSIVO REGIONAL) */}
         {isRegional && !isClosed && (
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onToggleOwnership(); }}
             className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 ${
               isMyTurn 
@@ -98,10 +107,10 @@ const InstrumentCard = ({
         {isIrmandade && isRegional ? (
           <div className="flex gap-2 h-28">
             <CounterBox 
-               label={inst.label || "TOTAL"} 
+               label={inst.label || inst.id.toUpperCase()} 
                color={isMyTurn ? "slate" : "white"} 
-               val={inst.id === 'irmas' ? irmas : inst.id === 'irmaos' ? irmaos : total} 
-               onChange={v => handleUpdate(inst.id === 'irmas' ? 'irmas' : inst.id === 'irmaos' ? 'irmaos' : 'total', v)} 
+               val={displayVal} 
+               onChange={v => handleUpdate(subId, v)} 
                disabled={!isMyTurn} 
                isMain={true} 
             />
@@ -115,9 +124,9 @@ const InstrumentCard = ({
           <>
             <div className="flex gap-2 h-28">
               <CounterBox 
-                label={isRegional ? "TOTAL" : "TOTAL"} 
+                label="TOTAL" 
                 color={isMyTurn && isRegional ? "slate" : isRegional ? "white" : "slate"} 
-                val={total} 
+                val={displayVal} 
                 onChange={v => handleUpdate('total', v)} 
                 disabled={isRegional ? !isMyTurn : !canEdit} 
                 isMain={true} 
@@ -146,11 +155,11 @@ const InstrumentCard = ({
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <button disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc - 1)} className={`${isSubFieldDisabled ? 'opacity-0' : 'text-slate-400'} p-1.5`}>
+                  <button type="button" disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc - 1)} className={`${isSubFieldDisabled ? 'opacity-0' : 'text-slate-400'} p-1.5`}>
                     <Minus size={14} strokeWidth={4}/>
                   </button>
                   <span className={`text-lg font-[900] italic w-6 text-center ${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-950'}`}>{enc}</span>
-                  <button disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc + 1)} className={`${isSubFieldDisabled ? 'opacity-0' : 'text-slate-950'} p-1.5`}>
+                  <button type="button" disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc + 1)} className={`${isSubFieldDisabled ? 'opacity-0' : 'text-slate-950'} p-1.5`}>
                     <Plus size={14} strokeWidth={4}/>
                   </button>
                 </div>
@@ -163,8 +172,6 @@ const InstrumentCard = ({
   );
 };
 
-/* --- SUB-COMPONENTES AUXILIARES --- */
-
 const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) => (
   <div className={`flex-1 rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden ${
     disabled ? 'bg-slate-50 border-slate-100 shadow-inner' : 
@@ -176,6 +183,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) =
     <div className="flex items-center w-full h-full pt-3">
         <button 
           disabled={disabled} 
+          type="button"
           onClick={() => onChange(val - 1)} 
           className={`w-10 h-full flex items-center justify-center transition-all ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
         >
@@ -196,6 +204,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false }) =
 
         <button 
           disabled={disabled} 
+          type="button"
           onClick={() => onChange(val + 1)} 
           className={`w-10 h-full flex items-center justify-center transition-all ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
         >
