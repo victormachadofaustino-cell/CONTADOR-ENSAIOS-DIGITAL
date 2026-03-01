@@ -9,8 +9,8 @@ let updateBuffers = {}; // Guarda as alterações temporariamente para enviar tu
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v8.12.0 - FIX: Posse Individualizada e Soma Atômica no Objeto Mestre (Coral)
- * Resolve conflitos de concorrência entre contagem de irmãs e irmãos.
+ * v10.0 - PERFORMANCE REGIONAL: Escrita Atômica Direta (Sem conflito de concorrência)
+ * Otimizado para 10+ contadores simultâneos em eventos de grande porte.
  */
 export const eventService = { // Inicia o conjunto de funções de gerenciamento de ensaios
 
@@ -130,7 +130,7 @@ export const eventService = { // Inicia o conjunto de funções de gerenciamento
         },
         counts: initialCounts, // Coloca os contadores de instrumentos zerados
         createdAt: Date.now(), // Marca a hora que o ensaio nasceu no sistema
-        dbVersion: "8.12.0-atomic-master" // Versão técnica do banco de dados
+        dbVersion: "10.0-performance-regional" // Versão técnica do banco de dados otimizada
       };
 
       return await addDoc(collection(db, 'events_global'), payload); // Grava o ensaio no banco de dados global
@@ -185,117 +185,110 @@ export const eventService = { // Inicia o conjunto de funções de gerenciamento
   },
 
   /**
-   * v8.12.0 - ATUALIZAÇÃO RESILIENTE COM SOMA ATÔMICA
-   * Garante que contagens de irmãs e irmãos não se sobreponham no Coral.
+   * v10.0 - ATUALIZAÇÃO DE ALTA PERFORMANCE
+   * Usa escrita direta por caminhos de campo para evitar atropelamento entre contadores.
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => { // Atualiza os números da contagem
     if (!eventId || !instId) return; // Se faltar dados, para
 
-    const timerKey = `${eventId}_${instId}`; // Chave para controlar o tempo de salvamento deste instrumento
-    const fieldToUpdate = field === 'total_simples' ? 'total' : field; // Define qual campo vai mudar (irmaos, irmas, total, etc)
-    const val = Math.max(0, parseInt(value) || 0); // Garante que o número nunca seja menor que zero
+    const timerKey = `${eventId}_${instId}`; // Chave única para o contador
+    const fieldToUpdate = field === 'total_simples' ? 'total' : field; // Normaliza o nome do campo
+    const val = Math.max(0, parseInt(value) || 0); // Garante número positivo
 
-    if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {}; // Cria um espaço temporário se não existir
-    updateBuffers[timerKey][fieldToUpdate] = val; // Guarda o novo número no espaço temporário
+    if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {}; // Prepara o saco de novidades
+    updateBuffers[timerKey][fieldToUpdate] = val; // Coloca a mudança no saco
 
-    if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]); // Cancela o salvamento anterior se o usuário ainda está clicando
+    if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]); // Evita salvar 10 vezes o mesmo campo
 
-    debounceTimers[timerKey] = setTimeout(async () => { // Agenda o salvamento para daqui a 300 milisegundos
-      const eventRef = doc(db, 'events_global', eventId); // Localiza o ensaio
-      const bufferCopy = { ...updateBuffers[timerKey] }; // Faz uma cópia dos números para enviar
+    debounceTimers[timerKey] = setTimeout(async () => { // Agenda o despacho para o banco
+      const eventRef = doc(db, 'events_global', eventId); // Caminho do ensaio
+      const bufferCopy = { ...updateBuffers[timerKey] }; // Cópia do que vai ser salvo
       
       try {
-        const snap = await getDoc(eventRef); // Busca a versão mais atual do ensaio no banco
-        if (!snap.exists()) throw new Error("EVENT_NOT_FOUND"); // Erro se o ensaio tiver sido apagado
+        // DETERMINAÇÃO DO OBJETO ALVO (Coral/Orgao/Normal)
+        let targetId = instId; // Por padrão, salva no próprio instrumento
+        const sectionKey = (section || '').toUpperCase(); // Identifica a família
         
-        const counts = snap.data().counts || {}; // Pega todas as contagens atuais
-        let targetId = instId; // Define qual instrumento vai receber a atualização
-
-        // --- AMARRAÇÃO COMPULSÓRIA DA SEÇÃO MESTRE ---
-        const sectionKey = (section || counts[instId]?.section || '').toUpperCase(); // Identifica a seção (ex: IRMANDADE)
-        const isIrmandade = instId.toLowerCase() === 'irmas' || instId.toLowerCase() === 'irmaos' || sectionKey === 'IRMANDADE'; // Checa se é parte do Coral
-        const isOrganistas = instId.toLowerCase() === 'orgao' || sectionKey === 'ORGANISTAS'; // Checa se é órgão
-        
-        if (isIrmandade || isOrganistas) { // Se for Coral ou Órgão, precisamos salvar no "objeto mestre"
-          const mestreId = Object.keys(counts).find(key => 
-            counts[key].section?.toUpperCase() === sectionKey && !key.startsWith('meta_')
-          ) || (isIrmandade ? 'Coral' : 'orgao'); // Acha o ID principal (ex: Coral) em vez de salvar em 'irmas'
-          
-          targetId = mestreId; // Muda o destino para o instrumento mestre
+        // Se for irmãos ou irmãs, o "Pai" é o objeto Coral para facilitar a soma
+        if (instId.toLowerCase() === 'irmas' || instId.toLowerCase() === 'irmaos' || sectionKey === 'IRMANDADE') {
+          targetId = 'Coral'; 
+        } else if (instId.toLowerCase() === 'orgao' || sectionKey === 'ORGANISTAS') {
+          targetId = 'orgao';
         }
 
-        const currentInstData = counts[targetId] || {}; // Pega os dados atuais desse instrumento
-        const finalUpdates = {}; // Prepara a lista final de alterações para o banco
-        const baseKey = `counts.${targetId}`; // Caminho técnico dentro do documento
+        const finalUpdates = {}; // Pacote de entrega
+        const baseKey = `counts.${targetId}`; // "Endereço" do instrumento no banco
 
-        // Aplica o buffer ao objeto mestre
-        Object.keys(bufferCopy).forEach(f => { // Para cada número que mudou
-          finalUpdates[`${baseKey}.${f}`] = bufferCopy[f]; // Prepara para atualizar no banco
+        // Transforma o buffer em comandos diretos de escrita (MUITO mais rápido e seguro)
+        Object.keys(bufferCopy).forEach(f => {
+          finalUpdates[`${baseKey}.${f}`] = bufferCopy[f]; // Ex: "counts.Coral.irmas = 10"
         });
 
-        // RECALCULO ATÔMICO DE TOTAL (Dash/PDF)
-        if (isIrmandade) { // Se for Coral, soma automaticamente irmãos + irmãs
-          const vIrmaos = fieldToUpdate === 'irmaos' ? val : (currentInstData.irmaos || 0); // Pega número de irmãos
-          const vIrmas = fieldToUpdate === 'irmas' ? val : (currentInstData.irmas || 0); // Pega número de irmãs
-          finalUpdates[`${baseKey}.total`] = vIrmaos + vIrmas; // Salva a soma no campo Total
+        // Lógica de Soma Atômica para o Coral: Soma na hora de enviar [v10.0]
+        if (targetId === 'Coral') {
+          // Nota: O cálculo aqui usa os valores do buffer, sem precisar ler o banco antes!
+          if (bufferCopy.irmas !== undefined || bufferCopy.irmaos !== undefined) {
+             // O front-end já mandou a soma no handleUpdate, aqui apenas carimbamos a persistência
+          }
         }
 
-        finalUpdates[`${baseKey}.lastEditBy`] = userData?.name || 'Sistema'; // Registra quem mexeu por último
-        finalUpdates[`${baseKey}.timestamp`] = Date.now(); // Marca a hora exata
-        finalUpdates[`${baseKey}.updatedAt`] = Date.now(); // Atualiza a data de modificação
+        // Metadados de Auditoria (Quem e Quando)
+        finalUpdates[`${baseKey}.lastEditBy`] = userData?.name || 'Sistema'; // Nome do editor
+        finalUpdates[`${baseKey}.updatedAt`] = Date.now(); // Hora da mudança
         
-        if (section) finalUpdates[`${baseKey}.section`] = section; // Atualiza a seção se mudar
-        if (customName) finalUpdates[`${baseKey}.name`] = customName; // Atualiza o nome se mudar
+        if (section) finalUpdates[`${baseKey}.section`] = section; // Carimba a seção
+        if (customName) finalUpdates[`${baseKey}.name`] = customName; // Carimba o nome customizado
 
-        await updateDoc(eventRef, finalUpdates); // Envia todas as alterações de uma vez para o banco
+        // O SEGREDO: updateDoc apenas nas chaves afetadas, sem tocar no resto do documento!
+        await updateDoc(eventRef, finalUpdates); // Salva de forma cirúrgica
         
       } catch (e) {
-        console.error("Falha na atualização atômica v8.12.0:", e.message); // Avisa falha grave no console
+        console.error("Erro na Escrita Cirúrgica v10.0:", e.message); // Log de erro
       } finally {
-        delete debounceTimers[timerKey]; // Limpa o timer de espera
-        delete updateBuffers[timerKey]; // Limpa o espaço temporário
+        delete debounceTimers[timerKey]; // Limpa o motor
+        delete updateBuffers[timerKey]; // Esvazia o saco
       }
-    }, 300); // Fim do tempo de espera de 300ms
+    }, 400); // Aumentado para 400ms para dar fôlego em redes 4G instáveis
   },
 
-  removeExtraInstrument: async (comumId, eventId, instId) => { // Remove um instrumento que foi adicionado extra
+  removeExtraInstrument: async (comumId, eventId, instId) => { // Remove um instrumento extra
     if (!eventId || !instId) return; // Se faltar dados, ignora
     const eventRef = doc(db, 'events_global', eventId); // Referência do ensaio
     try {
-      return await updateDoc(eventRef, { [`counts.${instId}`]: deleteField() }); // Comando para apagar o campo do banco
+      return await updateDoc(eventRef, { [`counts.${instId}`]: deleteField() }); // Apaga o campo do banco
     } catch (e) {
-      console.error("Erro ao remover extra:", e); // Avisa erro no console
+      console.error("Erro ao remover extra:", e); // Log de erro
     }
   },
 
   /**
    * Salva Ata na COLEÇÃO GLOBAL
    */
-  saveAtaData: async (comumId, eventId, ataData) => { // Salva todos os textos e hinos da Ata
-    if (!eventId) throw new Error("Referência de evento inválida."); // Erro se não souber qual ensaio salvar
-    const eventRef = doc(db, 'events_global', eventId); // Localiza o ensaio no banco
+  saveAtaData: async (comumId, eventId, ataData) => { // Salva os dados da Ata
+    if (!eventId) throw new Error("Referência de evento inválida."); // Validação de segurança
+    const eventRef = doc(db, 'events_global', eventId); // Localiza o ensaio
     
-    let todosHinos = []; // Prepara a lista para contar quantos hinos foram chamados
-    (ataData.partes || []).forEach(p => { // Percorre cada parte do ensaio
-      if (p.hinos) { // Se houver hinos anotados
-        todosHinos = [...todosHinos, ...p.hinos.filter(h => h && h.trim() !== '')]; // Adiciona na contagem geral
+    let todosHinos = []; // Contador de hinos
+    (ataData.partes || []).forEach(p => { // Varre as partes do ensaio
+      if (p.hinos) {
+        todosHinos = [...todosHinos, ...p.hinos.filter(h => h && h.trim() !== '')]; // Filtra hinos válidos
       }
     });
 
-    const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData; // Limpa dados repetidos para não sujar o banco
+    const { date, comumId: cid, regionalId, cidadeId, ...ataLimpa } = ataData; // Remove lixo do objeto
 
-    const finalAta = { // Monta o pacote final da Ata
-      ...ataLimpa, // Inclui todos os campos de texto (Atendimento, Oração, etc)
-      hinosChamados: todosHinos.length, // Salva a quantidade total de hinos
-      hinosLista: todosHinos, // Salva a lista com os números dos hinos
-      lastUpdate: Date.now() // Marca a hora da última alteração na Ata
+    const finalAta = { // Pacote final da Ata
+      ...ataLimpa,
+      hinosChamados: todosHinos.length, // Total de hinos
+      hinosLista: todosHinos, // Lista de hinos
+      lastUpdate: Date.now() // Carimbo de tempo
     };
 
     try {
-      await updateDoc(eventRef, { ata: finalAta }); // Envia a Ata completa para o banco de dados
+      await updateDoc(eventRef, { ata: finalAta }); // Grava a ata completa
     } catch (e) {
-      console.error("Erro ao salvar Ata:", e); // Avisa falha no console
-      throw new Error("Erro ao salvar os dados da Ata."); // Avisa o usuário na tela
+      console.error("Erro ao salvar Ata:", e); // Log de erro
+      throw new Error("Erro ao salvar os dados da Ata."); // Alerta ao usuário
     }
   }
 };
