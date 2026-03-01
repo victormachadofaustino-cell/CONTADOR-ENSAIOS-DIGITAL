@@ -1,69 +1,72 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; // Importa ferramentas básicas do React
 // PRESERVAÇÃO: Importações originais mantidas
-import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, getDoc } from '../../config/firebase';
-import { eventService } from '../../services/eventService';
-import AtaPage from './AtaPage';
-import DashEventPage from '../dashboard/DashEventPage';
-import DashEventRegionalPage from '../dashboard/DashEventRegionalPage'; // Suporte regional preservado
-import toast from 'react-hot-toast';
+import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, getDoc } from '../../config/firebase'; // Conecta com o banco de dados
+import { eventService } from '../../services/eventService'; // Importa o serviço de salvamento de eventos
+import AtaPage from './AtaPage'; // Importa a página da Ata
+import DashEventPage from '../dashboard/DashEventPage'; // Importa o painel de controle local
+import DashEventRegionalPage from '../dashboard/DashEventRegionalPage'; // Importa o painel de controle regional
+import toast from 'react-hot-toast'; // Importa os avisos flutuantes na tela
 import { 
-  ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '../../context/AuthContext';
+  ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3, Lock, Unlock // Importa ícones visuais incluindo Cadeados
+} from 'lucide-react'; // Biblioteca de ícones
+import { motion, AnimatePresence } from 'framer-motion'; // Importa animações suaves
+import { useAuth } from '../../context/AuthContext'; // Puxa dados do usuário logado
 
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
-import CounterSection from './components/CounterSection';
-import OwnershipModal from './components/OwnershipModal';
-import ExtraInstrumentModal from './components/ExtraInstrumentModal';
-import CounterRegional from './components/CounterRegional';
+import CounterSection from './components/CounterSection'; // Componente de seções de instrumentos
+import OwnershipModal from './components/OwnershipModal'; // Janela para assumir responsabilidade
+import ExtraInstrumentModal from './components/ExtraInstrumentModal'; // Janela para adicionar instrumentos extras
+import CounterRegional from './components/CounterRegional'; // Componente de contagem regional
 
-const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
-  const { userData } = useAuth();
-  const level = userData?.accessLevel;
+const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Inicia a página de contagem
+  const { userData } = useAuth(); // Puxa os dados de quem está usando o app
+  const level = userData?.accessLevel; // Identifica o nível de poder (Master, Cidade, GEM, etc)
   
-  const isMaster = level === 'master';
-  const isComissao = isMaster || level === 'comissao';
-  const isRegionalCidade = isComissao || level === 'regional_cidade';
-  const isGemLocal = isRegionalCidade || level === 'gem_local';
+  const isMaster = level === 'master'; // Define se é administrador total
+  const isComissao = isMaster || level === 'comissao'; // Define se é da comissão nacional
+  const isRegionalCidade = isComissao || level === 'regional_cidade'; // Define se é gestor regional ou de cidade
+  const isGemLocal = isRegionalCidade || level === 'gem_local'; // Define se é colaborador local (GEM)
   
   // Conforme Matriz: Básico visualiza Dash/Ata, mas GEM+ edita a Ata
-  const canEditAta = isGemLocal; 
+  const canEditAta = isGemLocal; // Define quem pode preencher a ata
 
-  const [activeTab, setActiveTab] = useState('contador');
-  const [instrumentsNacionais, setInstrumentsNacionais] = useState([]);
-  const [instrumentsConfig, setInstrumentsConfig] = useState([]);
-  const [activeGroup, setActiveGroup] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [ataData, setAtaData] = useState(null);
-  const [eventDateRaw, setEventDateRaw] = useState('');
-  const [eventComumId, setEventComumId] = useState(null);
-  const [showOwnershipModal, setShowOwnershipModal] = useState(null);
+  const [activeTab, setActiveTab] = useState('contador'); // Controla qual aba está aberta (Contar, Ata ou Dash)
+  const [instrumentsNacionais, setInstrumentsNacionais] = useState([]); // Lista oficial de instrumentos da CCB
+  const [instrumentsConfig, setInstrumentsConfig] = useState([]); // Configurações específicas da igreja local
+  const [activeGroup, setActiveGroup] = useState(null); // Controla qual grupo de instrumentos está aberto para contar
+  const [loading, setLoading] = useState(true); // Controla o aviso de "carregando"
+  const [ataData, setAtaData] = useState(null); // Guarda os dados da ata
+  const [eventDateRaw, setEventDateRaw] = useState(''); // Guarda a data do evento sem formatação
+  const [eventComumId, setEventComumId] = useState(null); // Guarda o ID da igreja local
+  const [showOwnershipModal, setShowOwnershipModal] = useState(null); // Controla a janela de "Assumir Seção"
   
   // ESTADOS PARA INSTRUMENTOS EXTRAS v5.0
-  const [extraInstrumentSection, setExtraInstrumentSection] = useState(null);
-  const [localCounts, setLocalCounts] = useState({});
+  const [extraInstrumentSection, setExtraInstrumentSection] = useState(null); // Guarda qual seção receberá um instrumento extra
+  const [localCounts, setLocalCounts] = useState({}); // Guarda os números da contagem em tempo real
+
+  // NOVO v9.6: Estado para Lacre de Contagem (Tarja Visual)
+  const [isCountsLocked, setIsCountsLocked] = useState(false); // Indica se a contagem de números está trancada
 
   // JUSTIFICATIVA: Ref para controlar se há uma atualização local em curso
-  const isUpdatingRef = useRef(null);
+  const isUpdatingRef = useRef(null); // Evita conflitos quando duas pessoas salvam ao mesmo tempo
 
-  const isClosed = ataData?.status === 'closed';
-  const myUID = auth.currentUser?.uid || userData?.uid || userData?.id;
+  const isClosed = ataData?.status === 'closed'; // Verifica se o evento todo já foi encerrado
+  const myUID = auth.currentUser?.uid || userData?.uid || userData?.id; // Identifica o ID único do usuário atual
 
-  useEffect(() => { 
+  useEffect(() => { // Sincroniza os números locais com os números que vem do banco
     if (counts && !isUpdatingRef.current) {
       setLocalCounts(counts); 
     }
   }, [counts]);
 
   // HEARTBEAT DE SESSÃO: Blindado para evitar crash por permission-denied
-  useEffect(() => {
+  useEffect(() => { // Avisa ao banco que o usuário ainda está logado e contando
     if (!activeGroup || !currentEventId || isClosed) return;
     
-    const metaKey = `meta_${activeGroup.toLowerCase().replace(/\s/g, '_')}`;
-    const isOwner = localCounts?.[metaKey]?.responsibleId === myUID;
+    const metaKey = `meta_${activeGroup.toLowerCase().replace(/\s/g, '_')}`; // Cria a chave técnica da seção
+    const isOwner = localCounts?.[metaKey]?.responsibleId === myUID; // Verifica se o usuário é o dono desta seção
 
-    if (isOwner) {
+    if (isOwner) { // Se for o dono, envia o sinal de "estou ativo" a cada segundo
       const setSession = async (status) => {
         try {
           await updateDoc(doc(db, 'events_global', currentEventId), {
@@ -71,31 +74,31 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             [`counts.${metaKey}.lastHeartbeat`]: Date.now()
           });
         } catch (e) {
-          // Silent catch
+          // Silent catch - ignora erros de permissão temporários
         }
       };
 
-      setSession(true);
-      return () => setSession(false);
+      setSession(true); // Liga o sinal
+      return () => setSession(false); // Desliga o sinal ao sair
     }
   }, [activeGroup, currentEventId, isClosed, myUID, localCounts]);
 
   // CARREGAMENTO DE INSTRUMENTOS
-  useEffect(() => {
+  useEffect(() => { // Busca as listas de instrumentos assim que a página abre
     let isMounted = true;
     const loadInstruments = async () => {
       try {
-        const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc')));
+        const nacSnap = await getDocs(query(collection(db, 'config_instrumentos_nacional'), orderBy('name', 'asc'))); // Busca lista nacional
         if (isMounted) setInstrumentsNacionais(nacSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        if (eventComumId) {
+        if (eventComumId) { // Se tiver a igreja, busca quais instrumentos ela usa
           const locSnap = await getDocs(collection(db, 'comuns', eventComumId, 'instrumentos_config'));
           if (isMounted) setInstrumentsConfig(locSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         }
       } catch (e) { 
-        console.warn("Jurisdição: Configurações não carregadas.");
+        console.warn("Jurisdição: Configurações não carregadas."); // Avisa se houver erro de acesso
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) setLoading(false); // Tira o aviso de carregando
       }
     };
     loadInstruments();
@@ -103,17 +106,17 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   }, [eventComumId]);
 
   // MONITOR REATIVO DO EVENTO
-  useEffect(() => {
+  useEffect(() => { // Fica "ouvindo" qualquer mudança no ensaio em tempo real
     if (!currentEventId) return;
     let isMounted = true;
 
-    const eventRef = doc(db, 'events_global', currentEventId);
+    const eventRef = doc(db, 'events_global', currentEventId); // Caminho do ensaio no banco
     
     const unsubEvent = onSnapshot(eventRef, 
       (s) => {
         if (s.exists() && isMounted) {
-          const data = s.data();
-          const ataConsolidada = {
+          const data = s.data(); // Pega os dados brutos do banco
+          const ataConsolidada = { // Organiza as informações da Ata
             ...data.ata,
             date: data.date, 
             comumId: data.comumId,
@@ -122,37 +125,38 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             scope: data.scope || 'local'
           };
 
-          setAtaData(ataConsolidada);
-          setEventComumId(data.comumId);
-          setEventDateRaw(data.date || '');
+          setAtaData(ataConsolidada); // Atualiza os dados da Ata na tela
+          setEventComumId(data.comumId); // Salva o ID da igreja
+          setEventDateRaw(data.date || ''); // Salva a data do ensaio
+          setIsCountsLocked(data.countsLocked || false); // Sincroniza se a contagem está lacrada [v9.6]
           
-          if (!isUpdatingRef.current) {
-             setLocalCounts(data.counts || {});
+          if (!isUpdatingRef.current) { // Se não estivermos salvando nada agora, atualiza os números da tela
+              setLocalCounts(data.counts || {});
           }
         }
       },
       (err) => {
-        console.error("Sync Error:", err);
+        console.error("Sync Error:", err); // Avisa se a conexão cair
       }
     );
-    return () => { isMounted = false; unsubEvent(); };
+    return () => { isMounted = false; unsubEvent(); }; // Corta a conexão ao sair da página
   }, [currentEventId]);
 
   // v5.5: FILTRAGEM DE DADOS PARA O DASHBOARD (Fix Definitivo da Soma)
-  const filteredCountsForDash = useMemo(() => {
+  const filteredCountsForDash = useMemo(() => { // Limpa os dados para mostrar no gráfico
     const cleanCounts = { ...localCounts };
     Object.keys(cleanCounts).forEach(key => {
       const item = cleanCounts[key];
       const isIrmandade = item?.section?.toUpperCase() === 'IRMANDADE' || key.toLowerCase().includes('coral') || key === 'irmas' || key === 'irmaos';
       
       if (isIrmandade) {
-        cleanCounts[key] = { ...item, _isIrmandade: true };
+        cleanCounts[key] = { ...item, _isIrmandade: true }; // Marca o que é irmandade/coral
       }
     });
     return cleanCounts;
   }, [localCounts]);
 
-  const allInstruments = useMemo(() => {
+  const allInstruments = useMemo(() => { // Organiza a ordem que os instrumentos aparecem na tela
     const ordemOficial = ['Coral', 'irmandade', 'irmas', 'irmaos', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
     
     let base = instrumentsNacionais.map(instBase => {
@@ -183,14 +187,14 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     return final.sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99));
   }, [instrumentsNacionais, instrumentsConfig, localCounts]);
 
-  const sections = useMemo(() => {
+  const sections = useMemo(() => { // Separa os instrumentos por famílias (Cordas, Madeiras, etc)
     const ordemSessoes = ['IRMANDADE', 'CORAL', 'ORGANISTAS', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS'];
     return [...new Set(allInstruments.map(i => (i.section || "GERAL").toUpperCase()))].sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99));
   }, [allInstruments]);
 
   // v8.15.2: ATUALIZAÇÃO OTIMISTA HÍBRIDA (TOTAL COMO TETO)
-  const handleUpdateInstrument = (id, field, value, section) => {
-    if (isClosed) return;
+  const handleUpdateInstrument = (id, field, value, section) => { // Altera os números de um instrumento
+    if (isClosed || isCountsLocked) return; // BLOQUEIO v9.6: Não deixa alterar se estiver lacrado
 
     if (isUpdatingRef.current) clearTimeout(isUpdatingRef.current);
     isUpdatingRef.current = setTimeout(() => { isUpdatingRef.current = null; }, 1000);
@@ -235,8 +239,22 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     });
   };
 
-  const handleAddExtraInstrument = async (nome) => {
-    if (!nome.trim() || !extraInstrumentSection || !isGemLocal) return;
+  // NOVO v9.6: Função para Lacre de Contagem (Botão da Chave Mestra)
+  const handleToggleCountsLock = async () => { // Liga ou desliga o lacre dos números
+    if (!isRegionalCidade || isClosed) return; // Só gestores podem usar e se o ensaio não estiver encerrado de vez
+    try {
+      const newStatus = !isCountsLocked; // Inverte o estado atual
+      await updateDoc(doc(db, 'events_global', currentEventId), {
+        countsLocked: newStatus // Salva o novo estado no banco de dados
+      });
+      toast.success(newStatus ? "Contagem Lacrada 🔒" : "Contagem Reaberta 🔓"); // Mostra aviso na tela
+    } catch (e) {
+      toast.error("Erro ao alterar lacre."); // Avisa se falhar
+    }
+  };
+
+  const handleAddExtraInstrument = async (nome) => { // Adiciona um instrumento que não estava na lista inicial
+    if (!nome.trim() || !extraInstrumentSection || !isGemLocal || isCountsLocked) return;
     const idSaneado = `extra_${nome.toLowerCase().replace(/\s/g, '')}_${Date.now()}`;
     try {
       await eventService.updateInstrumentCount(eventComumId, currentEventId, {
@@ -249,7 +267,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
-  const handleToggleGroup = (sec) => {
+  const handleToggleGroup = (sec) => { // Abre ou fecha um grupo de instrumentos (ex: Cordas)
     if (isClosed) return setActiveGroup(activeGroup === sec ? null : sec);
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
     const responsibleId = localCounts?.[metaKey]?.responsibleId;
@@ -264,8 +282,8 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     }
   };
 
-  const setOwnership = async (id, currentOwnerStatus, subRole = null) => {
-    if (!eventComumId || isClosed || !currentEventId) return;
+  const setOwnership = async (id, currentOwnerStatus, subRole = null) => { // Define quem é o responsável pela seção
+    if (!eventComumId || isClosed || !currentEventId || isCountsLocked) return;
     
     try {
       setShowOwnershipModal(null);
@@ -292,9 +310,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   };
 
   // v8.15.2: CORREÇÃO DEFINITIVA DE PERMISSÃO HÍBRIDA
-  const isEditingEnabled = (sec, subInstId = null) => {
-    if (isClosed) return false;
-    if (isComissao) return true;
+  const isEditingEnabled = (sec, subInstId = null) => { // Verifica se o usuário tem permissão para editar um número agora
+    if (isClosed || isCountsLocked) return false; // Bloqueia se o ensaio ou a contagem estiverem trancados
+    if (isComissao) return true; // Comissão sempre edita
     
     // MODO LOCAL: Valida se é dono do Naipe (metaKey)
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`;
@@ -334,43 +352,63 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                </h2>
             </div>
           </div>
-          <button onClick={onBack} className="bg-red-50 text-red-500 p-3 rounded-2xl active:scale-90 transition-all border border-red-100">
-            <LogOut size={18} strokeWidth={3} />
-          </button>
+          {/* BOTÃO v9.6: Chave de Lacre para Gestores */}
+          {isRegionalCidade && !isClosed && (
+            <button onClick={handleToggleCountsLock} className={`p-3 rounded-2xl active:scale-90 transition-all border ${isCountsLocked ? 'bg-blue-600 text-white border-blue-700 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+              {isCountsLocked ? <Lock size={18} strokeWidth={3}/> : <Unlock size={18} strokeWidth={3}/>}
+            </button>
+          )}
+          {!isRegionalCidade && (
+            <button onClick={onBack} className="bg-red-50 text-red-500 p-3 rounded-2xl active:scale-90 transition-all border border-red-100">
+              <LogOut size={18} strokeWidth={3} />
+            </button>
+          )}
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 pb-52 no-scrollbar">
         <div className="max-w-md mx-auto">
           {activeTab === 'contador' && (
-            ataData?.scope === 'regional' ? (
-              <CounterRegional 
-                instruments={allInstruments}
-                localCounts={localCounts}
-                sections={sections}
-                onUpdate={handleUpdateInstrument}
-                onToggleSection={(id, status, role) => setOwnership(id, status, role)} 
-                onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
-                userData={userData}
-                isClosed={isClosed}
-                currentEventId={currentEventId}
-              />
-            ) : (
-              sections.map((sec) => (
-                <CounterSection 
-                  key={sec}
-                  sec={sec}
-                  allInstruments={allInstruments}
+            <>
+              {/* TARJA v9.6: Aviso visual de Lacre de Contagem */}
+              <AnimatePresence>
+                {isCountsLocked && (
+                  <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-4 bg-blue-600 text-white p-4 rounded-[2rem] flex items-center justify-center gap-3 shadow-lg shadow-blue-100">
+                    <Lock size={16} className="shrink-0" />
+                    <span className="text-[9px] font-black uppercase italic tracking-widest leading-none">Contagem Finalizada - Somente Leitura</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {ataData?.scope === 'regional' ? (
+                <CounterRegional 
+                  instruments={allInstruments}
                   localCounts={localCounts}
-                  myUID={myUID}
-                  activeGroup={activeGroup}
-                  handleToggleGroup={handleToggleGroup}
-                  handleUpdateInstrument={handleUpdateInstrument}
-                  isEditingEnabled={isEditingEnabled}
-                  onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)}
+                  sections={sections}
+                  onUpdate={handleUpdateInstrument}
+                  onToggleSection={(id, status, role) => setOwnership(id, status, role)} 
+                  onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
+                  userData={userData}
+                  isClosed={isClosed || isCountsLocked} // Repassa o bloqueio para os componentes internos
+                  currentEventId={currentEventId}
                 />
-              ))
-            )
+              ) : (
+                sections.map((sec) => (
+                  <CounterSection 
+                    key={sec}
+                    sec={sec}
+                    allInstruments={allInstruments}
+                    localCounts={localCounts}
+                    myUID={myUID}
+                    activeGroup={activeGroup}
+                    handleToggleGroup={handleToggleGroup}
+                    handleUpdateInstrument={handleUpdateInstrument}
+                    isEditingEnabled={isEditingEnabled}
+                    onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)}
+                  />
+                ))
+              )}
+            </>
           )}
           {activeTab === 'ata' && <AtaPage eventId={currentEventId} comumId={eventComumId} userData={userData} isMaster={isMaster} isAdmin={canEditAta} />}
           {activeTab === 'dash' && (
