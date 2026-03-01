@@ -60,7 +60,7 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
   
   const [showConfirmLock, setShowConfirmLock] = useState(false); // Controla modal de fechar ata
   const [showConfirmReopen, setShowConfirmReopen] = useState(false); // Controla modal de reabrir ata
-  const [visitaToDelete, setVisitaToDelete] = useState(null); // Guarda qual visita será apagada
+  const [visitaToDelete, setVisitaToDelete] = useState(null); // Guarda qual visitante será apagado
   const [showVisitaModal, setShowVisitaModal] = useState(false); // Controla janela de nova visita
   
   const [openSection, setOpenSection] = useState(null); // Controla qual sanfona está aberta
@@ -71,7 +71,6 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
     nome: '', min: '', inst: '', bairro: '', cidadeUf: '', dataEnsaio: '', hora: '', contato: '' 
   });
 
-  // AJUSTE v9.2: Checkboxes independentes para Oração e Palavra (Atende diretriz de discrição)
   const [autoFillOracao, setAutoFillOracao] = useState(false); // Controla a automação apenas da Oração de Abertura
   const [autoFillPalavra, setAutoFillPalavra] = useState(false); // Controla a automação apenas do Ancião da Palavra
 
@@ -80,7 +79,7 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
   
   const temPermissaoEditar = useMemo(() => { // Define se o usuário pode mexer na tela
     if (isBasico || isClosed) return false; // Se for básico ou estiver fechado, ninguém edita
-    if (isRegionalScope && !isRegionalCidade) return false; // Se for Regional, GEM Local não edita a Ata (Regra de Hierarquia)
+    if (isRegionalScope && !isRegionalCidade) return false; // Se for Regional, GEM Local não edita a Ata
     if (isMaster || isComissao) return true; // Master e Comissão sempre editam
     if (level === 'regional_cidade' && eventMeta?.cidadeId === userData?.cidadeId) return true; // Regional da cidade edita
     const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])]; // Lista igrejas autorizadas
@@ -137,16 +136,15 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
     
     let finalData = { ...newData };
     
-    // LÓGICA v9.2: Aplica automações independentes se os respectivos checkboxes estiverem ativos
     if (autoFillOracao) { // Se o atalho da Oração estiver ligado
       finalData.oracaoAberturaNome = newData.atendimentoNome; // Copia o nome do atendimento
       finalData.oracaoAberturaMin = newData.atendimentoMin; // Copia o cargo do atendimento
     }
     
-    if (autoFillPalavra && isRegionalScope) { // Se o atalho da Palavra estiver ligado (apenas em regionais)
+    if (autoFillPalavra && isRegionalScope) { // Se o atalho da Palavra estiver ligado
       finalData.palavra = { 
         ...newData.palavra, 
-        anciao: newData.atendimentoNome // Copia o nome do atendimento para o campo da pregação
+        anciao: newData.atendimentoNome // Copia o nome do atendimento para a pregação
       };
     }
     
@@ -280,6 +278,15 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
     setShowVisitaModal(false);
   };
 
+  // NOVO v9.6: Função para confirmar a exclusão do visitante (O elo perdido)
+  const handleConfirmDeleteVisita = () => { // Executa a remoção definitiva do visitante da lista
+    if (!visitaToDelete || isInputDisabled) return; // Se não houver quem apagar ou estiver bloqueado, para aqui
+    const updated = (ataData.visitantes || []).filter((v, idx) => (v.id || idx) !== visitaToDelete); // Filtra a lista removendo o ID marcado
+    handleChange({ ...ataData, visitantes: updated }); // Salva a lista limpa no banco de dados
+    setVisitaToDelete(null); // Limpa o estado e fecha a janelinha de confirmação
+    toast.success("Visitante removido"); // Mostra um aviso de sucesso na tela
+  };
+
   const togglePresencaLocal = (m) => { // Marca ou desmarca a presença de um músico local
     if (isInputDisabled) return;
     const list = (ataData.presencaLocal || []).includes(m.name) ? ataData.presencaLocal.filter(n => n !== m.name) : [...(ataData.presencaLocal || []), m.name];
@@ -328,8 +335,8 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
             handleHinoChange={handleHinoChange} 
             hidePartes={true} 
             isRegional={isRegionalScope}
-            autoFill={autoFillOracao} // Passa o estado específico da Oração
-            setAutoFill={setAutoFillOracao} // Passa a função de mudar a Oração
+            autoFill={autoFillOracao} 
+            setAutoFill={setAutoFillOracao} 
           />
           {isRegionalScope && ( // Se for regional, mostra o campo de pregação
             <div className="pt-4 border-t border-slate-100">
@@ -341,8 +348,8 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
                 ataData={ataData} 
                 handleChange={handleChange} 
                 isInputDisabled={isInputDisabled} 
-                autoFill={autoFillPalavra} // Passa o estado específico da Palavra
-                setAutoFill={setAutoFillPalavra} // Passa a função de mudar a Palavra (Resolve o Erro do Console)
+                autoFill={autoFillPalavra} 
+                setAutoFill={setAutoFillPalavra} 
               />
             </div>
           )}
@@ -403,18 +410,34 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
         </div>
       )}
 
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE VISITANTE (v9.6 FIX) */}
       <AnimatePresence>
-        {showVisitaModal && (
+        {visitaToDelete && ( // Se houver alguém marcado para exclusão, exibe o Modal
+          <Modal 
+            title="Excluir Visitante" // Título da janela de aviso
+            icon={<Trash2 size={32}/>} // Ícone grande de lixeira no centro
+            danger={true} // Marca como ação de perigo (vermelho)
+            confirmLabel="Confirmar Exclusão" // Texto do botão de apagar
+            onConfirm={handleConfirmDeleteVisita} // Chama a função que apaga do banco de dados
+            onCancel={() => setVisitaToDelete(null)} // Fecha o modal sem apagar nada
+          >
+            Tem certeza que deseja remover este visitante da lista? Esta ação não pode ser desfeita. {/* Texto explicativo do Modal */}
+          </Modal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showVisitaModal && ( // Inicia o quadro de visitantes
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar text-left relative">
               <button onClick={() => setShowVisitaModal(false)} className="absolute top-8 right-8 text-slate-300 active:scale-95 transition-all"><X size={24}/></button>
               <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">Dados da Visita</h3>
               
               <div className="space-y-4">
-                <Field label="Nome Completo" val={newVisita.nome} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, nome: v})} />
+                <Field label="Nome Completo *" val={newVisita.nome} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, nome: v})} />
                 
                 <div className="grid grid-cols-1 gap-4">
-                  <Select label="Ministério / Cargo" val={newVisita.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, min: v})} />
+                  <Select label="Ministério / Cargo *" val={newVisita.min} options={referenciaMinisterio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, min: v})} />
                   <Field label="Instrumento" val={newVisita.inst} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, inst: v})} icon={<Music size={10}/>} />
                 </div>
 
@@ -426,13 +449,21 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
                 <Field label="Celular / Contato" val={newVisita.contato} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, contato: v})} icon={<Phone size={10}/>} />
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                    <Field label="Data Ensaio" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} placeholder="00/00/00" />
+                    <Field label="Data Ensaio" val={newVisita.dataEnsaio} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, dataEnsaio: v})} icon={<Calendar size={10}/>} placeholder="3 Sábado" />
                     <Field label="Horário" val={newVisita.hora} disabled={isInputDisabled} onChange={v => setNewVisita({...newVisita, hora: v})} icon={<Clock size={10}/>} placeholder="00:00" />
                 </div>
 
                 {!isInputDisabled && (
-                  <button onClick={handleSaveVisita} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all">
-                    Salvar Registro
+                  <button 
+                    onClick={handleSaveVisita} 
+                    disabled={!newVisita.nome || !newVisita.min}
+                    className={`w-full py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all ${
+                      (!newVisita.nome || !newVisita.min) 
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                        : 'bg-blue-600 text-white shadow-blue-100'
+                    }`}
+                  >
+                    Salvar Registro {/* Botão principal de salvar visitantes */}
                   </button>
                 )}
               </div>
@@ -444,4 +475,4 @@ const AtaPage = ({ eventId, comumId }) => { // Inicia a página da Ata recebendo
   );
 };
 
-export default AtaPage; // Exporta a página pronta para o sistema
+export default AtaPage; // Finaliza o arquivo da página da ata
