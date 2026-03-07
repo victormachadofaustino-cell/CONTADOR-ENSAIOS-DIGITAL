@@ -10,7 +10,7 @@ let updateBuffers = {}; // Explicação: Guarda as alterações temporariamente 
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v10.6 - FILTRO INTELIGENTE DE GPS (CIDADE/LOCAL)
+ * v10.7 - FILTRO SOBERANO PARA MASTER E COMISSÃO
  */
 export const eventService = { // Explicação: Inicia o conjunto de funções de gerenciamento de ensaios.
 
@@ -33,32 +33,35 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     }
   },
 
-  // v10.6: Escuta eventos aplicando o Filtro Geográfico RESPEITANDO O SELETOR (PILL)
-  subscribeToEvents: (user, callback) => { // Explicação: Fica "ouvindo" novos ensaios respeitando o limite do seu nível de acesso e o que você selecionou no Pill.
+  // v10.7: Escuta eventos aplicando o Filtro Geográfico OBRIGATÓRIO (Master/Comissão)
+  subscribeToEvents: (user, callback) => { // Explicação: Fica "ouvindo" novos ensaios respeitando o limite do seu nível de acesso.
     if (!user || !user.uid) return; // Explicação: Se o usuário não estiver identificado, não inicia a conexão.
     
-    const config = PERMISSIONS_MAP[user.accessLevel] || {}; // Explicação: Verifica na Regra de Ouro qual o alcance geográfico do usuário.
     let constraints = []; // Explicação: Prepara a lista de filtros que serão aplicados no banco.
 
-    // Explicação: Captura qual igreja está selecionada no "Pill" do cabeçalho.
-    const activeComumId = user.activeComumId || null;
-
-    if (config.geoScope === 'regional') { // Explicação: Master/Comissão - Se escolheu igreja no Pill, filtra por ela, senão mostra a regional toda.
-      if (activeComumId) constraints.push(where('comumId', '==', activeComumId));
-      else constraints.push(where('regionalId', '==', user.regionalId)); 
-
-    } else if (config.geoScope === 'cidade') { // Explicação: Gestor de Cidade - Se escolheu igreja no Pill, filtra por ela, senão mostra a cidade toda.
-      if (activeComumId) constraints.push(where('comumId', '==', activeComumId));
-      else constraints.push(where('cidadeId', '==', user.cidadeId));
-
-    } else if (config.geoScope === 'local') { // Explicação: GEM Local - Filtra sempre pela sua igreja ou convites, ignorando trocas acidentais.
-      constraints.push(or(
-        where('comumId', '==', user.comumId), 
-        where('invitedUsers', 'array-contains', user.uid)
-      ));
+    // v10.7: Lógica de Filtro em Cascata para Master e Comissão
+    // Explicação: Se o gestor escolheu uma igreja ou se o sistema iniciou com a de cadastro, foca nela.
+    if (user.activeComumId || user.comumId) {
+      constraints.push(where('comumId', '==', user.activeComumId || user.comumId));
+    } 
+    // Explicação: Se não tem igreja no Pill, mas tem cidade, foca na cidade.
+    else if (user.activeCityId || user.cidadeId) {
+      constraints.push(where('cidadeId', '==', user.activeCityId || user.cidadeId));
+    } 
+    // Explicação: Se for Master/Comissão e não escolheu nada, foca na Regional para não trazer o mundo todo.
+    else if (user.activeRegionalId || user.regionalId) {
+      constraints.push(where('regionalId', '==', user.activeRegionalId || user.regionalId));
     }
 
-    const q = query( // Explicação: Monta a pergunta final para o Firebase com os novos filtros de GPS.
+    // Explicação: Regra específica para GEM Local (Igreja própria + Convidados).
+    if (user.accessLevel === ROLES.GEM) {
+      constraints = [or(
+        where('comumId', '==', user.comumId), 
+        where('invitedUsers', 'array-contains', user.uid)
+      )];
+    }
+
+    const q = query( // Explicação: Monta a pergunta final para o Firebase respeitando os filtros de GPS acima.
       collection(db, 'events_global'), 
       ...constraints, 
       orderBy('date', 'desc') 
@@ -140,13 +143,13 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
         regionalId: regionalId || '',
         regionalNome: regionalNome || '',
         ata: { 
-          status: 'open', // Explicação: O status deve estar aqui para as Rules funcionarem.
+          status: 'open', 
           palavra: { anciao: '', livro: '', capitulo: '', verso: '', assunto: '' },
           ocorrencias: []
         },
         counts: initialCounts, 
         createdAt: Date.now(), 
-        updatedAt: Date.now(), // Explicação: Carimba a data de modificação na raiz.
+        updatedAt: Date.now(), 
         dbVersion: "10.4-stabilized" 
       };
 
@@ -192,14 +195,14 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
 
   // v10.5: FUNÇÃO DE EXCLUSÃO CORRIGIDA E BLINDADA
   deleteEvent: async (comumId, eventId) => { // Explicação: Tenta apagar o ensaio do banco de dados definitivamente.
-    if (!eventId) throw new Error("ID do evento não fornecido."); // Explicação: Barra se não souber o que apagar.
+    if (!eventId) throw new Error("ID do evento não fornecido."); 
     try {
-      const eventRef = doc(db, 'events_global', eventId); // Explicação: Localiza o documento exato no Firebase.
-      await deleteDoc(eventRef); // Explicação: Envia a ordem de destruição para o banco.
-      return true; // Explicação: Retorna verdadeiro se o banco aceitou a ordem.
+      const eventRef = doc(db, 'events_global', eventId); 
+      await deleteDoc(eventRef); 
+      return true; 
     } catch (error) {
-      console.error("ERRO_SERVICE_DELETE:", error.message); // Explicação: Loga o erro técnico no console para o desenvolvedor.
-      throw new Error("PERMISSAO_NEGADA_OU_FALHA_REDE"); // Explicação: Avisa o sistema que o banco recusou (provavelmente falta de permissão).
+      console.error("ERRO_SERVICE_DELETE:", error.message); 
+      throw new Error("PERMISSAO_NEGADA_OU_FALHA_REDE"); 
     }
   },
 
@@ -214,15 +217,14 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     const val = Math.max(0, parseInt(value) || 0); 
 
     if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {};
-    updateBuffers[timerKey][fieldToUpdate] = val; // Explicação: Coloca a mudança na sala de espera.
+    updateBuffers[timerKey][fieldToUpdate] = val; 
 
     if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]); 
 
-    debounceTimers[timerKey] = setTimeout(async () => { // Explicação: Envia para o banco após pausa.
+    debounceTimers[timerKey] = setTimeout(async () => { 
       const eventRef = doc(db, 'events_global', eventId);
       const bufferCopy = { ...updateBuffers[timerKey] };
       
-      // Explicação: Limpa o buffer imediatamente para o Heartbeat não sobrescrever o que já foi enviado.
       delete updateBuffers[timerKey]; 
       delete debounceTimers[timerKey];
 
@@ -244,9 +246,9 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
         });
 
         finalUpdates[`${baseKey}.updatedAt`] = Date.now();
-        finalUpdates[`updatedAt`] = Date.now(); // Explicação: Carimba a atualização na raiz para as Rules v10.21.
+        finalUpdates[`updatedAt`] = Date.now(); 
         
-        await updateDoc(eventRef, finalUpdates); // Explicação: Gravação cirúrgica.
+        await updateDoc(eventRef, finalUpdates); 
         
       } catch (e) {
         console.error("Erro na Gravação Stabilizada:", e.message);

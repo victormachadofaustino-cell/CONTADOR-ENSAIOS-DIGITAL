@@ -30,7 +30,6 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
       if (currentUser) { // Explicação: Se estiver logado, busca o perfil no banco de dados.
         try {
           // --- v10.6: RENOVAÇÃO FORÇADA DE CRACHÁ ---
-          // Explicação: Obriga o navegador a atualizar os tokens de segurança para evitar erro de permissão em contas recriadas.
           await currentUser.getIdToken(true);
 
           // Explicação: Abre um canal em tempo real com o documento do usuário na pasta /users/.
@@ -38,8 +37,6 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
             if (docSnap.exists()) {
               const data = docSnap.data(); // Explicação: Pega os dados de cargo, igreja e nível.
               
-              // --- DEFINIÇÃO DE NÍVEL SOBERANA (BANCO > CLAIMS) ---
-              // Explicação: O que vale é o que está no banco de dados para evitar atraso de token.
               const level = data.accessLevel || ROLES.BASICO;
               const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
 
@@ -53,11 +50,11 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
                 isAdmin: level !== ROLES.BASICO 
               };
 
-              // GPS REATIVO v10.7: Prioriza o SELETOR para gestores, permitindo visão nula (todos).
-              // Explicação: Se for gestor, aceita o ID vindo do Pill (mesmo se for null). Se for usuário comum, trava na igreja dele.
-              const validRegionalId = permissions.isComissao ? activeRegionalId : data.regionalId;
-              const validCityId = permissions.isRegionalCidade ? activeCityId : data.cidadeId;
-              const validComumId = permissions.isRegionalCidade ? activeComumId : data.comumId;
+              // GPS REATIVO v10.10: FOCO OBRIGATÓRIO NO CADASTRO SE O PILL ESTIVER VAZIO
+              // Explicação: Se não houver seleção manual, ele trava nos IDs de cadastro (Comum/Cidade/Regional) para não "vazar" ensaios.
+              const validRegionalId = activeRegionalId || data.regionalId || null;
+              const validCityId = activeCityId || data.cidadeId || null;
+              const validComumId = activeComumId || data.comumId || null;
 
               setUserData({ 
                 ...data, 
@@ -72,7 +69,7 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
               });
               setLoading(false); // Explicação: Só libera o app quando o perfil real for carregado.
             } else {
-              setLoading(false); // Explicação: Libera se não houver perfil, masUserData ficará null.
+              setLoading(false); // Explicação: Libera se não houver perfil.
             }
           }, (err) => {
             console.error("AuthContext: Erro ao ler perfil:", err);
@@ -95,20 +92,20 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
     return () => unsubAuth(); // Explicação: Limpa o vigia de login.
   }, [activeRegionalId, activeCityId, activeComumId]); 
 
-  // FUNÇÕES DO GPS v10.7: Ajustado para limpeza em cascata (se mudar regional, limpa cidade e comum).
+  // FUNÇÕES DO GPS v10.7: Ajustado para limpeza em cascata.
   const setContext = (type, id) => { // Explicação: Muda a igreja ou cidade que o gestor está vendo.
     if (type === 'regional') {
       setActiveRegionalId(id);
       id ? localStorage.setItem('activeRegionalId', id) : localStorage.removeItem('activeRegionalId');
-      setActiveCityId(null); // Explicação: Ao trocar regional, limpa a cidade anterior.
+      setActiveCityId(null); 
       localStorage.removeItem('activeCityId');
-      setActiveComumId(null); // Explicação: Ao trocar regional, limpa a igreja anterior.
+      setActiveComumId(null); 
       localStorage.removeItem('activeComumId');
     }
     if (type === 'city') {
       setActiveCityId(id);
       id ? localStorage.setItem('activeCityId', id) : localStorage.removeItem('activeCityId');
-      setActiveComumId(null); // Explicação: Ao trocar de cidade, desmarca a igreja para ver a cidade toda.
+      setActiveComumId(null); 
       localStorage.removeItem('activeComumId');
     }
     if (type === 'comum') {
@@ -121,7 +118,7 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
     user,
     userData,
     loading,
-    // Explicação: Autenticado se tiver e-mail verificado E perfil aprovado pelo gestor.
+    // Explicação: Autenticado se tiver e-mail verificado E perfil aprovado.
     isAuthenticated: !!user && user.emailVerified && (userData?.approved || userData?.isMaster),
     setContext,
   };

@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext'; // Explicação: Puxa o cra
 import EventsList from './components/EventsList'; // Explicação: Componente que desenha a lista de ensaios.
 import EventModals from './components/EventModals'; // Explicação: Componente que cuida das janelas de "Novo" e "Excluir".
 
-// v10.5: Importação do motor de permissões para validar ações em tempo real
+// v10.13: Importação do motor de permissões oficial
 import { hasPermission } from '../../config/permissions'; // Explicação: Importa a Regra de Ouro do sistema.
 
 const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchChange }) => { 
@@ -39,7 +39,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
   const [newEventDate, setNewEventDate] = useState(getLocalDate()); // Explicação: Data inicial do formulário.
   const [responsavel, setResponsavel] = useState(userData?.name || ''); // Explicação: Nome do ancião responsável.
 
-  // --- MATRIZ DE PODER v2.2 ---
+  // --- MATRIZ DE PODER v10.13 ---
   const level = userData?.accessLevel; 
   const isMaster = level === 'master'; 
   const isComissao = level === 'comissao'; 
@@ -47,17 +47,19 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
   const isGemLocal = level === 'gem_local'; 
   const isBasico = level === 'basico'; 
 
-  const selectedCityId = userData?.activeCityId || userData?.cidadeId || ''; 
-  const selectedChurchId = userData?.activeComumId || userData?.comumId || ''; 
-  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId; 
+  // v10.13: Normalização de IDs para evitar erro de Hook (Changed size)
+  // Explicação: Forçamos uma string vazia para que o React não sinta mudança de tipo entre renders.
+  const selectedCityId = userData?.activeCityId || ''; 
+  const selectedChurchId = userData?.activeComumId || ''; 
+  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId || ''; 
 
   const permitidasIds = useMemo(() => { // Explicação: Igrejas onde o usuário pode gerenciar.
     const lista = [userData?.comumId, ...(userData?.acessosPermitidos || [])];
     return [...new Set(lista.filter(id => id))];
   }, [userData]);
 
-  // VALIDAÇÃO DE PERMISSÃO TERRITORIAL (Sincronizada v10.5)
-  const temPermissaoAqui = useMemo(() => { // Explicação: Decide se o usuário pode CRIAR ensaios na igreja selecionada.
+  // VALIDAÇÃO DE PERMISSÃO TERRITORIAL
+  const temPermissaoAqui = useMemo(() => { // Explicação: Decide se o usuário pode CRIAR ensaios.
     if (isBasico) return false; 
     if (isMaster || isComissao) return true; 
     if (level === 'regional_cidade') { 
@@ -67,14 +69,15 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
     return permitidasIds.includes(selectedChurchId); 
   }, [isMaster, isComissao, isBasico, level, selectedChurchId, userData, comuns, permitidasIds]);
 
-  // 1. MONITOR DE EVENTOS OTIMIZADO
+  // 1. MONITOR DE EVENTOS v10.13 - FIX: DEPENDÊNCIA ESTÁVEL
+  // Explicação: Mantemos apenas o userData como dependência para evitar o erro de tamanho de array do Hook.
   useEffect(() => { 
     if (!userData || !user?.uid) return;
     const unsubEvents = eventService.subscribeToEvents(userData, (data) => {
       setEvents(data); 
     });
     return () => unsubEvents && unsubEvents(); 
-  }, [userData, user?.uid, selectedChurchId]); 
+  }, [userData, user?.uid]); 
 
   // 2. SINCRONIZAÇÃO: REGIONAL -> CIDADE
   useEffect(() => { 
@@ -107,7 +110,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
       const filteredList = isRegionalCidade ? sortedList : sortedList.filter(c => permitidasIds.includes(c.id));
       setComuns(filteredList);
       if (filteredList.length === 0) {
-        if (selectedChurchId !== null && selectedChurchId !== '') {
+        if (selectedChurchId !== '') {
           setContext('comum', null);
           if (onChurchChange) onChurchChange(null, '');
         }
@@ -166,27 +169,20 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
     }
   };
 
-  // v10.5: FUNÇÃO DE EXCLUSÃO CORRIGIDA COM TRATAMENTO DE ERRO
   const confirmDelete = async () => { // Explicação: Executa o comando de apagar o ensaio.
     if (!eventToDelete || !selectedChurchId) return;
-    
     const targetEvent = events.find(ev => ev.id === eventToDelete);
     if (targetEvent?.ata?.status === 'closed') { 
       toast.error("Impossível excluir ensaios lacrados.");
       setEventToDelete(null);
       return;
     }
-
-    const toastId = toast.loading("Removendo agenda..."); // Explicação: Feedback visual de carregamento.
-
+    const toastId = toast.loading("Removendo agenda...");
     try {
-      // Explicação: Tenta apagar usando o motor oficial.
       await eventService.deleteEvent(selectedChurchId, eventToDelete);
-      toast.success("Agenda removida!", { id: toastId }); // Explicação: Avisa que funcionou.
+      toast.success("Agenda removida!", { id: toastId });
       setEventToDelete(null);
     } catch (error) { 
-      console.error("ERRO_UI_DELETE:", error);
-      // Explicação: Se o banco de dados negar (como o GEM tentando apagar um Regional), avisa agora.
       toast.error("Acesso Negado ou Falha de Rede.", { id: toastId }); 
       setEventToDelete(null);
     }
@@ -207,14 +203,14 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
 
         <div className={`flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2.5 rounded-2xl shadow-xl border border-white/10 transition-all ${(!isRegionalCidade || comuns.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}>
           <Home size={10} className="text-blue-600 shrink-0" />
-          <select disabled={!isRegionalCidade || comuns.length === 0} value={selectedChurchId || ''} onChange={(e) => { const com = comuns.find(c => c.id === e.target.value); if (com) { setContext('comum', com.id); if (onChurchChange) onChurchChange(com.id, com.nome); } }} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer">
+          <select disabled={!isRegionalCidade || comuns.length === 0} value={selectedChurchId} onChange={(e) => { const com = comuns.find(c => c.id === e.target.value); if (com) { setContext('comum', com.id); if (onChurchChange) onChurchChange(com.id, com.nome); } }} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-white appearance-none cursor-pointer">
             <option value="" className="text-slate-900">{cidades.length === 0 ? "AGUARDANDO CIDADE" : comuns.length === 0 ? "VAZIO" : "LOCALIDADE..."}</option>
             {comuns.map(c => <option key={c.id} value={c.id} className="text-slate-900">{c.nome}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Botão de Criação: Só aparece se o usuário tiver permissão territorial para a igreja selecionada */}
+      {/* Botão de Criação */}
       {temPermissaoAqui && selectedChurchId && comuns.length > 0 && (
         <div className="mb-8 max-w-md mx-auto">
           <button onClick={() => setShowModal(true)} className="w-full bg-slate-950 text-white py-5 rounded-[2.2rem] font-[900] uppercase italic tracking-[0.2em] shadow-2xl flex justify-center items-center gap-3 active:scale-95 transition-all">
@@ -234,7 +230,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
         userData={userData}
       />
 
-      {/* Janelas Modais (Novo/Excluir/Erro) */}
+      {/* Janelas Modais */}
       <EventModals 
         showModal={showModal} setShowModal={setShowModal}
         newEventDate={newEventDate} setNewEventDate={setNewEventDate}
@@ -251,4 +247,4 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
   );
 };
 
-export default EventsPage; // Explicação: Exporta a página configurada para o sistema.
+export default EventsPage;
