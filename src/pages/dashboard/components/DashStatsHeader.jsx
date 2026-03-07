@@ -1,8 +1,8 @@
-import React from 'react';
-import { Share2 } from 'lucide-react';
+import React from 'react'; // Explicação: Importa a base do React para criar o componente visual.
+import { Share2 } from 'lucide-react'; // Explicação: Importa o ícone de compartilhar (desenho do WhatsApp/Seta).
 
-const DashStatsHeader = ({ stats, isBasico, handleShareLanche }) => {
-  return (
+const DashStatsHeader = ({ stats, isBasico, handleShareLanche, canExport }) => { // Explicação: Inicia o cabeçalho recebendo os números, o nível do usuário e a autorização de exportar.
+  return ( // Explicação: Começa a desenhar o card preto na parte superior da tela.
     <div className="bg-slate-950 px-5 py-3 rounded-[2rem] shadow-2xl relative border border-white/5 min-h-[84px] flex items-center overflow-hidden">
       <div className="w-[35%] leading-none text-left">
         <p className="text-[7px] font-black text-amber-500 uppercase tracking-[0.3em] mb-1 italic">Alimentação</p>
@@ -20,7 +20,9 @@ const DashStatsHeader = ({ stats, isBasico, handleShareLanche }) => {
           <p className="text-[6px] font-black text-slate-500 uppercase italic mb-1">Coral</p>
           <p className="text-lg font-black text-white">{stats.irmandade}</p>
         </div>
-        {!isBasico && (
+        {/* v5.9: Trava de hierarquia aplicada ao botão de compartilhar lanche */}
+        {/* Explicação: O ícone de compartilhar agora só aparece se canExport for verdadeiro (respeitando se é Regional ou Local). */}
+        {canExport && (
           <button onClick={handleShareLanche} className="text-emerald-500 active:scale-90 ml-1">
             <Share2 size={18} />
           </button>
@@ -30,4 +32,4 @@ const DashStatsHeader = ({ stats, isBasico, handleShareLanche }) => {
   );
 };
 
-export default DashStatsHeader;
+export default DashStatsHeader; // Explicação: Exporta o componente pronto para ser usado no Dashboard.

@@ -1,98 +1,98 @@
-import React, { useState, useMemo } from 'react'; // Ferramentas básicas para criar a tela e memorizar dados
-import { motion, AnimatePresence } from 'framer-motion'; // Ferramentas para animações suaves de abrir e fechar
-import { Plus, UserPlus, ChevronDown, Users } from 'lucide-react'; // Ícones visuais (mais, seta, pessoas)
-import { db, doc, writeBatch } from '../../../config/firebase'; // Conexão com o banco de dados do Google
-import toast from 'react-hot-toast'; // Avisos flutuantes na tela
+import React, { useState, useMemo } from 'react'; // Explicação: Ferramentas básicas para criar a tela e memorizar cálculos.
+import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Ferramentas para animações suaves de abrir e fechar as famílias.
+import { Plus, UserPlus, ChevronDown, Users } from 'lucide-react'; // Explicação: Ícones visuais (mais, seta, pessoas).
+import { db, doc, writeBatch } from '../../../config/firebase'; // Explicação: Conexão com o banco de dados do Google.
+import toast from 'react-hot-toast'; // Explicação: Avisos flutuantes na tela.
 // PRESERVAÇÃO: Importação mantida conforme estrutura do projeto
-import InstrumentCard from './InstrumentCard'; // Importa o cartão individual de cada instrumento
+import InstrumentCard from './InstrumentCard'; // Explicação: Importa o cartão individual de cada instrumento.
 
 /**
  * Módulo de Contagem para Ensaios Regionais
- * v10.0 - FIX SIMULTANEIDADE: Implementação de repasse de Focus/Blur.
+ * v10.1 - FIX SIMULTANEIDADE & REGRA DE OURO
  * Permite que múltiplos contadores trabalhem sem que a tela "pule" ou "zere".
  */
 const CounterRegional = ({ 
-  instruments, // Lista de instrumentos vindos do banco
-  localCounts, // Números atuais da contagem na tela
-  sections, // Famílias de instrumentos (Cordas, Madeiras, etc)
-  onUpdate, // Função para salvar o número digitado
-  onToggleSection, // Função para assumir a posse de uma seção
-  onAddExtra, // Função para adicionar um instrumento fora da lista
-  userData, // Dados do usuário logado
-  isClosed, // Indica se o ensaio já acabou
-  currentEventId, // ID do evento atual
-  onFocus, // NOVO: Função que avisa quando o usuário começa a digitar [v10.0]
-  onBlur // NOVO: Função que avisa quando o usuário termina de digitar [v10.0]
+  instruments, // Explicação: Lista de instrumentos vindos do banco.
+  localCounts, // Explicação: Números atuais da contagem na tela.
+  sections, // Explicação: Famílias de instrumentos (Cordas, Madeiras, etc).
+  onUpdate, // Explicação: Função para salvar o número digitado.
+  onToggleSection, // Explicação: Função para assumir a posse de uma seção.
+  onAddExtra, // Explicação: Função para adicionar um instrumento fora da lista.
+  userData, // Explicação: Dados do usuário logado (Crachá).
+  isClosed, // Explicação: Indica se o ensaio já acabou (Bloqueio total).
+  currentEventId, // Explicação: ID do evento atual.
+  onFocus, // Explicação: Função que avisa quando o usuário começa a digitar [v10.0].
+  onBlur // Explicação: Função que avisa quando o usuário termina de digitar [v10.0].
 }) => {
-  // JUSTIFICATIVA: Estado local para garantir Accordion independente por usuário
-  const [openSections, setOpenSections] = useState({}); // Controla quais famílias estão abertas no celular do usuário
+  // JUSTIFICATIVA: Estado local para garantir Accordion independente por usuário.
+  const [openSections, setOpenSections] = useState({}); // Explicação: Controla quais famílias estão abertas no celular do usuário.
 
-  const toggleAccordion = (section) => { // Abre ou fecha uma família de instrumentos
+  const toggleAccordion = (section) => { // Explicação: Abre ou fecha uma família de instrumentos (ex: abre Cordas).
     setOpenSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
   };
 
-  const getSectionColor = (section) => { // Define a cor da barrinha lateral de cada família
+  const getSectionColor = (section) => { // Explicação: Define a cor da barrinha lateral de cada família para facilitar a identificação.
     const s = section.toUpperCase();
-    if (s.includes('CORDAS')) return 'bg-amber-500'; // Laranja para cordas
-    if (s.includes('MADEIRAS')) return 'bg-emerald-500'; // Verde para madeiras
-    if (s.includes('METAIS')) return 'bg-rose-500'; // Rosa/Vermelho para metais
-    if (s.includes('SAX')) return 'bg-emerald-400'; // Verde claro para saxofones
-    if (s.includes('ORGANISTAS')) return 'bg-purple-500'; // Roxo para organistas
-    if (s.includes('IRMANDADE')) return 'bg-blue-600'; // Azul para irmandade
-    return 'bg-slate-500'; // Cinza para o restante
+    if (s.includes('CORDAS')) return 'bg-amber-500'; // Explicação: Laranja para cordas.
+    if (s.includes('MADEIRAS')) return 'bg-emerald-500'; // Explicação: Verde para madeiras.
+    if (s.includes('METAIS')) return 'bg-rose-500'; // Explicação: Rosa/Vermelho para metais.
+    if (s.includes('SAX')) return 'bg-emerald-400'; // Explicação: Verde claro para saxofones.
+    if (s.includes('ORGANISTAS')) return 'bg-purple-500'; // Explicação: Roxo para organistas.
+    if (s.includes('IRMANDADE')) return 'bg-blue-600'; // Explicação: Azul para irmandade.
+    return 'bg-slate-500'; // Explicação: Cinza para o restante.
   };
 
-  const getSectionTotal = (sectionName) => { // Calcula a soma total de instrumentos naquela família
+  const getSectionTotal = (sectionName) => { // Explicação: Calcula a soma de todos os instrumentos de uma família para mostrar no cabeçalho.
     const sName = sectionName.toUpperCase();
     
-    // v8.12.6: Localização agressiva do ID Mestre para soma correta do cabeçalho
+    // Explicação: Localiza o ID principal para soma correta do cabeçalho.
     const masterInst = (instruments || []).find(i => 
       i && i.id && !i.id.startsWith('meta_') && 
       (i.section || '').toUpperCase() === sName &&
       !['irmas', 'irmaos'].includes(i.id.toLowerCase())
     );
 
-    // Se for seção protegida (Irmandade/Órgão), o total vem de um lugar específico no banco
+    // Explicação: Se for Irmandade ou Órgão, busca o total consolidado.
     if (sName === 'IRMANDADE' || sName === 'ORGANISTAS') {
       const mId = masterInst?.id || (sName === 'IRMANDADE' ? 'Coral' : 'orgao');
       return parseInt(localCounts?.[mId]?.total) || 0;
     }
     
-    // Soma todos os instrumentos que pertencem a esta família
+    // Explicação: Soma todos os instrumentos que pertencem a esta família.
     return (instruments || [])
       .filter(i => i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === sName)
       .reduce((acc, inst) => acc + (parseInt(localCounts?.[inst.id]?.total) || 0), 0);
   };
 
-  return ( // Inicia o desenho da lista no celular
+  return ( // Explicação: Inicia o desenho da lista de famílias no celular.
     <div className="space-y-4 pb-32 animate-premium text-left">
-      {sections.map((section) => { // Varre cada família de instrumentos (Cordas, Metais, etc)
-        const isIrmandade = section.toUpperCase() === 'IRMANDADE'; // Verifica se é a seção de irmas/irmaos
-        const isOrganistas = section.toUpperCase() === 'ORGANISTAS'; // Verifica se é a seção de organistas
+      {sections.map((section) => { // Explicação: Percorre cada grupo (Cordas, Metais, etc).
+        const isIrmandade = section.toUpperCase() === 'IRMANDADE'; 
+        const isOrganistas = section.toUpperCase() === 'ORGANISTAS'; 
         
-        const sectionInstruments = (instruments || []).filter(i => // Filtra os instrumentos que pertencem a esta família
+        const sectionInstruments = (instruments || []).filter(i => 
           i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase()
         );
 
-        // v8.12.6: Sincronização de ID Mestre com o banco de dados
+        // Explicação: Sincroniza o ID Mestre para controle de posse.
         const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id || (isIrmandade ? 'Coral' : isOrganistas ? 'orgao' : null);
-        const masterData = localCounts?.[masterId] || {}; // Pega os dados brutos do mestre (ex: quem assumiu a contagem)
+        const masterData = localCounts?.[masterId] || {}; 
 
-        const totalNaipe = getSectionTotal(section); // Pega o número total da família para mostrar no cabeçalho
-        const isOpen = openSections[section]; // Verifica se esta família está aberta na tela agora
+        const totalNaipe = getSectionTotal(section); // Explicação: Pega o total do grupo.
+        const isOpen = openSections[section]; // Explicação: Checa se a sanfona está aberta.
 
         return (
           <div key={section} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mx-2 text-left">
-            {/* HEADER DO ACORDEÃO - O botão que abre a família */}
+            {/* HEADER - Botão de abertura da família */}
             <button 
               onClick={() => toggleAccordion(section)}
               className="w-full p-4 flex items-center justify-between active:bg-slate-50 transition-all text-left"
             >
               <div className="flex items-center gap-3">
-                <div className={`w-2 h-10 rounded-full ${getSectionColor(section)}`} /> {/* Barrinha colorida lateral */}
+                <div className={`w-2 h-10 rounded-full ${getSectionColor(section)}`} /> 
                 <div className="leading-none">
                   <p className="text-[13px] font-[900] text-slate-950 uppercase italic tracking-tighter mb-1 leading-none">{section}</p>
                   <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">
@@ -111,11 +111,11 @@ const CounterRegional = ({
                 <ChevronDown 
                   size={18} 
                   className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} 
-                /> {/* Seta que gira ao abrir/fechar */}
+                />
               </div>
             </button>
 
-            {/* CONTEÚDO EXPANSÍVEL - Aparece quando clica na família */}
+            {/* CONTEÚDO EXPANSÍVEL */}
             <AnimatePresence>
               {isOpen && (
                 <motion.div 
@@ -127,8 +127,7 @@ const CounterRegional = ({
                 >
                   <div className="px-4 pb-6 space-y-3 pt-2">
                     
-                    {/* IRMANDADE: Tratamento especial para Irmãs e Irmãos */}
-                    {isIrmandade ? (
+                    {isIrmandade ? ( // Explicação: Layout para Irmãs e Irmãos.
                       <div className="space-y-3">
                         <InstrumentCard
                           key="irmas_row"
@@ -140,8 +139,8 @@ const CounterRegional = ({
                           isClosed={isClosed}
                           isRegional={true}
                           sectionName={section}
-                          onFocus={onFocus} // REPASSE: Avisa o pai sobre o foco [v10.0]
-                          onBlur={onBlur} // REPASSE: Avisa o pai sobre a saída [v10.0]
+                          onFocus={onFocus} // Explicação: Protege o campo contra zeragem externa.
+                          onBlur={onBlur}
                         />
                         <InstrumentCard
                           key="irmaos_row"
@@ -153,11 +152,11 @@ const CounterRegional = ({
                           isClosed={isClosed}
                           isRegional={true}
                           sectionName={section}
-                          onFocus={onFocus} // REPASSE: Avisa o pai sobre o foco [v10.0]
-                          onBlur={onBlur} // REPASSE: Avisa o pai sobre a saída [v10.0]
+                          onFocus={onFocus}
+                          onBlur={onBlur}
                         />
                       </div>
-                    ) : isOrganistas ? ( // Tratamento especial para Órgão
+                    ) : isOrganistas ? ( // Explicação: Layout para Órgão.
                       <div className="space-y-3">
                         <InstrumentCard
                           key="orgao_row"
@@ -169,12 +168,12 @@ const CounterRegional = ({
                           isClosed={isClosed}
                           isRegional={true}
                           sectionName={section}
-                          onFocus={onFocus} // REPASSE: Avisa o pai sobre o foco [v10.0]
-                          onBlur={onBlur} // REPASSE: Avisa o pai sobre a saída [v10.0]
+                          onFocus={onFocus}
+                          onBlur={onBlur}
                         />
                       </div>
                     ) : (
-                      /* LISTAGEM PADRÃO: Todos os outros instrumentos (Violinos, Flautas, etc) */
+                      /* LISTAGEM PADRÃO: Violinos, Flautas, etc */
                       <>
                         {sectionInstruments.length > 0 ? (
                           sectionInstruments.map((inst) => (
@@ -188,8 +187,8 @@ const CounterRegional = ({
                               isClosed={isClosed}
                               isRegional={true}
                               sectionName={section}
-                              onFocus={onFocus} // REPASSE: Avisa o pai sobre o foco [v10.0]
-                              onBlur={onBlur} // REPASSE: Avisa o pai sobre a saída [v10.0]
+                              onFocus={onFocus}
+                              onBlur={onBlur}
                             />
                           ))
                         ) : (
@@ -198,7 +197,7 @@ const CounterRegional = ({
                       </>
                     )}
                     
-                    {/* BOTÃO INSTRUMENTO EXTRA: Permite adicionar algo que não estava na lista original */}
+                    {/* BOTÃO INSTRUMENTO EXTRA */}
                     {!isClosed && !isIrmandade && !isOrganistas && (
                       <button
                         onClick={() => onAddExtra(section)}
@@ -219,4 +218,4 @@ const CounterRegional = ({
   );
 };
 
-export default CounterRegional; // Disponibiliza o componente para o restante do App
+export default CounterRegional; // Explicação: Exporta o componente pronto para o regional.

@@ -1,24 +1,30 @@
-import React from 'react';
-import { Lock, RotateCcw } from 'lucide-react';
-import { Modal } from './AtaUIComponents';
+import React from 'react'; // Explicação: Importa a base do React para desenhar o componente.
+import { Lock, RotateCcw } from 'lucide-react'; // Explicação: Importa os ícones de cadeado e reabertura.
+import { Modal } from './AtaUIComponents'; // Explicação: Importa o componente de janelas de confirmação.
 
 /**
- * AtaLacreStatus v1.1
+ * AtaLacreStatus v1.2
  * Módulo de governança para fechamento e reabertura de atas.
- * Ajuste: Sutilização visual com redução de padding e ícones mais discretos.
+ * v1.2 - Trava hierárquica: GEM não lacra ensaio Regional.
  */
 const AtaLacreStatus = ({ 
-  isClosed, 
-  isGemLocal, 
-  isComissao, 
-  loading, 
-  showConfirmLock, 
-  setShowConfirmLock, 
-  showConfirmReopen, 
-  setShowConfirmReopen, 
-  saveStatus 
-}) => {
-  return (
+  isClosed, // Explicação: Indica se a ata já está fechada.
+  isGemLocal, // Explicação: Indica se o usuário é do nível GEM Local.
+  isComissao, // Explicação: Indica se o usuário é do nível Comissão.
+  isRegionalScope, // Explicação: NOVO: Indica se o ensaio atual é Regional ou Local.
+  loading, // Explicação: Indica se o sistema está processando informações.
+  showConfirmLock, // Explicação: Controla a exibição da janela de confirmação de lacre.
+  setShowConfirmLock, // Explicação: Função para abrir/fechar a janela de lacre.
+  showConfirmReopen, // Explicação: Controla a exibição da janela de confirmação de reabertura.
+  setShowConfirmReopen, // Explicação: Função para abrir/fechar a janela de reabertura.
+  saveStatus // Explicação: Função que efetivamente grava a mudança no banco de dados.
+}) => { // Explicação: Inicia a estrutura visual do controle de status.
+  
+  // v1.2: Decide quem pode ver o botão de lacrar conforme o tipo do ensaio.
+  // Explicação: Se for Regional, o GEM Local perde o botão. Se for Local, ele mantém. Comissão vê sempre.
+  const podeLacrar = isComissao || (isGemLocal && !isRegionalScope);
+
+  return ( // Explicação: Desenha a interface na tela.
     <div className="pt-6 px-2 pb-6">
       {/* 1. ESTADO DE CARREGAMENTO (Previne cliques duplos durante a sincronização) */}
       {loading ? (
@@ -27,9 +33,9 @@ const AtaLacreStatus = ({
         </div>
       ) : (
         <div className="flex justify-center">
-          {/* 2. BOTÃO DE LACRE (Disponível para GEM Local ou Superior) - Versão Compacta */}
+          {/* 2. BOTÃO DE LACRE (Ajustado v1.2: Respeita o escopo do ensaio) */}
           {!isClosed ? (
-            isGemLocal && (
+            podeLacrar && ( // Explicação: Só mostra o botão se a regra 'podeLacrar' for verdadeira.
               <button 
                 onClick={() => setShowConfirmLock(true)} 
                 className="w-full max-w-[240px] bg-slate-950 text-white py-4 rounded-[2rem] font-black uppercase italic tracking-[0.15em] shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all border border-white/10 text-[9px] hover:bg-slate-900"
@@ -38,7 +44,7 @@ const AtaLacreStatus = ({
               </button>
             )
           ) : (
-            /* 3. BOTÃO DE REABERTURA (Restrito ao nível Comissão ou Master) - Versão Compacta */
+            /* 3. BOTÃO DE REABERTURA (Restrito ao nível Comissão ou Master) */
             isComissao && (
               <button 
                 onClick={() => setShowConfirmReopen(true)} 
@@ -85,4 +91,4 @@ const AtaLacreStatus = ({
   );
 };
 
-export default AtaLacreStatus;
+export default AtaLacreStatus; // Explicação: Exporta o componente pronto para uso na página da Ata.

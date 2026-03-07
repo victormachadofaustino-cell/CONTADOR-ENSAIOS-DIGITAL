@@ -1,27 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { authService } from '../../services/authService';
-import { db, collection, onSnapshot, query, orderBy, where } from '../../config/firebase'; 
-import toast from 'react-hot-toast';
-import { Mail, Lock, LogIn, ShieldCheck, Activity, User, Briefcase, MapPin, Globe, Send, Clock, LogOut } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react'; // Explicação: Importa as ferramentas de estado e efeitos do React.
+import { authService } from '../../services/authService'; // Explicação: Importa o motor que cria a conta no Google Firebase.
+import { db, collection, onSnapshot, query, orderBy, where } from '../../config/firebase'; // Explicação: Conecta com o banco de dados para buscar igrejas e cargos.
+import toast from 'react-hot-toast'; // Explicação: Sistema de avisos visuais (balões).
+import { Mail, Lock, LogIn, ShieldCheck, Activity, User, Briefcase, MapPin, Globe, Send, Clock, LogOut } from 'lucide-react'; // Explicação: Biblioteca de desenhos dos ícones.
+import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Sistema de animações fluidas da tela.
 
 const LoginPage = ({ 
   authMode, setAuthMode, email, setEmail, pass, setPass, 
   userName, setUserName, userRole, setUserRole, userData 
-}) => {
-  const [loading, setLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false); // Controle do aviso de SPAM
+}) => { // Explicação: Inicia a estrutura da página de Login e Cadastro.
+  const [loading, setLoading] = useState(false); // Explicação: Controle do símbolo de "carregando".
+  const [emailSent, setEmailSent] = useState(false); // Explicação: Controle do aviso de verificação de e-mail e SPAM.
   
-  const [regionais, setRegionais] = useState([]);
-  const [cidades, setCidades] = useState([]);
-  const [igrejasDisponiveis, setIgrejasDisponiveis] = useState([]);
+  const [regionais, setRegionais] = useState([]); // Explicação: Lista de Regionais para o cadastro.
+  const [cidades, setCidades] = useState([]); // Explicação: Lista de Cidades filtradas.
+  const [igrejasDisponiveis, setIgrejasDisponiveis] = useState([]); // Explicação: Lista de igrejas filtradas.
   
-  const [selectedRegionalId, setSelectedRegionalId] = useState('');
-  const [selectedCityId, setSelectedCityId] = useState('');
-  const [selectedChurch, setSelectedChurch] = useState(null); 
-  const [listaCargosLocal, setListaCargosLocal] = useState([]); 
+  const [selectedRegionalId, setSelectedRegionalId] = useState(''); // Explicação: Guarda qual Regional o usuário escolheu.
+  const [selectedCityId, setSelectedCityId] = useState(''); // Explicação: Guarda qual Cidade o usuário escolheu.
+  const [selectedChurch, setSelectedChurch] = useState(null); // Explicação: Guarda o objeto completo da igreja escolhida.
+  const [listaCargosLocal, setListaCargosLocal] = useState([]); // Explicação: Lista oficial de cargos vinda do banco.
 
-  // 1. CARGA DINÂMICA DE REGIONAIS (Escalabilidade Total)
+  // 1. CARGA DINÂMICA DE REGIONAIS
   useEffect(() => {
     if (authMode !== 'register') return;
     const unsub = onSnapshot(collection(db, 'config_regional'), 
@@ -29,7 +29,7 @@ const LoginPage = ({
         const lista = snapshot.docs.map(d => ({ id: d.id, nome: d.data().nome }));
         setRegionais(lista.sort((a, b) => a.nome.localeCompare(b.nome)));
       },
-      (error) => { console.warn("Permissão negada: regionais"); }
+      (error) => { console.warn("Aguardando permissão de regionais..."); }
     );
     return () => unsub();
   }, [authMode]);
@@ -65,7 +65,7 @@ const LoginPage = ({
     return () => unsub();
   }, [selectedCityId]);
 
-  // 4. CARGA DE CARGOS DA BASE DE REFERÊNCIA SANEADA
+  // 4. CARGA DE CARGOS SANEADA
   useEffect(() => {
     const q = query(collection(db, 'referencia_cargos'), orderBy('nome', 'asc'));
     const unsub = onSnapshot(q, (snapshot) => {
@@ -77,7 +77,7 @@ const LoginPage = ({
     return () => unsub();
   }, []);
 
-  const handleAuth = async (e) => {
+  const handleAuth = async (e) => { // Explicação: Função que processa o clique no botão Entrar ou Enviar.
     e.preventDefault();
     if (!email || !pass) return toast.error("Preencha e-mail e senha");
     setLoading(true);
@@ -85,26 +85,36 @@ const LoginPage = ({
       if (authMode === 'login') {
         await authService.login(email, pass);
       } else {
-        if (!userName.trim()) throw new Error("Informe seu nome");
-        if (pass.length < 6) throw new Error("Mínimo 6 caracteres na senha");
-        if (!selectedRegionalId) throw new Error("Selecione sua Regional");
-        if (!selectedCityId) throw new Error("Selecione sua Cidade");
-        if (!selectedChurch) throw new Error("Selecione sua Localidade");
+        // v2.3: Validações Estritas para evitar usuários "Zicados"
+        if (!userName.trim()) throw new Error("Informe seu nome completo");
+        if (pass.length < 6) throw new Error("Senha muito curta (mínimo 6 caracteres)");
+        if (!selectedRegionalId) throw new Error("Regional não selecionada");
+        if (!selectedCityId) throw new Error("Cidade não selecionada");
+        if (!selectedChurch) throw new Error("Localidade não selecionada");
 
+        // Explicação: Envia o pacote de dados blindado para o serviço de registro.
         await authService.register({
-          email, password: pass, name: userName,
-          role: userRole || (listaCargosLocal[0] || ''),
-          comum: selectedChurch.nome, comumId: selectedChurch.id,
-          cidadeId: selectedCityId, regionalId: selectedRegionalId
+          email: email.toLowerCase().trim(), // Explicação: Força o e-mail em minúsculo para evitar erro de login.
+          password: pass, 
+          name: userName.toUpperCase().trim(), // Explicação: Nome em maiúsculo para padronização.
+          role: userRole || (listaCargosLocal[0] || 'Músico'), // Explicação: Cargo padrão se não escolher.
+          accessLevel: 'basico', // Explicação: Todo novo cadastro nasce como básico.
+          comum: selectedChurch.nome, 
+          comumId: selectedChurch.id, // Explicação: ID sagrado para as Security Rules.
+          cidadeId: selectedCityId, 
+          regionalId: selectedRegionalId,
+          approved: false // Explicação: Nasce bloqueado aguardando aprovação.
         });
         
-        setEmailSent(true);
-        toast.success("Solicitação enviada!");
+        setEmailSent(true); // Explicação: Mostra o aviso para olhar o SPAM.
+        toast.success("Solicitação enviada com sucesso!");
       }
     } catch (err) {
       const msg = err.message || "Erro ao processar solicitação";
       if (msg.includes('auth/invalid-credential')) {
-        toast.error("E-mail ou senha incorretos.");
+        toast.error("Dados incorretos. Verifique e-mail e senha.");
+      } else if (msg.includes('auth/email-already-in-use')) {
+        toast.error("Este e-mail já está cadastrado.");
       } else {
         toast.error(msg);
       }
@@ -123,13 +133,10 @@ const LoginPage = ({
     if (cargo === 'Encarregado Regional') {
       return "Sua função requer habilitação da Comissão Regional para supervisão de cidade.";
     }
-    if (cargo.includes('Secretário') || cargo.includes('Comissão')) {
-      return "Contate o Administrador Master para liberar suas credenciais de Comissão.";
-    }
     return "Contate seu Secretário Local ou Regional para aprovar seu perfil.";
   };
 
-  // --- TELA DE BLOQUEIO DE SEGURANÇA (AGUARDANDO APROVAÇÃO) ---
+  // --- TELA DE BLOQUEIO (AGUARDANDO APROVAÇÃO) ---
   if (userData && !userData.approved && userData.emailVerified) {
     return (
       <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
@@ -164,13 +171,12 @@ const LoginPage = ({
     );
   }
 
-  // --- RENDERIZAÇÃO PADRÃO (LOGIN E REGISTRO) ---
-  return (
+  return ( // Explicação: Renderização da página de Login ou Cadastro.
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center overflow-hidden bg-gradient-to-b from-[#FFFFFF] via-[#E2E8F0] to-[#0F172A]">
       <div className="w-full max-w-md space-y-8 animate-premium relative z-10 overflow-y-auto no-scrollbar max-h-screen py-10 text-left">
         
         <AnimatePresence>
-          {emailSent && (
+          {emailSent && ( // Explicação: Caixa azul de aviso sobre o SPAM.
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-blue-600 text-white p-6 rounded-[2.5rem] shadow-xl mb-4 relative overflow-hidden">
               <div className="flex items-start gap-4">
                 <div className="bg-white/20 p-2 rounded-xl">
@@ -189,7 +195,7 @@ const LoginPage = ({
         </AnimatePresence>
 
         <div className="space-y-4 mb-12 text-center">
-          <div className="text-center space-y-2 pt-4">
+          <div className="text-center space-y-2 pt-4 leading-none">
             <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">Contador de</h2>
             <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">Ensaios Musicais</h2>
           </div>
@@ -197,12 +203,12 @@ const LoginPage = ({
 
         <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-white/20 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-950" />
-          <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-8">
+          <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-8 leading-none">
             {authMode === 'login' ? 'Acessar Conta' : 'Nova Solicitação'}
           </h3>
 
           <form onSubmit={handleAuth} className="space-y-4">
-            {authMode === 'register' && (
+            {authMode === 'register' && ( // Explicação: Campos extras exclusivos da tela de cadastro.
               <div className="space-y-4 animate-in slide-in-from-top-2">
                 <div className="space-y-1.5">
                   <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5"><User size={10} /> Nome Completo</label>
@@ -280,4 +286,4 @@ const LoginPage = ({
   );
 };
 
-export default LoginPage;
+export default LoginPage; // Explicação: Exporta a página para ser usada no sistema principal.

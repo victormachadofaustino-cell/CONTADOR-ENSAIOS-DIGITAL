@@ -1,17 +1,21 @@
-import React, { useMemo } from 'react';
-import toast from 'react-hot-toast';
+import React, { useMemo } from 'react'; // Explicação: Importa as ferramentas de memória e criação do React.
+// PRESERVAÇÃO: Importações originais mantidas
+import toast from 'react-hot-toast'; // Explicação: Notificações de aviso na tela.
 import { 
   TrendingUp, Music, Star, 
   Share2, Activity, PieChart, 
   CheckCircle2, ShieldCheck, Users, FileText, Briefcase, MapPin, Target, Landmark, Globe, UserCheck
-} from 'lucide-react';
-import { pdfEventRegionalService } from '../../services/pdfEventRegionalService';
-import { whatsappService } from '../../services/whatsappService';
-import { useAuth } from '../../context/AuthContext';
-import { db, doc, getDoc } from '../../config/firebase';
+} from 'lucide-react'; // Explicação: Desenhos dos ícones visuais.
+import { pdfEventRegionalService } from '../../services/pdfEventRegionalService'; // Explicação: Serviço que gera o arquivo PDF.
+import { whatsappService } from '../../services/whatsappService'; // Explicação: Serviço que formata o texto para WhatsApp.
+import { useAuth } from '../../context/AuthContext'; // Explicação: Puxa o crachá do usuário logado.
+import { db, doc, getDoc } from '../../config/firebase'; // Explicação: Conecta ao banco de dados.
 
-const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
-  const { userData } = useAuth();
+// v5.9: Importação da Regra de Ouro para travar exportação
+import { hasPermission } from '../../config/permissions'; // Explicação: Importa o cérebro das permissões.
+
+const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => { // Explicação: Inicia o painel de gráficos regional.
+  const { userData } = useAuth(); // Explicação: Identifica quem está olhando o gráfico.
 
   // CÁLCULO DE STATS - Racional de Big Numbers e Ata
   const stats = useMemo(() => {
@@ -35,25 +39,16 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
     if (counts) {
       Object.entries(counts).forEach(([id, data]) => {
         if (id.startsWith('meta_')) return;
-        
         const valTotal = parseInt(data.total) || 0;
         const valComum = parseInt(data.comum) || 0;
         const valIrmaos = parseInt(data.irmaos) || 0;
         const valIrmas = parseInt(data.irmas) || 0;
-        
         const effectiveTotal = Math.max(valTotal, (valIrmaos + valIrmas));
         const effectiveComum = valComum;
         const effectiveVisita = Math.max(0, effectiveTotal - valComum);
-
         const section = (data.section || "GERAL").toUpperCase();
         const saneId = id.toLowerCase();
-
-        const ehIrmandadeOuCoral = section.includes('CORAL') || 
-                                   section.includes('IRMANDADE') || 
-                                   saneId.includes('coral') || 
-                                   saneId.includes('irmandade') || 
-                                   saneId === 'irmas' || 
-                                   saneId === 'irmaos';
+        const ehIrmandadeOuCoral = section.includes('CORAL') || section.includes('IRMANDADE') || saneId.includes('coral') || saneId.includes('irmandade') || saneId === 'irmas' || saneId === 'irmaos';
 
         if (ehIrmandadeOuCoral) {
           totals.irmaos += valIrmaos || (saneId === 'irmaos' ? effectiveTotal : 0);
@@ -61,17 +56,14 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
           if (saneId === 'coral' && !counts.irmas && !counts.irmaos) {
              totals.irmandade += effectiveTotal;
           }
-        } 
-        else if (section.includes('ORGANISTA') || saneId.includes('orgao') || saneId.includes('org')) {
+        } else if (section.includes('ORGANISTA') || saneId.includes('orgao') || saneId.includes('org')) {
           totals.organistas += effectiveTotal;
           totals.organistasCasa += effectiveComum;
           totals.organistasVisitas += effectiveVisita;
-        } 
-        else {
+        } else {
           totals.musicos += effectiveTotal;
           totals.musicosCasa += effectiveComum;
           totals.musicosVisitas += effectiveVisita;
-          
           if (section === 'CORDAS' || ['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo'].includes(saneId)) totals.cordas += effectiveTotal;
           else if (section.includes('SAX')) totals.saxofones += effectiveTotal;
           else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt'].includes(saneId)) totals.madeiras += effectiveTotal;
@@ -84,68 +76,37 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
     totals.irmandade = totals.irmaos + totals.irmas;
     totals.orquestra = totals.musicos + totals.organistas;
 
-    // v5.7 - TRAVA DE UNICIDADE: Impede registros fantasmas e mapeia localidades reais
     const nomesProcessados = new Set();
-
     const processarPessoas = (lista, isVisitante = false) => {
       if (!lista || !Array.isArray(lista)) return;
       lista.forEach(p => {
         const nomeSaneado = (p.nome || p.name || "").trim().toUpperCase();
         const cargo = (p.min || p.role || "");
-        
         if (!nomeSaneado || nomesProcessados.has(nomeSaneado)) return;
         nomesProcessados.add(nomeSaneado);
-
-        if (cargo === 'Ancião') {
-          if (isVisitante) totals.ancianosVisitas++;
-          else totals.ancianosCasa++;
-        }
-        else if (cargo === 'Diácono') {
-          if (isVisitante) totals.diaconosVisitas++;
-          else totals.diaconosCasa++;
-        }
-        else if (cargo === 'Cooperador do Ofício' || cargo === 'Cooperador do Oficio') {
-          if (isVisitante) totals.coopOficioVisitas++;
-          else totals.coopOficioCasa++;
-        }
-        else if (cargo === 'Cooperador RJM' || cargo === 'Cooperador de Jovens e Menores') {
-          if (isVisitante) totals.coopJovensVisitas++;
-          else totals.coopJovensCasa++;
-        }
-        else if (cargo === 'Encarregado Regional') {
-          if (isVisitante) totals.encRegionalVisitas++;
-          else totals.encRegionalCasa++;
-        }
-        else if (cargo === 'Encarregado Local') {
-          if (isVisitante) totals.encLocalVisitas++;
-          else totals.encLocalCasa++;
-        }
-        else if (cargo === 'Examinadora') {
-          if (isVisitante) totals.examinadorasVisitas++;
-          else totals.examinadorasCasa++;
-        }
-        
-        // v5.8: Mapeia a localidade real (seja visitante ou da casa/cidade)
+        if (cargo === 'Ancião') { if (isVisitante) totals.ancianosVisitas++; else totals.ancianosCasa++; }
+        else if (cargo === 'Diácono') { if (isVisitante) totals.diaconosVisitas++; else totals.diaconosCasa++; }
+        else if (cargo === 'Cooperador do Ofício' || cargo === 'Cooperador do Oficio') { if (isVisitante) totals.coopOficioVisitas++; else totals.coopOficioCasa++; }
+        else if (cargo === 'Cooperador RJM' || cargo === 'Cooperador de Jovens e Menores') { if (isVisitante) totals.coopJovensVisitas++; else totals.coopJovensCasa++; }
+        else if (cargo === 'Encarregado Regional') { if (isVisitante) totals.encRegionalVisitas++; else totals.encRegionalCasa++; }
+        else if (cargo === 'Encarregado Local') { if (isVisitante) totals.encLocalVisitas++; else totals.encLocalCasa++; }
+        else if (cargo === 'Examinadora') { if (isVisitante) totals.examinadorasVisitas++; else totals.examinadorasCasa++; }
         const localidade = (p.comum || p.cidadeUf || p.bairro || "").toUpperCase();
-        if (localidade) {
-          totals.localidadesUnicas.add(localidade);
-        }
+        if (localidade) totals.localidadesUnicas.add(localidade);
       });
     };
-
     processarPessoas(ataData?.presencaLocalFull, false);
     processarPessoas(ataData?.visitantes, true);
+    
+    // v6.0: SOMA AUTOMÁTICA DE HINOS DA ATA
+    // Explicação: Percorre as partes da liturgia e conta quantos hinos foram digitados.
+    if (ataData?.partes) {
+      totals.hinos = ataData.partes.reduce((acc, p) => 
+        acc + (p.hinos?.filter(h => h && h.trim() !== '').length || 0), 0);
+    }
 
-    totals.ministerio_total = (totals.ancianosCasa + totals.ancianosVisitas) + 
-                              (totals.diaconosCasa + totals.diaconosVisitas) + 
-                              (totals.coopOficioCasa + totals.coopOficioVisitas) + 
-                              (totals.coopJovensCasa + totals.coopJovensVisitas) + 
-                              (totals.encRegionalCasa + totals.encRegionalVisitas) + 
-                              (totals.encLocalCasa + totals.encLocalVisitas) + 
-                              (totals.examinadorasCasa + totals.examinadorasVisitas);
-
+    totals.ministerio_total = (totals.ancianosCasa + totals.ancianosVisitas) + (totals.diaconosCasa + totals.diaconosVisitas) + (totals.coopOficioCasa + totals.coopOficioVisitas) + (totals.coopJovensCasa + totals.coopJovensVisitas) + (totals.encRegionalCasa + totals.encRegionalVisitas) + (totals.encLocalCasa + totals.encLocalVisitas) + (totals.examinadorasCasa + totals.examinadorasVisitas);
     totals.geral = totals.orquestra + totals.irmandade + totals.ministerio_total;
-
     return totals;
   }, [counts, ataData]);
 
@@ -156,7 +117,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
   const totalEncRegional = stats.encRegionalCasa + stats.encRegionalVisitas;
   const totalEncLocal = stats.encLocalCasa + stats.encLocalVisitas;
   const totalExaminadoras = stats.examinadorasCasa + stats.examinadorasVisitas;
-
   const totalPrincipais = stats.cordas + (stats.madeiras + stats.saxofones) + stats.metais;
   const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
 
@@ -181,11 +141,11 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       pdfEventRegionalService.generateAtaRegional(stats, ataData, userData, counts, sedeData);
       toast.dismiss(loadingToast);
       toast.success("Ata Regional Gerada!");
-    } catch (error) {
-      toast.dismiss(loadingToast);
-      toast.error("Erro ao gerar PDF.");
-    }
+    } catch (error) { toast.dismiss(loadingToast); toast.error("Erro ao gerar PDF."); }
   };
+
+  // v5.9: LOGICA DE VISIBILIDADE DOS BOTÕES DE EXPORTAÇÃO
+  const podeExportar = hasPermission(userData, 'generate_report', ataData?.scope);
 
   return (
     <div className="space-y-3 pb-44 px-4 pt-6 max-w-md mx-auto bg-slate-50 min-h-screen animate-in fade-in duration-500 text-left">
@@ -208,40 +168,36 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
             <p className="text-[6px] font-black text-slate-500 uppercase italic mb-1">Coral</p>
             <p className="text-lg font-black text-white">{stats.irmandade}</p>
           </div>
-          <button onClick={handleShareAlimentacao} className="text-emerald-500 active:scale-90 ml-1">
-            <Share2 size={18} />
-          </button>
+          {podeExportar && (
+            <button onClick={handleShareAlimentacao} className="text-emerald-500 active:scale-90 ml-1">
+              <Share2 size={18} />
+            </button>
+          )}
         </div>
       </div>
 
       <div className="space-y-3">
         <BigNumberCard title="Total Músicos" total={stats.musicos} hideDetails icon={<Music size={20} strokeWidth={3} />} color="text-slate-600" />
         <BigNumberCard title="Total Organistas" total={stats.organistas} hideDetails icon={<PieChart size={20} strokeWidth={3} />} color="text-slate-600" />
-        
-        <BigNumberCard 
-          title="Total Orquestra" 
-          total={stats.orquestra} 
-          hideDetails 
-          icon={<Activity size={20} strokeWidth={3} />} 
-          bgColor="bg-slate-100 border-l-4 border-l-blue-500 shadow-sm" 
-        />
-        
+        <BigNumberCard title="Total Orquestra" total={stats.orquestra} hideDetails icon={<Activity size={20} strokeWidth={3} />} bgColor="bg-slate-100 border-l-4 border-l-blue-500 shadow-sm" />
         <BigNumberCard title="Total Irmandade" total={`≈ ${stats.irmandade}`} hideDetails icon={<Users size={20} strokeWidth={3} />} color="text-slate-400" />
-        
         <BigNumberCard title="Total Ministério" total={stats.ministerio_total} hideDetails icon={<Briefcase size={20} strokeWidth={3} />} color="text-slate-600" />
+        <BigNumberCard title="Total Geral" total={stats.geral} hideDetails icon={<Globe size={20} strokeWidth={3} />} bgColor="bg-slate-200/80 border-l-4 border-l-emerald-600 shadow-md" />
         
+        {/* v6.0: NOVO CARD DE TOTAL DE HINOS */}
+        {/* Explicação: Posicionado abaixo do total geral, mostra a soma de todos os hinos preenchidos na ata. */}
         <BigNumberCard 
-          title="Total Geral" 
-          total={stats.geral} 
+          title="Total de Hinos" 
+          total={stats.hinos} 
           hideDetails 
-          icon={<Globe size={20} strokeWidth={3} />} 
-          bgColor="bg-slate-200/80 border-l-4 border-l-emerald-600 shadow-md" 
+          icon={<Music size={20} strokeWidth={3} />} 
+          color="text-blue-600" 
+          bgColor="bg-white border-l-4 border-l-blue-400 shadow-sm"
         />
       </div>
 
       <div className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-8 opacity-5"><Activity size={120} className="text-slate-900" /></div>
-        
         <div className="flex items-center justify-between relative z-10">
           <div className="flex items-center gap-3">
             <div className="bg-slate-950 p-2.5 rounded-2xl text-white shadow-lg"><Target size={20} /></div>
@@ -251,25 +207,25 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
             </div>
           </div>
           
-          <div className="flex gap-2">
-            <button onClick={handleShareEstatistico} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl active:scale-90 border border-emerald-100 transition-all shadow-sm">
-              <Share2 size={18} />
-            </button>
-            <button onClick={handleGeneratePDF} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl active:scale-90 border border-blue-100 transition-all shadow-sm">
-              <FileText size={18} />
-            </button>
-          </div>
+          {podeExportar && (
+            <div className="flex gap-2">
+              <button onClick={handleShareEstatistico} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl active:scale-90 border border-emerald-100 transition-all shadow-sm">
+                <Share2 size={18} />
+              </button>
+              <button onClick={handleGeneratePDF} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl active:scale-90 border border-blue-100 transition-all shadow-sm">
+                <FileText size={18} />
+              </button>
+            </div>
+          )}
         </div>
         
         <div className="space-y-7 relative z-10">
           <ProgressBar label="Cordas" value={getPerc(stats.cordas, totalPrincipais)} refVal="50" color="bg-amber-400" racional={stats.cordas} total={totalPrincipais} />
           <ProgressBar label="Madeiras" value={getPerc(stats.madeiras + stats.saxofones, totalPrincipais)} refVal="25" color="bg-emerald-500" racional={stats.madeiras + stats.saxofones} total={totalPrincipais} />
           <ProgressBar label="Metais" value={getPerc(stats.metais, totalPrincipais)} refVal="25" color="bg-rose-500" racional={stats.metais} total={totalPrincipais} />
-          
           <ProgressBar label="Teclas (Acordeon)" value={getPerc(stats.teclas, stats.orquestra)} color="bg-slate-400" racional={stats.teclas} total={stats.orquestra} />
           <ProgressBar label="Organistas" value={getPerc(stats.organistas, stats.orquestra)} color="bg-slate-400" racional={stats.organistas} total={stats.orquestra} />
         </div>
-
         <div className="pt-6 border-t border-slate-100 space-y-4">
            <ProgressBar label="Irmandade (Geral)" value={getPerc(stats.irmandade, stats.geral)} color="bg-slate-900" racional={stats.irmandade} total={stats.geral} />
         </div>
@@ -280,12 +236,10 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         <BigNumberCard title="Diáconos" total={totalDiaconos} casa={stats.diaconosCasa} visita={stats.diaconosVisitas} icon={<Briefcase size={20} strokeWidth={3} />} />
         <BigNumberCard title="Coop. Ofício" total={totalCoopOficio} casa={stats.coopOficioCasa} visita={stats.coopOficioVisitas} icon={<UserCheck size={20} strokeWidth={3} />} />
         <BigNumberCard title="Coop. Jovens" total={totalCoopJovens} casa={stats.coopJovensCasa} visita={stats.coopJovensVisitas} icon={<Users size={20} strokeWidth={3} />} />
-        
         <BigNumberCard title="Enc. Regionais" total={totalEncRegional} casa={stats.encRegionalCasa} visita={stats.encRegionalVisitas} icon={<ShieldCheck size={20} strokeWidth={3} />} color="text-slate-600" />
         <BigNumberCard title="Examinadoras" total={totalExaminadoras} casa={stats.examinadorasCasa} visita={stats.examinadorasVisitas} icon={<Star size={20} strokeWidth={3} />} color="text-slate-600" />
         <BigNumberCard title="Enc. Locais" total={totalEncLocal} casa={stats.encLocalCasa} visita={stats.encLocalVisitas} icon={<ShieldCheck size={20} strokeWidth={3} />} color="text-slate-600" />
       </div>
-
     </div>
   );
 };
