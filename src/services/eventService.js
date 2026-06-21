@@ -10,7 +10,7 @@ let updateBuffers = {}; // Explicação: Guarda as alterações temporariamente 
 
 /**
  * Serviço de Gestão de Eventos (Ensaios) e Contagens
- * v10.7 - FILTRO SOBERANO PARA MASTER E COMISSÃO
+ * v11.3 - STABILIZED SERVICE WITH HIERARCHICAL MANAGEMENT
  */
 export const eventService = { // Explicação: Inicia o conjunto de funções de gerenciamento de ensaios.
 
@@ -40,15 +40,12 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     let constraints = []; // Explicação: Prepara a lista de filtros que serão aplicados no banco.
 
     // v10.7: Lógica de Filtro em Cascata para Master e Comissão
-    // Explicação: Se o gestor escolheu uma igreja ou se o sistema iniciou com a de cadastro, foca nela.
     if (user.activeComumId || user.comumId) {
       constraints.push(where('comumId', '==', user.activeComumId || user.comumId));
     } 
-    // Explicação: Se não tem igreja no Pill, mas tem cidade, foca na cidade.
     else if (user.activeCityId || user.cidadeId) {
       constraints.push(where('cidadeId', '==', user.activeCityId || user.cidadeId));
     } 
-    // Explicação: Se for Master/Comissão e não escolheu nada, foca na Regional para não trazer o mundo todo.
     else if (user.activeRegionalId || user.regionalId) {
       constraints.push(where('regionalId', '==', user.activeRegionalId || user.regionalId));
     }
@@ -76,51 +73,88 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
   },
 
   /**
-   * Cria um novo ensaio com Estrutura de Ata e Metadados Blindados
+   * Cria um novo ensaio com Estrutura de Ata e Metadados Blindados e Enxutos (Lean)
    */
   createEvent: async (comumId, eventData) => { // Explicação: Função para abrir um novo ensaio no sistema.
     if (!comumId) throw new Error("ID da Localidade ausente."); // Explicação: Impede a criação se a igreja não for identificada.
     
-    const auth = getAuth(); 
-    const currentUser = auth.currentUser; 
+    const auth = getAuth(); // Explicação: Invoca o sistema de autenticação de usuários do Firebase.
+    const currentUser = auth.currentUser; // Explicação: Captura o usuário ativo que está comandando a criação do evento.
 
-    if (eventData.scope === 'regional' && eventData.accessLevel === ROLES.GEM) { 
-      throw new Error("Seu nível de acesso não permite criar eventos regionais."); 
+    if (eventData.scope === 'regional' && eventData.accessLevel === ROLES.GEM) { // Explicação: Impede que administradores locais criem eventos de nível regional.
+      throw new Error("Seu nível de acesso não permite criar eventos regionais."); // Explicação: Estoura o erro de veto de permissão.
     }
 
-    const { type, date, responsavel, regionalId, regionalNome, comumNome, cidadeId, cidadeNome, scope, invitedUsers } = eventData; 
-    let initialCounts = {}; 
+    const { type, date, responsavel, regionalId, regionalNome, comumNome, cidadeId, cidadeNome, scope, invitedUsers } = eventData; // Explicação: Desestrutura o pacote de metadados geográficos recebido da interface.
+    let initialCounts = {}; // Explicação: Prepara o objeto vazio onde montaremos a orquestra inicial do ensaio.
 
     try {
-      const localRef = collection(db, 'comuns', comumId, 'instrumentos_config'); 
-      const localSnap = await getDocs(localRef); 
+      const localRef = collection(db, 'comuns', comumId, 'instrumentos_config'); // Explicação: Acessa o endereço da subcoleção de instrumentos salvos daquela igreja.
+      const localSnap = await getDocs(localRef); // Explicação: Lê a lista de instrumentos que aquela igreja específica possui autorizada.
       
-      if (localSnap.empty) { 
-        throw new Error("CONFIG_REQUIRED"); 
+      if (localSnap.empty) { // Explicação: Se a igreja estiver vazia sem nenhum instrumento configurado.
+        throw new Error("CONFIG_REQUIRED"); // Explicação: Dispara o aviso para exigir o reset padrão na tela.
       }
 
-      const sessoesDetectadas = new Set(); 
+      const sessoesDetectadas = new Set(); // Explicação: Cria uma lista de naipes única para não repetir chaves de controle de seções.
 
-      localSnap.docs.forEach(docInst => { 
-        const inst = docInst.data(); 
-        const id = docInst.id; 
-        const sectionName = inst.section?.toUpperCase() || 'GERAL'; 
-        sessoesDetectadas.add(sectionName); 
+      localSnap.docs.forEach(docInst => { // Explicação: Varre cada documento de instrumento retornado do cadastro da igreja.
+        const inst = docInst.data(); // Explicação: Extrai o conteúdo interno do cadastro do instrumento.
+        const id = docInst.id; // Explicação: Captura o ID por extenso imutável saneado (ex: 'flauta', 'Coral').
+        const sectionName = inst.section?.toUpperCase() || 'GERAL'; // Explicação: Descobre a seção em letras maiúsculas ou joga no naipe geral.
+        sessoesDetectadas.add(sectionName); // Explicação: Adiciona o naipe na lista de controle de abas da tela.
 
-        initialCounts[id] = { 
-          total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0, 
-          name: inst.name || id.toUpperCase(), 
-          section: sectionName, 
-          evalType: inst.evalType || 'Sem', 
-          responsibleId: null, 
-          responsibleName: null,
-          updatedAt: Date.now() 
-        };
+        // Explicação: PRESERVAÇÃO E HIGIENE DE ESCOPO: Mapeia Coral/Órgão e Instrumentos comuns adaptando as propriedades ao nível local ou regional.
+        if (id === 'Coral' || id === 'orgao') {
+          if (scope === 'regional') {
+            initialCounts[id] = { 
+              total: 0,
+              name: inst.name || id.toUpperCase(), 
+              section: sectionName, 
+              evalType: inst.evalType || 'Sem', 
+              responsibleId: null, 
+              responsibleName: null,
+              updatedAt: Date.now() 
+            };
+            if (id === 'Coral') {
+              initialCounts[id].irmaos = 0;
+              initialCounts[id].irmas = 0;
+              initialCounts[id].responsibleId_irmaos = null;
+              initialCounts[id].responsibleId_irmas = null;
+              initialCounts[id].responsibleName_irmaos = null;
+              initialCounts[id].responsibleName_irmas = null;
+            }
+          } else {
+            initialCounts[id] = { 
+              total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0, 
+              name: inst.name || id.toUpperCase(), 
+              section: sectionName, 
+              evalType: inst.evalType || 'Sem', 
+              responsibleId: null, 
+              responsibleName: null,
+              updatedAt: Date.now() 
+            };
+          }
+        } else {
+          if (scope === 'regional') {
+            initialCounts[id] = { 
+              total: 0, 
+              updatedAt: Date.now() 
+            };
+          } else {
+            initialCounts[id] = { 
+              total: 0, 
+              comum: 0, 
+              enc: 0, 
+              updatedAt: Date.now() 
+            };
+          }
+        }
       });
 
-      sessoesDetectadas.forEach(sec => { 
-        const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`; 
-        initialCounts[metaKey] = { 
+      sessoesDetectadas.forEach(sec => { // Explicação: Passa por cada seção única mapeada para criar os gatilhos de comando de tela (Aba Regional).
+        const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`; // Explicação: Monta a chave técnica de metadados da seção (ex: 'meta_madeiras').
+        initialCounts[metaKey] = { // Explicação: Inicializa a chave de controle sem totalizador, apenas com os carimbos de comando de tela.
           responsibleId: null, 
           responsibleName: null, 
           isActive: false, 
@@ -150,15 +184,15 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
         counts: initialCounts, 
         createdAt: Date.now(), 
         updatedAt: Date.now(), 
-        dbVersion: "10.4-stabilized" 
+        dbVersion: "10.5-lean_optimized" 
       };
 
-      return await addDoc(collection(db, 'events_global'), payload); 
+      return await addDoc(collection(db, 'events_global'), payload); // Explicação: Registra o novo ensaio enxuto diretamente na coleção global do banco.
 
     } catch (err) {
-      console.error("Erro na criação do evento:", err);
-      if (err.message === "CONFIG_REQUIRED") throw err;
-      throw new Error("Falha ao inicializar evento.");
+      console.error("Erro na criação do evento:", err); // Explicação: Imprime falhas técnicas no painel do administrador.
+      if (err.message === "CONFIG_REQUIRED") throw err; // Explicação: Repassa o erro de configuração exigida para a interface tratar.
+      throw new Error("Falha ao inicializar evento."); // Explicação: Dispara erro genérico amigável de rede.
     }
   },
 
@@ -193,7 +227,6 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     } catch (e) { console.error("Erro remover convidado:", e); }
   },
 
-  // v10.5: FUNÇÃO DE EXCLUSÃO CORRIGIDA E BLINDADA
   deleteEvent: async (comumId, eventId) => { // Explicação: Tenta apagar o ensaio do banco de dados definitivamente.
     if (!eventId) throw new Error("ID do evento não fornecido."); 
     try {
@@ -207,60 +240,70 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
   },
 
   /**
-   * ATUALIZAÇÃO DE CONTAGEM (COM BLINDAGEM ANTI-PISCA)
+   * ATUALIZAÇÃO DE CONTAGEM (COM BLINDAGEM ANTI-PISCA E TRADUTOR DE SIGLAS)
    */
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => { 
-    if (!eventId || !instId) return;
+    if (!eventId || !instId) return; // Explicação: Se faltar o ID do ensaio ou do instrumento, aborta para não quebrar.
 
-    const timerKey = `${eventId}_${instId}`;
-    const fieldToUpdate = field === 'total_simples' ? 'total' : field; 
-    const val = Math.max(0, parseInt(value) || 0); 
+    // Explicação: Tabela de tradução interna para converter as siglas recebidas do front-end antigo para os nomes extensos do banco.
+    const mapaTradutorInjetado = {
+      'acd': 'acordeon', 'clt': 'clarinete', 'euf': 'eufonio', 'fgt': 'fagote', 'gt': 'fagote',
+      'flt': 'flauta', 'org': 'orgao', 'tbn': 'trombone', 'tpt': 'trompete', 'trp': 'trompa',
+      'tub': 'tuba', 'vcl': 'violoncelo', 'vla': 'viola', 'vln': 'violino'
+    };
 
-    if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {};
-    updateBuffers[timerKey][fieldToUpdate] = val; 
+    // Explicação: Intercepta o ID antigo recebido e substitui pelo nome extenso correto configurado na nossa migração.
+    let targetId = mapaTradutorInjetado[instId] || instId;
 
-    if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]); 
+    const timerKey = `${eventId}_${targetId}`; // Explicação: Cria a chave única unindo o ensaio e o instrumento correto traduzido.
+    const fieldToUpdate = field === 'total_simples' ? 'total' : field; // Explicação: Ajusta o nome do campo se vier no formato simplificado.
+    const val = Math.max(0, parseInt(value) || 0); // Explicação: Garante que o número digitado seja inteiro e nunca menor que zero.
 
-    debounceTimers[timerKey] = setTimeout(async () => { 
-      const eventRef = doc(db, 'events_global', eventId);
-      const bufferCopy = { ...updateBuffers[timerKey] };
+    if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {}; // Explicação: Cria a caixinha temporária de memória para esse instrumento se não existir.
+    updateBuffers[timerKey][fieldToUpdate] = val; // Explicação: Guarda o valor digitado dentro do buffer temporário.
+
+    if (debounceTimers[timerKey]) clearTimeout(debounceTimers[timerKey]); // Explicação: Cancela o cronômetro anterior se o usuário continuar clicando rápido.
+
+    debounceTimers[timerKey] = setTimeout(async () => { // Explicação: Abre uma janela de 400 milissegundos de espera antes de ir até a internet salvar.
+      const eventRef = doc(db, 'events_global', eventId); // Explicação: Localiza o documento específico do ensaio dentro do Firebase.
+      const bufferCopy = { ...updateBuffers[timerKey] }; // Explicação: Tira uma foto idêntica dos números acumulados na caixinha.
       
-      delete updateBuffers[timerKey]; 
-      delete debounceTimers[timerKey];
+      delete updateBuffers[timerKey]; // Explicação: Limpa o buffer imediatamente para ficar pronto para os próximos cliques.
+      delete debounceTimers[timerKey]; // Explicação: Apaga o cronômetro da memória após a execução.
 
       try {
-        let targetId = instId; 
-        const sectionKey = (section || '').toUpperCase();
+        const sectionKey = (section || '').toUpperCase(); // Explicação: Padroniza o nome da seção da orquestra em letras maiúsculas.
         
-        if (instId.toLowerCase() === 'irmas' || instId.toLowerCase() === 'irmaos' || sectionKey === 'IRMANDADE') {
-          targetId = 'Coral'; 
-        } else if (instId.toLowerCase() === 'orgao' || sectionKey === 'ORGANISTAS') {
-          targetId = 'orgao';
+        if (targetId.toLowerCase() === 'irmas' || targetId.toLowerCase() === 'irmaos' || sectionKey === 'IRMANDADE') {
+          targetId = 'Coral'; // Explicação: Direciona automaticamente a contagem de irmãos/irmãs para a caixinha unificada do Coral.
+        } else if (targetId.toLowerCase() === 'orgao' || sectionKey === 'ORGANISTAS') {
+          targetId = 'orgao'; // Explicação: Garante o alinhamento da grafia das organistas.
         }
 
-        const finalUpdates = {};
-        const baseKey = `counts.${targetId}`;
+        const finalUpdates = {}; // Explicação: Prepara o pacote de dados limpo que será enviado para o servidor.
+        const baseKey = `counts.${targetId}`; // Explicação: Constrói o caminho exato da propriedade dentro do documento mapeando o nome extenso.
 
         Object.keys(bufferCopy).forEach(f => {
-          finalUpdates[`${baseKey}.${f}`] = bufferCopy[f]; 
+          finalUpdates[`${baseKey}.${f}`] = bufferCopy[f]; // Explicação: Insere cada número updated no pacote usando o endereço do nome extenso enxuto.
         });
 
-        finalUpdates[`${baseKey}.updatedAt`] = Date.now();
-        finalUpdates[`updatedAt`] = Date.now(); 
+        finalUpdates[`${baseKey}.updatedAt`] = Date.now(); // Explicação: Carimba o horário exato que esse instrumento específico mudou.
+        finalUpdates[`updatedAt`] = Date.now(); // Explicação: Atualiza o carimbo geral de modificação do ensaio.
         
-        await updateDoc(eventRef, finalUpdates); 
+        await updateDoc(eventRef, finalUpdates); // Explicação: Faz uma única viagem ao servidor e grava os novos números economizando cota.
         
       } catch (e) {
-        console.error("Erro na Gravação Stabilizada:", e.message);
+        console.error("Erro na Gravação Stabilizada:", e.message); // Explicação: Imprime no console se houver qualquer erro de rede.
       }
-    }, 400); 
+    }, 400); // Explicação: Tempo exato de 400ms de atraso controlado (anti-pisca).
   },
 
+  // v11.3: Exclusão de instrumento extra protegida por regras lógicas internas.
   removeExtraInstrument: async (comumId, eventId, instId) => { // Explicação: Remove instrumento extra.
     if (!eventId || !instId) return;
     try {
       return await updateDoc(doc(db, 'events_global', eventId), { [`counts.${instId}`]: deleteField(), updatedAt: Date.now() }); 
-    } catch (e) {}
+    } catch (e) { console.error("Erro ao remover instrumento extra:", e); }
   },
 
   /**
