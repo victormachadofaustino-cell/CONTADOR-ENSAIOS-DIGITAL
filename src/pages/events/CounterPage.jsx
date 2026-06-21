@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; // Explicação: Importa as ferramentas de memória e sincronização do React.
-// PRESERVAÇÃO: Importações originais mantidas
-import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, getDoc } from '../../config/firebase'; // Explicação: Conecta com o banco de dados Firebase.
+// PRESERVAÇÃO: Importações originais mantidas com a adição cirúrgica do 'where' que faltava
+import { db, doc, onSnapshot, collection, updateDoc, auth, getDocs, query, orderBy, where, getDoc } from '../../config/firebase'; // Explicação: CONEXÃO COM O FIREBASE: Mantém a importação estável de todos os motores de dados.
 import { eventService } from '../../services/eventService'; // Explicação: Importa o motor de salvamento de contagens.
 import AtaPage from './AtaPage'; // Explicação: Importa a página de preenchimento da Ata.
 import DashEventPage from '../dashboard/DashEventPage'; // Explicação: Importa o painel de gráficos local.
 import DashEventRegionalPage from '../dashboard/DashEventRegionalPage'; // Explicação: Importa o painel de gráficos regional.
 import toast from 'react-hot-toast'; // Explicação: Importa as notificações de aviso da tela.
 import { 
-  ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3, Lock, Unlock, Trash2 // Explicação: Desenhos dos ícones dos botões.
+  ChevronLeft, LogOut, ClipboardCheck, LayoutGrid, BarChart3, Lock, Unlock, Trash2, Users, X // Explicação: Desenhos dos ícones dos botões importados do lucide-react.
 } from 'lucide-react'; // Explicação: Biblioteca de ícones modernos.
 import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Sistema de animations fluidas.
 import { useAuth } from '../../context/AuthContext'; // Explicação: Puxa os dados e permissões do usuário logado.
@@ -48,6 +48,11 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
   const lastLocalUpdateRef = useRef(0); // Explicação: Guarda o horário exato da última alteração feita neste celular.
   const [focusedField, setFocusedField] = useState(null); // Explicação: Impede o banco de apagar o campo onde o usuário está digitando.
 
+  // NOVOS ESTADOS PARA SUPORTE DA JANELA FLUTUANTE DE CHECKLIST NOMINAL POR INSTRUMENTO
+  const [instrumentoFocadoChecklist, setInstrumentoFocadoChecklist] = useState(null); // Explicação: Salva qual instrumento o usuário clicou para fazer a chamada nominal (ex: viola).
+  const [listaMusicosChamada, setListaMusicosChamada] = useState([]); // Explicação: Armazena as fichas de chamada dos músicos vinculadas a esse instrumento específico.
+  const [valorNumeroDireto, setValorNumeroDireto] = useState(''); // Explicação: Estado temporário para capturar a digitação manual de quantidade avulsa no topo do modal.
+
   const isClosed = ataData?.status === 'closed'; // Explicação: Calcula em tempo real se a ata do ensaio já foi encerrada definitivamente.
   const myUID = auth.currentUser?.uid; // Explicação: Pega o código identificador único de usuário gerado no login.
 
@@ -55,7 +60,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
   useEffect(() => { // Explicação: Monitor que gerencia a entrada de novas contagens vindas da nuvem.
     const isFreshLocalUpdate = Date.now() - lastLocalUpdateRef.current < 3000; // Explicação: Checa se houve algum clique local nos últimos 3 segundos para ignorar o servidor temporariamente.
 
-    if (counts && !isFreshLocalUpdate) { // Explicação: Se o banco mudou e não foi um clique recente deste celular, atualiza a tela.
+    if (counts && !isFreshLocalUpdate) { // Explicação: Se o banco mudou e não foi um clique recente deste celular, updates a tela.
       if (focusedField) { // Explicação: Se o usuário estiver com o teclado aberto digitando em um campo de input.
         const [instId, field] = focusedField.split('_'); // Explicação: Recorta o texto focado para saber o instrumento e o campo atual.
         setLocalCounts(prev => { // Explicação: Updates a tela de forma híbrida protegendo o campo que está com foco.
@@ -95,7 +100,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
     let isMounted = true; // Explicação: Flag protetora contra vazamento de memória.
     const eventRef = doc(db, 'events_global', currentEventId); // Explicação: Localiza o documento físico deste ensaio no Firebase.
     const unsubEvent = onSnapshot(eventRef, (s) => { // Explicação: Abre um canal reativo de escuta focado no ensaio.
-      if (s.exists() && isMounted) { // Explicação: Se o documento existir e a página continuar ativa.
+      if (s.exists() && isMounted) { // Explicação: Se o documento existir e a página continuar activa.
         const data = s.data(); // Explicação: Extrai o conteúdo bruto gravado no banco de dados.
         const ataConsolidada = { // Explicação: Consolida os metadados da ata com segurança.
           ...data.ata, // Explicação: Clona as informações da ata (palavra, ocorrências).
@@ -119,6 +124,30 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
     return () => { isMounted = false; unsubEvent(); }; // Explicação: Fecha a conexão ao sair da página para poupar dados.
   }, [currentEventId]); // Explicação: Reinicia a escuta se o ID do evento ativo for alterado.
 
+  // OUVINTE REATIVO PARA O MODEL DE CHECKLIST NOMINAL (CUSTO ZERO: DENTRO DO PRÓPRIO ENSAIO)
+  useEffect(() => { // Explicação: Monitor inteligente que carrega a subcoleção de chamada nominal do instrumento focado sem tocar na raiz da comum.
+    if (!currentEventId || !instrumentoFocadoChecklist) {
+      setListaMusicosChamada([]);
+      setValorNumeroDireto('');
+      return;
+    }
+    // Explicação: Inicializa o input de número do topo do modal refletindo o valor comum atual do banco.
+    const targetId = instrumentoFocadoChecklist.id;
+    const valorAtualBanco = localCounts?.[targetId]?.comum || 0;
+    setValorNumeroDireto(valorAtualBanco > 0 ? String(valorAtualBanco) : '');
+
+    const chamadaRef = collection(db, 'events_global', currentEventId, 'chamada_musicos');
+    const q = query(chamadaRef, where('instrumentoId', '==', targetId));
+    
+    const unsubChamada = onSnapshot(q, (snap) => { // Explicação: Ouve em tempo real as presenças daquele naipe específico.
+      const res = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      res.sort((a, b) => a.nome.localeCompare(b.nome)); // Explicação: Ordena os irmãos por ordem alfabética na janelinha.
+      setListaMusicosChamada(res);
+    });
+
+    return () => unsubChamada(); // Explicação: Fecha a escuta imediatamente ao fechar a janela para economizar dados.
+  }, [currentEventId, instrumentoFocadoChecklist]);
+
   const allInstruments = useMemo(() => { // Explicação: Junta a matriz nacional com as edições da igreja para montar a listagem oficial organizada.
     const ordemOficial = ['Coral', 'irmandade', 'irmas', 'irmaos', 'orgao', 'violino', 'viola', 'violoncelo', 'flauta','clarinete', 'claronealto', 'claronebaixo', 'oboe', 'corneingles', 'fagote', 'saxsoprano', 'saxalto', 'saxtenor', 'saxbaritono', 'trompete', 'flugelhorn', 'trompa', 'trombone', 'eufonio', 'tuba', 'acordeon'];
     let base = instrumentsNacionais.map(instBase => { // Explicação: Percorre a matriz de instrumentos padrão nacional.
@@ -133,17 +162,17 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
       isExtra: true // Explicação: Carimba uma flag marcando que este item foi criado na hora.
     }));
     return [...base, ...extras].sort((a, b) => (ordemOficial.indexOf(a.id) > -1 ? ordemOficial.indexOf(a.id) : 99) - (ordemOficial.indexOf(b.id) > -1 ? ordemOficial.indexOf(b.id) : 99)); // Explicação: Une e ordena tudo baseando-se estritamente na ordem padrão oficial configurada.
-  }, [instrumentsNacionais, instrumentsConfig, localCounts]); // Explicação: Recalcula se as listas de configuração ou contagens sofrerem alteração.
+  }, [instrumentsNacionais, instrumentsConfig, localCounts]); // Explicação: Recalcula se as locais de configuração ou contagens sofrerem alteração.
 
   const sections = useMemo(() => { // Explicação: Identifica quais seções ou naipes existem na lista total para criar os títulos na tela.
     const ordemSessoes = ['IRMANDADE', 'CORAL', 'ORGANISTAS', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS'];
     return [...new Set(allInstruments.map(i => (i.section || "GERAL").toUpperCase()))].sort((a, b) => (ordemSessoes.indexOf(a) > -1 ? ordemSessoes.indexOf(a) : 99) - (ordemSessoes.indexOf(b) > -1 ? ordemSessoes.indexOf(b) : 99)); // Explicação: Agrupa os nomes de seções removendo duplicados e ordenando pelo padrão oficial.
-  }, [allInstruments]); // Explicação: Recalcula se a lista unificada de instrumentos mudar.
+  }, [allInstruments]); // Explicação: Recalcula se la lista unificada de instrumentos mudar.
 
-  const handleFocus = (instId, field) => setFocusedField(`${instId}_${field}`); // Explicação: Função ativada quando o usuário clica no input, bloqueando interferências do servidor neste campo.
-  const handleBlur = () => setFocusedField(null); // Explicação: Função ativada quando o usuário sai do input, liberando a sincronização normal.
+  const handleFocus = (instId, field) => setFocusedField(`${instId}_${field}`); // Explicação: Função activated quando o usuário clica no input, bloqueando interferências do servidor neste campo.
+  const handleBlur = () => setFocusedField(null); // Explicação: Função activated quando o usuário sai do input, liberando a sincronização normal.
 
-  const isEditingEnabled = (sec, subInstId = null) => { // Explicação: Avalia se os botões de somar e inputs devem ficar liberados ou bloqueados para o usuário logado.
+  const isEditingEnabled = (sec, subInstId = null) => { // Explicação: Evaluates se os botões de somar e inputs devem ficar liberados ou bloqueados para o usuário logado.
     if (isClosed || isCountsLocked) return false; // Explicação: Se a ata ou contagem estiverem trancadas, bloqueia a edição para todo mundo instantaneamente.
     if (isComissao) return true; // Explicação: Usuários de comissão regional possuem acesso liberado para editar qualquer seção a qualquer hora.
     const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, '_')}`; // Explicação: Calcula a chave de controle de metadados daquela seção (ex: 'meta_cordas').
@@ -155,15 +184,89 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
     return masterData?.responsibleId === myUID; // Explicação: Retorna se o ID do responsável confere com quem está logado no aparelho.
   };
 
-  const handleUpdateInstrument = (id, field, value, section) => { // Explicação: Executada a cada clique nos botões de + ou - ou ao digitar no input.
+  const handleUpdateInstrument = (id, field, value, section, payloadExtra = {}) => { // Explicação: Executada a cada clique nos botões de + ou - ou ao digitar no input.
     if (isClosed || isCountsLocked) return; // Explicação: Aborta imediatamente se o ensaio ou contagem estiverem lacrados.
     lastLocalUpdateRef.current = Date.now(); // Explicação: Carimba o tempo do clique local para ativar a proteção anti-sobrescrita de 3 segundos.
-    setLocalCounts(prev => { // Explicação: Atualiza instantaneamente o número na tela para o usuário não sentir lentidão (Otimista).
+    setLocalCounts(prev => { // Explicação: Updates instantaneamente o número na tela para o usuário não sentir lentidão (Otimista).
       const targetId = (section?.toUpperCase() === 'IRMANDADE') ? 'Coral' : (section?.toUpperCase() === 'ORGANISTAS') ? 'orgao' : id; // Explicação: Direciona chaves especiais ou mantém o ID por extenso.
-      return { ...prev, [targetId]: { ...prev[targetId], [field]: Math.max(0, parseInt(value) || 0) } }; // Explicação: Altera o valor do campo forçando números inteiros positivos.
+      return { ...prev, [targetId]: { ...prev[targetId], [field]: Math.max(0, parseInt(value) || 0), ...payloadExtra } }; // Explicação: Altera o valor do campo forçando números inteiros positivos.
     });
     eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: id, field, value, userData, section }) // Explicação: Dispara a atualização enxuta para o service enviar via pacote estabilizado de rede.
       .catch(() => toast.error("Erro na sincronização.")); // Explicação: Mostra uma notificação de falha se a internet cair.
+  };
+
+  // INTELIGÊNCIA DIRETA: INTERCEPTA E GRAVA APENAS O NÚMERO DIRETO VIA TECLADO DO TOPO DO MODAL
+  const handleUpdateNumeroDiretoModal = async (novoValor) => { // Explicação: Salva a quantidade avulsa digitada na pílula do topo do modal, ativando o modo numérico e limpando presenças.
+    if (!currentEventId || isCountsLocked || isClosed || !instrumentoFocadoChecklist) return;
+    setValorNumeroDireto(novoValor);
+
+    const numeroLimpo = Math.max(0, parseInt(novoValor) || 0);
+    const targetId = instrumentoFocadoChecklist.id;
+    const eventRef = doc(db, 'events_global', currentEventId);
+
+    try {
+      // Explicação: Grava o número digitado na gaveta Comum e carimba 'modoContagem: numerico' para desativar a automação reativa.
+      await updateDoc(eventRef, {
+        [`counts.${targetId}.comum`]: numeroLimpo,
+        [`counts.${targetId}.modoContagem`]: 'numerico',
+        updatedAt: Date.now()
+      });
+
+      // Explicação: Sincroniza o estado espelho local otimista da tela principal na mesma hora.
+      setLocalCounts(prev => ({
+        ...prev,
+        [targetId]: { ...prev[targetId], comum: numeroLimpo, modoContagem: 'numerico' }
+      }));
+    } catch (e) {
+      toast.error("Erro ao salvar quantidade avulsa.");
+    }
+  };
+
+  // FUNÇÃO DE SELEÇÃO E GRAVAÇÃO DE PRESENÇA NOMINAL POR MÚSICO INDIVIDUAL (PADRÃO ATA TOQUE AZUL REAL)
+  const handleTogglePresencaMusico = async (musico) => { // Explicação: Executada quando o secretário toca no card do irmão.
+    if (!currentEventId || isCountsLocked || isClosed) return;
+    
+    // Explicação: Localiza o documento específico do cartão de chamada deste irmão dentro da subcoleção do ensaio.
+    const docMusicoRef = doc(db, 'events_global', currentEventId, 'chamada_musicos', musico.id);
+    const novoStatusPresenca = !musico.presente; // Explicação: Inverte de presente para ausente ou vice-versa.
+
+    try {
+      await updateDoc(docMusicoRef, { presente: novoStatusPresenca, updatedAt: Date.now() }); // Explicação: Grava a presença do músico isolado no banco.
+      
+      // Explicação: Calcula o novo somatório de presentes daquele instrumento na hora para injetar no contador automático.
+      const listaAtualizadaEspelho = listaMusicosChamada.map(m => m.id === musico.id ? { ...m, presente: novoStatusPresenca } : m);
+      const totalPresentesEfetivo = listaAtualizadaEspelho.filter(m => m.presente).length;
+
+      // Explicação: Sincroniza a pílula do topo do modal para acompanhar os cliques em tempo real.
+      setValorNumeroDireto(totalPresentesEfetivo > 0 ? String(totalPresentesEfetivo) : '');
+
+      // Explicação: Grava o total atualizado na pílula e carimba 'modoContagem: nominal' para ligar a iluminação azul do botão.
+      const eventRef = doc(db, 'events_global', currentEventId);
+      await updateDoc(eventRef, {
+        [`counts.${musico.instrumentoId}.comum`]: totalPresentesEfetivo,
+        [`counts.${musico.instrumentoId}.modoContagem`]: 'nominal',
+        updatedAt: Date.now()
+      });
+
+      setLocalCounts(prev => ({
+        ...prev,
+        [musico.instrumentoId]: { ...prev[musico.instrumentoId], comum: totalPresentesEfetivo, modoContagem: 'nominal' }
+      }));
+    } catch (err) {
+      toast.error("Erro ao registrar presença.");
+    }
+  };
+
+  // FUNÇÃO DE GRAVAÇÃO DE AVALIAÇÃO DE TESTE DO ALUNO NO SELETOR NOMINAL
+  const handleUpdateAvaliacaoMusico = async (musico, novaAvaliacao) => { // Explicação: Salva a nota ou status de avaliação de teste do aprendiz no ensaio.
+    if (!currentEventId || isCountsLocked || isClosed) return;
+    const docMusicoRef = doc(db, 'events_global', currentEventId, 'chamada_musicos', musico.id);
+    try {
+      await updateDoc(docMusicoRef, { avaliacao: novaAvaliacao, updatedAt: Date.now() }); // Explicação: Grava a nota de teste diretamente na ata histórica deste ensaio.
+      toast.success("Avaliação salva!");
+    } catch (err) {
+      toast.error("Erro ao gravar avaliação.");
+    }
   };
 
   const handleAddExtraInstrument = async (nome) => { // Explicação: Salva um instrumento customizado extra inserido na hora pelo painel.
@@ -172,7 +275,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
     try {
       await eventService.updateInstrumentCount(eventComumId, currentEventId, { instId: idSaneado, field: 'total', value: 0, userData, section: extraInstrumentSection, customName: nome.toUpperCase().trim() }); // Explicação: Envia a inicialização do instrumento extra para o banco de dados.
       setExtraInstrumentSection(null); // Explicação: Fecha o modal de inserção de instrumento extra.
-      toast.success("Instrumento adicionado!"); // Explicação: Alerta o usuário do sucesso da criação.
+      toast.success("Instrumento adicionado!"); // Explicação: Alerta o usuário do sucesso della criação.
     } catch (e) {} // Explicação: Abafa erros silenciosos.
   };
 
@@ -188,15 +291,15 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
   const setOwnership = async (id, currentOwnerStatus, subRole = null) => { // Explicação: Grava no banco que este usuário assumiu a digitação daquele naipe.
     if (!eventComumId || isClosed || !currentEventId || isCountsLocked || !myUID) return; // Explicação: Trava operações inválidas ou bloqueadas por cadeado.
     const respIdKey = subRole ? `responsibleId_${subRole}` : `responsibleId`; // Explicação: Define a propriedade de ID correta de acordo com a subdivisão de gênero.
-    const nameKey = subRole ? `responsibleName_${subRole}` : `responsibleName`; // Explicação: Define a propriedade de nome de exibição.
+    const nameKey = subRole ? `responsibleName_${subRole}` : `responsibleName`; // Explicação: Define a propriedade de nome de expressão.
     
     lastLocalUpdateRef.current = Date.now(); // Explicação: Ativa a proteção anti-pisca local na memória do celular.
-    setLocalCounts(prev => ({ // Explicação: Injeta na tela o nome do usuário como zelador atual da seção de forma otimista.
+    setLocalCounts(prev => ({ // Explicação: Injeta na tela o nome do usuário como zelador atual della seção de forma otimista.
       ...prev,
       [id]: { ...prev[id], [respIdKey]: myUID, [nameKey]: userData?.name || "Você" }
     }));
     setShowOwnershipModal(null); // Explicação: Fecha a janela de confirmação de posse de seção.
-    if (id.startsWith('meta_')) setActiveGroup(id.replace('meta_', '').toUpperCase()); // Explicação: Se for uma chave de metadados, abre o naipe correspondente para edição imediata.
+    if (id.startsWith('meta_')) setActiveGroup(id.replace('meta_', '').toUpperCase()); // Executa a abertura imediata da aba.
 
     try {
       await updateDoc(doc(db, 'events_global', currentEventId), { // Explicação: Envia um comando cirúrgico atualizando as chaves de assinatura na nuvem.
@@ -214,7 +317,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
 
   return ( // Explicação: Inicia a montagem dos elementos de interface visual na tela do smartphone.
     <div className="flex flex-col h-screen bg-[#F1F5F9] overflow-hidden text-left relative font-sans"> {/* Explicação: Janela de visualização em tela cheia com fundo cinza claro e rolagem contida. */}
-      {/* AJUSTE v11.0: HEADER COM CENTRALIZAÇÃO ABSOLUTA */}
+      {/* HEADER COM CENTRALIZAÇÃO ABSOLUTA */}
       <header className="bg-white pt-6 pb-6 px-6 rounded-b-[2.5rem] shadow-md border-b border-slate-200 z-50 relative"> {/* Explicação: Cabeçalho branco elegante com bordas inferiores super arredondadas e sombra projetada. */}
         <div className="flex justify-between items-center max-w-md mx-auto w-full relative h-12"> {/* Explicação: Container centralizador ergonômico limitado a larguras de smartphone comuns. */}
           
@@ -248,7 +351,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 pb-52 no-scrollbar"> {/* Explicação: Área central de rolagem de alta performance com barra oculta nativamente (no-scrollbar). */}
+      <main className="flex-1 overflow-y-auto p-4 pb-52 no-scrollbar"> {/* Explicação: Area central de rolagem de alta performance com barra oculta nativamente (no-scrollbar). */}
         <div className="max-w-md mx-auto"> {/* Explicação: Limita o conteúdo para ficar legível e centralizado no eixo em telas maiores. */}
           {activeTab === 'contador' && ( // Explicação: Se a aba ativa selecionada no rodapé for a de digitação de números (Contar).
             <>
@@ -264,7 +367,23 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
                 <CounterRegional instruments={allInstruments} localCounts={localCounts} sections={sections} onUpdate={handleUpdateInstrument} onToggleSection={(id, status, role) => setOwnership(id, status, role)} userData={userData} isClosed={isClosed || isCountsLocked} currentEventId={currentEventId} onFocus={handleFocus} onBlur={handleBlur} isEditingEnabled={isEditingEnabled} /> // Explicação: Invoca a interface regional otimizada para alto tráfego.
               ) : ( // Explicação: Caso contrário, se for ensaio local comum, renderiza os naipes em formato de sanfona vertical ergonômica.
                 sections.map((sec) => ( // Explicação: Varre cada naipe de instrumentos gerando um bloco sanfona na tela.
-                  <CounterSection key={sec} sec={sec} allInstruments={allInstruments} localCounts={localCounts} myUID={myUID} activeGroup={activeGroup} handleToggleGroup={handleToggleGroup} handleUpdateInstrument={handleUpdateInstrument} isEditingEnabled={isEditingEnabled} onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} onFocus={handleFocus} onBlur={handleBlur} ataData={ataData} userData={userData} /> // Explicação: Invoca a seção sanfona individual repassando as permissões enxutas.
+                  <CounterSection 
+                    key={sec} 
+                    sec={sec} 
+                    allInstruments={allInstruments} 
+                    localCounts={localCounts} 
+                    myUID={myUID} 
+                    activeGroup={activeGroup} 
+                    handleToggleGroup={handleToggleGroup} 
+                    handleUpdateInstrument={handleUpdateInstrument} 
+                    isEditingEnabled={isEditingEnabled} 
+                    onAddExtra={(s) => isGemLocal && setExtraInstrumentSection(s)} 
+                    onFocus={handleFocus} 
+                    onBlur={handleBlur} 
+                    ataData={ataData} 
+                    userData={userData}
+                    onOpenChecklistNominal={(inst) => setInstrumentoFocadoChecklist(inst)} // Explicação: Conecta o atalho do botão Comum largo de dentro da fileira do instrumento para invocar o modal de chamadas.
+                  />
                 ))
               )}
             </>
@@ -280,13 +399,117 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
         </div>
       </main>
 
-      <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] z-[50]"> {/* Explicação: Barra inferior flutuante suspensa ancorada milimetricamente no meio da tela do smartphone. */}
+      <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] z-[50]"> {/* Explicação: Barra inferior flutuante suspensa ancorada milimetricamente no meio della tela do smartphone. */}
         <nav className="flex justify-around bg-slate-950/95 backdrop-blur-xl border border-white/10 p-2 rounded-[2.5rem] shadow-2xl"> {/* Explicação: Cápsula preta premium translúcida com efeito de desfoque de fundo de vidro (backdrop-blur-xl). */}
           <TabButton active={activeTab === 'contador'} icon={<LayoutGrid size={18}/>} label="Contar" onClick={() => setActiveTab('contador')} /> {/* Explicação: Botão da primeira aba focado nas contagens numéricas. */}
           <TabButton active={activeTab === 'ata'} icon={<ClipboardCheck size={18}/>} label="Ata" onClick={() => setActiveTab('ata')} /> {/* Explicação: Botão da segunda aba focado nos dados e hinos do ensaio. */}
-          <TabButton active={activeTab === 'dash'} icon={<BarChart3 size={18}/>} label="Dash" onClick={() => setActiveTab('dash')} /> {/* Explicação: Botão da terceira aba focado nos relatórios estatísticos em gráficos. */}
+          <TabButton active={activeTab === 'dash'} icon={<BarChart3 size={18}/>} label="Dash" onClick={() => setActiveTab('dash')} /> {/* Explicação: Botão da terceira aba focado nos relatórios estatísticos in gráficos. */}
         </nav>
       </footer>
+
+      {/* 🏛️ INTERFACE MODAL UNIFICADA: ADAPTADO PARA FUNDO BRANCO (AUSENTE) E FUNDO AZUL INDIGO (PRESENTE) COMPACTO ESTILO ATA */}
+      <AnimatePresence>
+        {instrumentoFocadoChecklist && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[100] animate-in navigate-fade duration-200">
+            <motion.div initial={{ scale: 0.94, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 10 }} className="bg-white rounded-[2.2rem] w-full max-w-xs p-6 shadow-2xl text-left border border-slate-100 flex flex-col max-h-[85vh]">
+              
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100 shrink-0">
+                <div className="text-left min-w-0 flex-1">
+                  <span className="text-[7px] font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md uppercase italic tracking-wider">Entrada Híbrida</span>
+                  <h3 className="text-[12px] font-black text-slate-900 uppercase tracking-tight italic mt-1 truncate">
+                    Contagem: {instrumentoFocadoChecklist.name}
+                  </h3>
+                </div>
+                <button onClick={() => setInstrumentoFocadoChecklist(null)} className="w-8 h-8 bg-slate-50 rounded-full text-slate-400 flex items-center justify-center outline-none shrink-0 ml-2">
+                  <X size={14} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* PORTA 1: DIGITAÇÃO DIRETA AVULSA NO TOPO SE O IRMÃO PREFERIR NÃO USAR NOMES */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mt-3 shrink-0 flex flex-col gap-1.5 text-left">
+                <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Digitar quantidade diretamente se preferir (Avulso)</label>
+                <input 
+                  disabled={!isEditingEnabled(instrumentoFocadoChecklist.section)}
+                  type="number" 
+                  inputMode="numeric" 
+                  className="w-full bg-white p-3 rounded-xl border border-slate-200 text-xs font-black text-slate-950 uppercase italic outline-none focus:border-indigo-600 min-h-[40px] text-center"
+                  placeholder="EX: 0, 5, 12... (SÓ NÚMERO)"
+                  value={valorNumeroDireto}
+                  onChange={(e) => handleUpdateNumeroDiretoModal(e.target.value)}
+                />
+              </div>
+
+              {/* PORTA 2: LISTA DE TOQUE - CORREÇÃO: BRANCO PARA AUSENTE E AZUL PARA PRESENTE IDÊNTICO À ATA */}
+              <div className="flex-1 overflow-y-auto py-3 mt-1 space-y-2 no-scrollbar">
+                <p className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1 text-left">Ou selecione os músicos abaixo por extenso (Toque Azul)</p>
+                {listaMusicosChamada.length === 0 ? (
+                  <div className="p-6 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                    <p className="text-[8px] font-black text-slate-300 uppercase tracking-wider italic">Nenhum alistamento cadastrado para esta localidade comuns.</p>
+                  </div>
+                ) : (
+                  listaMusicosChamada.map(m => {
+                    const deEdicaoLiberada = isEditingEnabled(instrumentoFocadoChecklist.section);
+                    return (
+                      <div 
+                        key={m.id} 
+                        onClick={() => deEdicaoLiberada && handleTogglePresencaMusico(m)}
+                        className={`p-3.5 rounded-xl border transition-all shadow-3xs cursor-pointer flex flex-col gap-1.5 text-left active:scale-[0.99] select-none ${
+                          m.presente 
+                            ? 'bg-indigo-600 border-indigo-700 text-white shadow-xs shadow-indigo-100 font-black' // Explicação: CORREÇÃO VISUAL: Se o irmão estiver PRESENTE, acende com fundo azul índigo premium e texto branco.
+                            : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50/80' // Explicação: CORREÇÃO VISUAL: Se o irmão estiver AUSENTE, mantém fundo branco e texto grafite clássico limpo.
+                        }`} 
+                      >
+                        <div className="flex justify-between items-center gap-2 w-full">
+                          <p className="text-[11px] font-black uppercase italic whitespace-normal break-words leading-tight flex-1 min-w-0 pr-1">
+                            {m.nome}
+                          </p>
+                          <span className={`text-[6.5px] font-black px-1.5 py-0.5 rounded-md uppercase italic border shrink-0 ${
+                            m.presente ? 'bg-white/10 border-white/20 text-white' : 'bg-slate-50 border-slate-200 text-slate-400'
+                          }`}>
+                            {m.situacao?.includes('Oficial') ? 'OF' : m.situacao?.includes('Jovens') ? 'RJM' : 'ALU'}
+                          </span>
+                        </div>
+
+                        {/* SELETOR DE NOTAS DE TESTES INTEGRADO AO TOQUE AZUL PARA ALUNOS */}
+                        {(m.situacao?.includes('Aprendiz') || m.situacao?.includes('Aluno')) && (
+                          <div 
+                            className="mt-0.5 shrink-0"
+                            onClick={(e) => e.stopPropagation()} // Explicação: Trava de propagação: impede que o clique no seletor desmarque a presença azul por acidente.
+                          >
+                            <select 
+                              disabled={!deEdicaoLiberada}
+                              className={`border text-[8px] font-black rounded px-1 py-0.5 uppercase tracking-wide outline-none cursor-pointer w-full text-center ${
+                                m.presente ? 'bg-white/20 border-white/30 text-white' : 'bg-slate-50 border-slate-200 text-slate-700'
+                              }`}
+                              value={m.avaliacao || 'Sem'}
+                              onChange={(e) => handleUpdateAvaliacaoMusico(m, e.target.value)}
+                            >
+                              <option value="Sem" className="text-slate-900 font-bold">Sem Avaliação</option>
+                              <option value="Aprovado Encarregado" className="text-slate-900 font-bold">Aprovado Encarregado</option>
+                              <option value="Aprovado Examinadora" className="text-slate-900 font-bold">Aprovado Examinadora</option>
+                              <option value="Necessita Treino" className="text-slate-900 font-bold">Necessita Treino</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 shrink-0">
+                <button 
+                  onClick={() => setInstrumentoFocadoChecklist(null)}
+                  className="w-full h-10 bg-slate-950 text-white font-black rounded-xl text-[10px] uppercase tracking-wider transition-all active:scale-95 outline-none"
+                >
+                  Concluir e Fechar Painel
+                </button>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence> {/* Explicação: Gerenciador de animações de transição suave de abertura de modais na tela. */}
         {showOwnershipModal && ( // Explicação: Condicional que renderiza a janela flutuante se houver intenção de assumir naipe.
@@ -306,4 +529,4 @@ const TabButton = ({ active, icon, label, onClick }) => ( // Explicação: Compo
   </button>
 );
 
-export default CounterPage; // Explicação: Exporta a tela de contagem total blindada e enxuta para uso nas rotas principais do ecossistema.
+export default CounterPage; // Explicação: Exporta a tela de contagem total blindada e enxuto para uso nas rotas principais do ecossistema.

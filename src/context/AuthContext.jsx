@@ -25,48 +25,71 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente que 
         return;
       }
 
-      setUser(currentUser); // Explicação: Salva o usuário autenticado.
+        setUser(currentUser); // Explicação: Salva o usuário autenticado.
       
       if (currentUser) { // Explicação: Se estiver logado, busca o perfil no banco de dados.
         try {
           // --- v10.6: RENOVAÇÃO FORÇADA DE CRACHÁ ---
-          await currentUser.getIdToken(true);
+          const tokenResult = await currentUser.getIdTokenResult(true);
+          const claims = tokenResult.claims || {};
 
+          // Helper para calcular e injetar as permissões de forma padronizada
+          const processUserData = (sourceData) => {
+            const level = sourceData.accessLevel || ROLES.BASICO;
+            const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
+
+            // Explicação: Calcula as bandeiras de poder para facilitar a lógica visual.
+            const permissions = {
+              isMaster: level === ROLES.MASTER || isOwner, 
+              isComissao: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO, 
+              isRegionalCidade: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE, 
+              isGemLocal: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE || level === ROLES.GEM, 
+              isBasico: level === ROLES.BASICO,
+              isAdmin: level !== ROLES.BASICO 
+            };
+
+            // GPS REATIVO v10.10: FOCO OBRIGATÓRIO NO CADASTRO SE O PILL ESTIVER VAZIO
+            // Explicação: Se não houver seleção manual, ele trava nos IDs de cadastro (Comum/Cidade/Regional) para não "vazar" ensaios.
+            const validRegionalId = activeRegionalId || sourceData.regionalId || null;
+            const validCityId = activeCityId || sourceData.cidadeId || null;
+            const validComumId = activeComumId || sourceData.comumId || null;
+
+            return {
+              ...sourceData,
+              uid: currentUser.uid,
+              ...permissions,
+              accessLevel: level,
+              activeRegionalId: validRegionalId, 
+              activeCityId: validCityId,
+              activeComumId: validComumId,
+              // Explicação: Função "can" para perguntar à Regra de Ouro se o usuário pode fazer algo.
+              can: (action, targetRole) => hasPermission({ ...sourceData, ...permissions, accessLevel: level }, action, targetRole)
+            };
+          };
+
+          // ESTRATÉGIA CRACHÁ ELETRÔNICO: Se já temos os dados no chip do token, montamos o perfil de graça!
+          if (claims.accessLevel && claims.comumId) {
+            setUserData(processUserData({
+              email: currentUser.email,
+              name: currentUser.displayName || claims.name || '',
+              accessLevel: claims.accessLevel,
+              comumId: claims.comumId,
+              cidadeId: claims.cidadeId,
+              regionalId: claims.regionalId,
+              approved: claims.approved || true,
+              comum: claims.comum || '',
+              role: claims.role || ''
+            }));
+            setLoading(false);
+            return; // Encerra aqui. Economia de cota efetuada com sucesso!
+          }
+
+          // PLANO DE CONTINGÊNCIA: Se o chip do crachá estiver vazio (ex: usuário novo), escuta o Firestore
           // Explicação: Abre um canal em tempo real com o documento do usuário na pasta /users/.
           const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data(); // Explicação: Pega os dados de cargo, igreja e nível.
-              
-              const level = data.accessLevel || ROLES.BASICO;
-              const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
-
-              // Explicação: Calcula as bandeiras de poder para facilitar a lógica visual.
-              const permissions = {
-                isMaster: level === ROLES.MASTER || isOwner, 
-                isComissao: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO, 
-                isRegionalCidade: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE, 
-                isGemLocal: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE || level === ROLES.GEM, 
-                isBasico: level === ROLES.BASICO,
-                isAdmin: level !== ROLES.BASICO 
-              };
-
-              // GPS REATIVO v10.10: FOCO OBRIGATÓRIO NO CADASTRO SE O PILL ESTIVER VAZIO
-              // Explicação: Se não houver seleção manual, ele trava nos IDs de cadastro (Comum/Cidade/Regional) para não "vazar" ensaios.
-              const validRegionalId = activeRegionalId || data.regionalId || null;
-              const validCityId = activeCityId || data.cidadeId || null;
-              const validComumId = activeComumId || data.comumId || null;
-
-              setUserData({ 
-                ...data, 
-                uid: currentUser.uid, 
-                ...permissions,
-                accessLevel: level,
-                activeRegionalId: validRegionalId, 
-                activeCityId: validCityId,
-                activeComumId: validComumId,
-                // Explicação: Função "can" para perguntar à Regra de Ouro se o usuário pode fazer algo.
-                can: (action, targetRole) => hasPermission({ ...data, ...permissions, accessLevel: level }, action, targetRole)
-              });
+              setUserData(processUserData(data));
               setLoading(false); // Explicação: Só libera o app quando o perfil real for carregado.
             } else {
               setLoading(false); // Explicação: Libera se não houver perfil.

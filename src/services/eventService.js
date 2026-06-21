@@ -165,6 +165,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
       const payload = { // Explicação: Monta o documento com status da ata protegido.
         type: type || 'Ensaio Local', 
         scope: scope || 'local', 
+        shadowScope: scope || 'local', // Explicação: Campo de segurança oculto para re-verificação de relatórios de fechamento.
         invitedUsers: Array.isArray(invitedUsers) ? invitedUsers : [], 
         date, 
         responsavel: responsavel || 'Pendente', 
@@ -184,10 +185,48 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
         counts: initialCounts, 
         createdAt: Date.now(), 
         updatedAt: Date.now(), 
-        dbVersion: "10.5-lean_optimized" 
+        dbVersion: "12.0-nominal_cloned" // Explicação: Versão do banco atualizada para suportar chamadas nominais independentes.
       };
 
-      return await addDoc(collection(db, 'events_global'), payload); // Explicação: Registra o novo ensaio enxuto diretamente na coleção global do banco.
+      const docNovoCriado = await addDoc(collection(db, 'events_global'), payload); // Explicação: Registra o novo ensaio diretamente na coleção global e captura a ID gerada.
+
+      // --- 🚀 NOVO FLUXO DE CLONAGEM EM LOTE (AMARRAÇÃO CORPO ORQUESTRAL E MINISTÉRIO) ---
+      if (scope !== 'regional') { // Explicação: Eventos regionais não copiam listas de uma única comum local.
+        const batchChamada = writeBatch(db); // Explicação: Abre uma esteira de gravação em lote rápida para economizar conexões de rede.
+
+        // 1. Clonagem e Isolamento Nominal do Corpo Orquestral (Músicos)
+        const musicosSnap = await getDocs(collection(db, 'comuns', comumId, 'musicos_lista')); // Explicação: Vai até a garagem fixa da comum buscar as fichas dos músicos.
+        musicosSnap.docs.forEach(musicoDoc => { // Explicação: Passa de irmão em irmão montando o cartão de chamada de presença do ensaio.
+          const mData = musicoDoc.data(); // Explicação: Extrai o nome, instrumento e situação do músico.
+          const chamadaRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_musicos'), musicoDoc.id); // Explicação: Cria um endereço novo e exclusivo para este irmão dentro deste ensaio.
+          batchChamada.set(chamadaRef, { // Explicação: Prepara os dados iniciais do cartão de presença marcando-o originalmente como ausente.
+            nome: mData.nome,
+            instrumentoId: mData.instrumentoId,
+            instrumentoNome: mData.instrumentoNome,
+            situacao: mData.situacao,
+            presente: false, // Explicação: Inicializa o cartão em falso (Ausente) esperando a caneta do secretário.
+            avaliacao: 'Sem', // Explicação: Inicializa o nível de teste/avaliação de ensaio técnico limpo.
+            updatedAt: Date.now()
+          });
+        });
+
+        // 2. Clonagem e Isolamento Nominal do Ministério Local (Obreiros)
+        const ministerioSnap = await getDocs(collection(db, 'comuns', comumId, 'ministerio_lista')); // Explicação: Vai até a subcoleção eclesiástica buscar Anciães e Diáconos cadastrados.
+        ministerioSnap.docs.forEach(minDoc => { // Explicação: Passa obreiro por obreiro montando o cartão de presença da liderança.
+          const minData = minDoc.data(); // Explicação: Captura o nome por extenso e o cargo ministerial.
+          const chamadaMinRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_ministerio'), minDoc.id); // Explicação: Cria um endereço único para o obreiro dentro deste ensaio.
+          batchChamada.set(chamadaMinRef, { // Explicação: Monta a ficha de presença inicial do obreiro.
+            nome: minData.nome,
+            cargo: minData.cargo,
+            presente: false, // Explicação: Inicializa o obreiro como ausente por padrão.
+            updatedAt: Date.now()
+          });
+        });
+
+        await batchChamada.commit(); // Explicação: Descarrega o lote inteiro de clonagem nominal na nuvem em uma única transação atômica de custo enxuto!
+      }
+
+      return docNovoCriado; // Explicação: Devolve o documento do ensaio criado com as listas nominais de chamada já embutidas e prontas.
 
     } catch (err) {
       console.error("Erro na criação do evento:", err); // Explicação: Imprime falhas técnicas no painel do administrador.

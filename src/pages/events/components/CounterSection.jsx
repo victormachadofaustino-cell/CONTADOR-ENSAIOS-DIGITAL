@@ -15,12 +15,13 @@ const CounterSection = ({
   activeGroup, // Explicação: Qual grupo está aberto no momento.
   handleToggleGroup, // Explicação: Função para abrir/fechar e assumir posse.
   handleUpdateInstrument, // Explicação: Função para salvar números.
-  isEditingEnabled, // Explicação: Regra que diz se o botão de + e - funciona.
+  isEditingEnabled, // Explicação: Regra que dita se o botão de + e - funciona.
   onAddExtra, // Explicação: Função para incluir instrumentos novos.
   onFocus, // Explicação: Repassa o sinal de "usuário digitando" para o sistema.
   onBlur, // Explicação: Repassa o sinal de "usuário terminou de digitar".
   ataData, // Explicação: Recebe os dados da ata para saber se o evento é Regional ou Local.
-  userData // Explicação: Recebe os dados do usuário para checar o nível de acesso (GEM/Comissão).
+  userData, // Explicação: Recebe os dados do usuário para checar o nível de acesso (GEM/Comissão).
+  onOpenChecklistNominal // Explicação: NOVA CONEXÃO: Recebe o gatilho da mãe para abrir a listagem de presença do instrumento.
 }) => { // Explicação: Inicia a estrutura da seção de contagem.
   // JUSTIFICATIVA: Estado local para garantir Accordion independente por dispositivo
   const [isOpen, setIsOpen] = useState(false); // Explicação: Controla se a sanfona do grupo está aberta ou fechada no celular.
@@ -43,7 +44,7 @@ const CounterSection = ({
     .filter(i => (i.section || "GERAL").toUpperCase() === sec) // Explicação: Filtra apenas os instrumentos pertencentes a este naipe.
     .reduce((acc, inst) => { // Explicação: Acumula a soma matemática passando de instrumento em instrumento.
       const targetId = (sec?.toUpperCase() === 'IRMANDADE') ? 'Coral' : (sec?.toUpperCase() === 'ORGANISTAS') ? 'orgao' : inst.id; // Explicação: Redireciona a busca para a chave correta baseando-se no nosso plano lean.
-      const c = localCounts?.[targetId]; // Explicação: Puxa o bloco de contagem daquele instrumento de dentro da memória.
+      const c = localCounts?.[targetId]; // Explicação: Puxa o bloco de contagem daquele instrumento de dentro della memória.
       const isCoral = inst.id.toLowerCase() === 'coral'; // Explicação: Checa se o identificador em análise é o Coral oficial.
       
       if (isCoral) { // Explicação: Se for o Coral, aplica a matemática de gênero de relatórios obrigatórios.
@@ -161,6 +162,7 @@ const CounterSection = ({
                   labelLideranca={labelLideranca} // Passa o rótulo de liderança textual computado.
                   onFocus={onFocus} // Repassa o gatilho de início de edição de teclado.
                   onBlur={onBlur} // Repassa o gatilho de fim de digitação.
+                  onOpenChecklistNominal={onOpenChecklistNominal} // Explicação: NOVO PLUGUE: Repassa o método reativo para o InstrumentCard desenhar o atalho da chamada nominal.
                 />
               ); // Explicação: Fim da renderização do InstrumentCard.
             })} {/* Explicação: Fim do mapeamento de instrumentos. */}
