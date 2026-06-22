@@ -15,7 +15,7 @@ import ModuleGlobal from './settings/ModuleGlobal'; // Explicação: Importa o s
 import ModuleAccess from './settings/ModuleAccess'; // Explicação: Importa o submódulo de controle de portaria e liberação de usuários.
 import ModuleCities from './settings/ModuleCities'; // Explicação: Importa o submódulo de cadastro geográfico de cidades.
 import ModuleChurchesManager from './settings/ModuleChurchesManager'; // Explicação: Importa o gerenciador geral de criação e manutenção de cookies comuns.
-import ModuleMinistryLocal from './settings/ModuleMinistrylocal'; // Explicação: AMARRAÇÃO DE INFRAESTRUTURA: Importa o novo lar purificado do Corpo Ministerial Eclesiástico.
+import ModuleMinistryLocal from './settings/ModuleMinistryLocal'; // Explicação: AMARRAÇÃO DE INFRAESTRUTURA: Importa o novo lar purificado do Corpo Ministerial Eclesiástico.
 import ModuleOrchestraBody from './settings/ModuleOrchestraBody'; // Explicação: AMARRAÇÃO DE INFRAESTRUTURA: Importa a garagem nominal de músicos para a chamada de presença.
 
 const SettingsPage = () => { // Explicação: Inicia a construção da página principal de Configurações e Ajustes.
