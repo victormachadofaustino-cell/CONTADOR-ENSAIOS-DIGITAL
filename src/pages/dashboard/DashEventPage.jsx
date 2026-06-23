@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'; // Explicação: Sistema de avisos que faz 
 import { 
   TrendingUp, Music, Star, 
   Share2, Activity, PieChart, 
-  CheckCircle2, Info, ShieldCheck, Users, FileText, Briefcase, Menu, BookOpen, ChevronDown, ChevronUp, ArrowUpRight, ArrowDownRight
+  CheckCircle2, Info, ShieldCheck, Users, FileText, Briefcase, Menu, BookOpen, ChevronDown, ChevronUp
 } from 'lucide-react'; // Explicação: Biblioteca que fornece os desenhos dos ícones usados nos botões e nos títulos dos cartões.
 import { pdfEventService } from '../../services/pdfEventService'; // Explicação: Serviço interno responsável por desenhar e gerar o arquivo PDF oficial da Ata.
 import { whatsappService } from '../../services/whatsappService'; // Explicação: Serviço interno que formata as mensagens de texto com os números para enviar ao WhatsApp.
@@ -55,7 +55,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
       deltaOrquestra: 0, // Explicação: Diferença matemática de instrumentistas contra o ensaio passado.
       deltaHinos: 0, // Explicação: Diferença matemática de hinos cantados contra o ensaio passado.
       deltaCorpoTecnico: 0, // Explicação: Diferença matemática de corpo técnico contra o ensaio passado.
-      musicosPresentesLista: [] // Explicação: NOVA GAVETA EXCLUSIVA: Armazena estritamente a ficha daqueles que estão com presente marcado como VERDADEIRO.
+      musicosPresentesLista: [] // Explicação: GAVETA EXCLUSIVA: Armazena estritamente os alistados locais que responderam com presente VERDADEIRO.
     };
 
     if (counts) { // Explicação: Proteção de código. Se os dados de contagem existirem no documento, inicia a varredura naipe por naipe.
@@ -78,7 +78,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
         } 
         else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { // Explicação: Identifica se a linha avaliada se refere às organistas.
           totals.organistas += valTotal; // Explicação: Adiciona as organistas ao totalizador específico delas.
-          totals.organistasComum += valComum; // Explicação: Acumula o total de organistas locais daquela igreja.
+          totals.organistasComum += valComum; // Explicação: Acumula o total de organistas locais dellaquela igreja.
           totals.organistasVisita += visitasCalc; // Explicação: Acumula o total de organistas que vieram visitar de fora.
         } 
         else { // Explicação: Se não for coro nem organista, o systema sabe que se trata de um músico de instrumento de sopro ou cordas.
@@ -141,20 +141,20 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
       }
     }
 
-    // --- FILTRAGEM RIGOROSA DE MÚSICOS E ORGANISTAS ATIVOS [PRESENTE === TRUE] ---
-    if (ataData?.presencaLocalFull && Array.isArray(ataData.presencaLocalFull)) { // Explicação: Se a lista de alistados da comum foi acoplada na ata.
-      // Explicação Abaixo: Filtra cirurgicamente mantendo apenas quem respondeu com presente VERDADEIRO e ignora/esconde quem estiver com presente FALSO.
+    // --- FILTRAGEM RIGOROSA DE MÚSICOS E ORGANISTAS PRESENTES [SÓ ENTRA QUEM FOR TRUE] ---
+    if (ataData?.presencaLocalFull && Array.isArray(ataData.presencaLocalFull)) { // Explicação: Se a lista de chamadas nominais residir na memória da ata.
+      // Explicação Abaixo: Captura e salva estritamente quem está com a flag presente ligada, ocultando totalmente os faltantes.
       totals.musicosPresentesLista = ataData.presencaLocalFull.filter(membro => membro.presente === true); 
     }
 
-    // --- CUSTO ZERO DE FIRESTORE: MÓDULO DE INTELIGÊNCIA HISTÓRICA LOCAL ---
+    // --- CUSTO ZERO DE FIRESTORE: MÓDULO DE INTELIGÊNCIA HISTÓRICA E EQUIVALÊNCIA DE ESCOPO ---
     if (allEvents && allEvents.length > 0 && ataData?.comumId && ataData?.scope) { // Explicação: Inteligência de Delta: Varre os dados locais.
       const eventosFiltradosMesmaIgreja = allEvents
-        .filter(ev => ev.comumId === ataData.comumId && (ev.scope || 'local') === ataData.scope && ev.id !== eventId) // CORREÇÃO REAL: Filtra por Comum E obrigatoriamente pelo mesmo Escopo (Local com Local, Regional com Regional).
+        .filter(ev => ev.comumId === ataData.comumId && (ev.scope || 'local') === ataData.scope && ev.id !== eventId) // CORREÇÃO DO MOTOR: Filtra por Comum E obrigatoriamente pelo mesmo tipo de Escopo (Local com Local, Regional com Regional).
         .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)); // Explicação: Ordena por data colocando o ensaio anterior correspondente na frente.
 
       const eventoPassado = eventosFiltradosMesmaIgreja[0]; // Explicação: Resgata a cópia do documento do mês passado guardada na memória.
-      if (eventoPassado) { // Explicação: Se encontrou o evento anterior, faz a extração e cruzamento de dados.
+      if (eventoPassado) { // Explicação: Se encontrou o evento anterior fidedigno, faz os batimentos matemáticos.
         let musPassado = 0; let orgPassado = 0; let irmPassado = 0; let hinPassado = 0; let tecnicoPassado = 0;
         
         if (eventoPassado.counts) { // Explicação: Processa as somas do mês passado localmente na memória de forma gratuita.
@@ -239,11 +239,11 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
     setExpandedCard(expandedCard === cardId ? null : cardId); // Explicação: Se clicou no mesmo, recolhe; senão abre o novo bloco correspondente.
   };
 
-  const renderDelta = (delta) => { // Explicação: Exibe apenas a ponta de seta minimalista e o valor numérico limpo.
-    if (delta === 0 || isNaN(delta)) return <span className="text-slate-300 font-bold text-xs">―</span>; // Explicação: Retorna apenas um traço horizontal limpo se os números empatarem com o mês passado.
-    const isUp = delta > 0; // Explicação: Sabe se o saldo é positivo ou negativo.
-    return ( // Explicação: Renderiza a ponta de seta minimalista colorida.
-      <span className={`text-xs font-black flex items-center ${isUp ? 'text-emerald-600' : 'text-rose-600'}`}>
+  const renderDelta = (delta) => { // CORREÇÃO INSPIRADA TOTALMENTE NO ANEXO: Remove caixas coloridas, exibe apenas pontas de setas limpas e números diretos.
+    if (delta === 0 || isNaN(delta)) return <span className="text-slate-300 font-black text-sm select-none">―</span>; // Explicação: Exibe apenas um traço horizontal elegante se o valor for idêntico ao mês passado.
+    const isUp = delta > 0; // Explicação: Identifica se a tendência é de alta ou de baixa.
+    return ( // Explicação: Renderiza unicamente a ponta de seta sólida triangular e o número limpo da diferença matemática.
+      <span className={`text-[11px] font-black flex items-center select-none ${isUp ? 'text-emerald-600' : 'text-rose-600'}`}>
         {isUp ? '▲' : '▼'} {isUp ? `+${delta}` : delta}
       </span>
     );
@@ -291,7 +291,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
       {/* JANELA DE EXIBIÇÃO: CONTEÚDO LIMITADO COM ROLAGEM VERTICAL COMPORTADA */}
       <div className="flex-1 overflow-y-auto px-4 pb-28">
         
-        {/* VIEW REORGANIZADA: PAINEL INTELIGENTE CONTÍNUO COM BIG NUMBERS E DRILLDOWNS CLEAN */}
+        {/* VIEW REORGANIZADA: PAINEL INTELIGENTE CONTÍNUO COM BIG NUMBERS E DELTAS CLEAN */}
         {activeTab === 'geral' && (
           <div className="space-y-4 animate-fadeIn">
             
@@ -302,7 +302,8 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
                   <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl shrink-0"><BookOpen size={18} /></div>
                   <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Hinos Chamados</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.hinos}</span></div>
                 </div>
-                <div className="flex items-center space-x-2 shrink-0">{renderDelta(stats.deltaHinos)}{expandedCard === 'hinos' ? <ChevronUp size={16} className="text-slate-400 ml-1" /> : <ChevronDown size={16} className="text-slate-400 ml-1" />}</div>
+                {/* Lado Direito: Exibição limpa da ponta de seta e do valor de diferença e o chevron */}
+                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaHinos)}{expandedCard === 'hinos' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
               </div>
               {/* DRILLDOWN SANEADO: DETALHES DE HINOS LANÇADOS POR EXTENSO */}
               {expandedCard === 'hinos' && (
@@ -320,29 +321,28 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
                   <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl shrink-0"><Music size={18} /></div>
                   <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Corpo Musical</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.orquestra}</span></div>
                 </div>
-                <div className="flex items-center space-x-2 shrink-0">{renderDelta(stats.deltaOrquestra)}{expandedCard === 'orquestra' ? <ChevronUp size={16} className="text-slate-400 ml-1" /> : <ChevronDown size={16} className="text-slate-400 ml-1" />}</div>
+                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaOrquestra)}{expandedCard === 'orquestra' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
               </div>
               {/* DRILLDOWN QUANTITATIVO: SEPARAÇÃO DE SOLISTAS, ORGANISTAS E QUANTIDADE DE VISITAS */}
               {expandedCard === 'orquestra' && (
                 <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-2.5 animate-slideDown text-left">
-                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Músicos Solistas</span><p className="text-xs font-black text-slate-800 mt-1">{stats.musicos} <span className="text-[9px] text-slate-400 font-bold">({stats.musicosComum} Casa / {stats.musicosVisita} Visitas)</span></p></div>
-                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Organistas</span><p className="text-xs font-black text-slate-800 mt-1">{stats.organistas} <span className="text-[9px] text-slate-400 font-bold">({stats.organistasComum} Casa / {stats.organistasVisita} Visitas)</span></p></div>
+                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Músicos Solistas</span><p className="text-xs font-black text-slate-800 mt-1">{stats.musicos} <span className="text-[9px] text-slate-400 font-bold">({stats.musicosComum} / {stats.musicosVisita})</span></p></div>
+                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Organistas</span><p className="text-xs font-black text-slate-800 mt-1">{stats.organistas} <span className="text-[9px] text-slate-400 font-bold">({stats.organistasComum} / {stats.organistasVisita})</span></p></div>
                   <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl col-span-2 flex justify-between items-center"><span className="text-[9px] font-black text-blue-700 uppercase tracking-wider">Apoio Logístico Total</span><span className="text-xs font-black text-blue-800">{stats.orquestraTotalVisita} Visitantes</span></div>
                 </div>
               )}
             </div>
 
-            {/* CARD 3: NOVO CARD DEDICADO - LISTA NOMINAL EXCLUSIVA DE QUEM ESTÁ PRESENTE (PRESENTE === TRUE) */}
-            {/* Explicação: Criamos um botão executivo sutil que traz em tempo real o raio-x com o nome de quem está tocando. */}
+            {/* CARD 3: CARD DEDICADO - LISTA NOMINAL EXCLUSIVA DE PRESENTES [PRESENTE === TRUE] */}
             <div onClick={() => toggleCard('chamada_nominal')} className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-sm space-y-3 cursor-pointer select-none transition-all active:bg-slate-50/50 min-h-[88px] flex flex-col justify-center">
               <div className="flex justify-between items-center w-full">
                 <div className="flex items-center space-x-3 min-w-0">
                   <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl shrink-0"><CheckCircle2 size={18} /></div>
                   <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Chamada da Comum</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.musicosPresentesLista.length}</span></div>
                 </div>
-                <div className="flex items-center space-x-2 shrink-0"><span className="text-[9px] font-black text-purple-500 uppercase tracking-wider bg-purple-50 px-2 py-0.5 rounded-md">Ativos</span>{expandedCard === 'chamada_nominal' ? <ChevronUp size={16} className="text-slate-400 ml-1" /> : <ChevronDown size={16} className="text-slate-400 ml-1" />}</div>
+                <div className="flex items-center space-x-1.5 shrink-0"><span className="text-[9px] font-black text-purple-500 uppercase tracking-wider bg-purple-50 px-2 py-0.5 rounded-md">Ativos</span>{expandedCard === 'chamada_nominal' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
               </div>
-              {/* CAMADA DE RAIO-X: EXIBE EXCLUSIVAMENTE OS PRESENTES, OCULTANDO COMPLETAMENTE QUEM ESTÁ AUSENTE */}
+              {/* CAMADA DE RAIO-X EXCLUSIVA: OCULTA COMPLETAMENTE QUEM ESTÁ COM FALSO E ROLA EM CAIXA FECHADA CONFORME DIRETRIZ 4 */}
               {expandedCard === 'chamada_nominal' && (
                 <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-1 gap-2.5 animate-slideDown text-left">
                   <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider block">Lista de Alistados Confirmados [Presentes]</span>
@@ -369,7 +369,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
                   <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl shrink-0"><Users size={18} /></div>
                   <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Presença Geral</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.geral}</span></div>
                 </div>
-                <div className="flex items-center space-x-2 shrink-0">{renderDelta(stats.deltaGeral)}{expandedCard === 'coral' ? <ChevronUp size={16} className="text-slate-400 ml-1" /> : <ChevronDown size={16} className="text-slate-400 ml-1" />}</div>
+                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaGeral)}{expandedCard === 'coral' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
               </div>
               {/* DRILLDOWN: DIVISÃO POR GÊNERO NA BANCADA */}
               {expandedCard === 'coral' && (
@@ -388,7 +388,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
                   <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl shrink-0"><Star size={18} /></div>
                   <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Corpo Técnico</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.encRegional + stats.encLocal + stats.examinadoras}</span></div>
                 </div>
-                <div className="flex items-center space-x-2 shrink-0">{renderDelta(stats.deltaCorpoTecnico)}{expandedCard === 'tecnico' ? <ChevronUp size={16} className="text-slate-400 ml-1" /> : <ChevronDown size={16} className="text-slate-400 ml-1" />}</div>
+                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaCorpoTecnico)}{expandedCard === 'tecnico' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
               </div>
               {/* DRILLDOWN SANEADO: COMPACTO E EXECUTIVO */}
               {expandedCard === 'tecnico' && (
@@ -428,4 +428,4 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
   );
 };
 
-export default DashEventPage; // Explicação: Exporta a folha do painel executivo inteligente, estruturado com Big Numbers e Drilldowns micro-interativos nominais.
+export default DashEventPage;

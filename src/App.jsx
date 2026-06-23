@@ -13,7 +13,7 @@ import LoginPage from './pages/auth/LoginPage'; // Explicação: Importa a pági
 import CapaEntrada from './pages/CapaEntrada'; // Explicação: Importa a tela de abertura animada (Splash Screen) do sistema.
 import Header from './components/Header'; // Explicação: Importa o cabeçalho superior com seletores territoriais de GPS.
 import Tickets from './components/Tickets'; // Explicação: Importa o sistema integrado de chamados e suporte ao usuário.
-import Footer from './components/Footer'; // Explicação: NOVA IMPORTAÇÃO: Traz o nosso novo rodapé isolado e fixado na base da tela.
+import Footer from './components/Footer'; // Explicação: Traz o nosso novo rodapé isolado e fixado na base da tela.
 
 import { useAuth } from './context/AuthContext'; // Explicação: Importa o Cérebro Central de Autenticação que distribui os crachás eletrônicos.
 
@@ -22,7 +22,7 @@ const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora'
 function App() { // Explicação: Início da construção do componente mestre do aplicativo inteiro.
   const { userData: authContextData, loading: authContextLoading, setContext } = useAuth(); // Explicação: Conecta com o Cérebro Central para extrair o Crachá Eletrônico e o seletor territorial de GPS.
   
-  const [user, setUser] = useState(null); // Explicação: Estado que controla se o usuário possui uma chave de login ativa no aparelho.
+  const [user, setUser] = useState(null); // Explicação: Estado que controla se o usuário possui uma chave de login activa no aparelho.
   const [view, setView] = useState('loading'); // Explicação: Controla dinamicamente qual tela principal está sendo renderizada no celular.
   const [showSplash, setShowSplash] = useState(true); // Explicação: Determina se a cortina de abertura do app deve ficar visível.
   const [lobbyTab, setLobbyTab] = useState(localStorage.getItem('lastTab') || 'ensaios'); // Explicação: Guarda na memória do celular qual aba inferior o usuário parou navegando.
@@ -55,150 +55,149 @@ function App() { // Explicação: Início da construção do componente mestre d
   const comumIdEfetivo = authContextData?.activeComumId || activeComumId || authContextData?.comumId; // Explicação: Descobre a ID da igreja alvo cruzando o GPS com o crachá do usuário.
 
   const currentEventData = useMemo(() => { // Explicação: Memoriza e localiza as informações do ensaio focado para evitar re-renderização.
-    return events.find(ev => ev.id === currentEventId);
-  }, [events, currentEventId]);
+    return events.find(ev => ev.id === currentEventId); // Explicação: Varre o vetor buscando a ID correspondente e retorna.
+  }, [events, currentEventId]); // Explicação: Recalcula se o array de eventos ou a ID focada mudarem.
 
   const ORDEM_TABS = useMemo(() => { // Explicação: Desenha a barra de abas inferior ocultando ou exibindo o menu de Ajustes baseado no poder do crachá.
-    const temAcessoAjustes = isGemLocal; 
-    return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash'];
-  }, [isGemLocal]);
+    const temAcessoAjustes = isGemLocal; // Explicação: Define a regra lógica de corte de portaria.
+    return temAcessoAjustes ? ['ensaios', 'dash', 'config'] : ['ensaios', 'dash']; // Explicação: Adiciona ou remove a aba de ajustes no vetor.
+  }, [isGemLocal]); // Explicação: Recalcula o menu se mudar o nível de permissão.
 
   useEffect(() => { // Explicação: Salva no navegador qual aba o usuário parou para manter a experiência na reabertura.
-    localStorage.setItem('lastTab', lobbyTab);
-  }, [lobbyTab]);
+    localStorage.setItem('lastTab', lobbyTab); // Explicação: Grava a string da aba ativa na memória de armazenamento local.
+  }, [lobbyTab]); // Explicação: Monitora a troca de abas.
 
   useEffect(() => { // Explicação: Salva a ID do ensaio aberto para blindar a contagem contra fechamentos acidentais do app.
-    if (currentEventId) {
-      localStorage.setItem('lastEventId', currentEventId);
-    } else {
-      localStorage.removeItem('lastEventId');
-    }
-  }, [currentEventId]);
+    if (currentEventId) { // Explicação: Se houver ensaio em andamento na tela.
+      localStorage.setItem('lastEventId', currentEventId); // Explicação: Registra a chave do ensaio no armazenamento local.
+    } else { // Explicação: Se o ensaio foi fechado com sucesso pelo botão voltar.
+      localStorage.removeItem('lastEventId'); // Explicação: Expulsa a chave antiga da memória.
+    } // Explicação: Fim da condicional sanitária de chaves.
+  }, [currentEventId]); // Explicação: Monitora a ID do ensaio aberto.
 
   useEffect(() => { // Explicação: Trava de Segurança: Se o nível do usuário mudar e ele perder o acesso, expulsa ele para a aba de ensaios.
-    if (authContextData && !ORDEM_TABS.includes(lobbyTab)) {
-      setLobbyTab('ensaios');
-    }
-  }, [authContextData, lobbyTab, ORDEM_TABS]);
+    if (authContextData && !ORDEM_TABS.includes(lobbyTab)) { // Explicação: Se a aba atual sumiu da nova matriz de permissões.
+      setLobbyTab('ensaios'); // Explicação: Redireciona obrigatoriamente para a aba de ensaios.
+    } // Explicação: Fim da verificação.
+  }, [authContextData, lobbyTab, ORDEM_TABS]); // Explicação: Força re-verificação nas trocas de contexto.
 
   const mudarTab = (novaTab) => { // Explicação: Gerencia a troca de abas calculando a direção do deslize da tela para a esquerda ou direita.
-    const idxAntigo = ORDEM_TABS.indexOf(lobbyTab);
-    const idxNovo = ORDEM_TABS.indexOf(novaTab);
-    if (idxAntigo === idxNovo) return;
-    setDirecao(idxNovo > idxAntigo ? 1 : -1);
-    setLobbyTab(novaTab);
-  };
+    const idxAntigo = ORDEM_TABS.indexOf(lobbyTab); // Explicação: Pega o índice numérico da aba antiga.
+    const idxNovo = ORDEM_TABS.indexOf(novaTab); // Explicação: Pega o índice numérico da nova aba clicada.
+    if (idxAntigo === idxNovo) return; // Explicação: Aborta se clicou na mesma aba onde já estava parado.
+    setDirecao(idxNovo > idxAntigo ? 1 : -1); // Explicação: Define 1 para deslizar para frente ou -1 para deslizar para trás na animação.
+    setLobbyTab(novaTab); // Explicação: Ativa a nova aba na interface.
+  }; // Explicação: Encerra o método de transição.
 
   useEffect(() => { // Explicação: Monitor de Sincronização: Amarra os backups locais de estados às variáveis vivas do Cérebro Central.
-    if (authContextData?.activeComumId) {
-      setActiveComumId(authContextData.activeComumId);
-    }
-    if (authContextData?.activeRegionalId) {
-      setActiveRegionalId(authContextData.activeRegionalId);
-    }
-  }, [authContextData]);
+    if (authContextData?.activeComumId) { // Explicação: Se houver uma igreja comum ativa no contexto global.
+      setActiveComumId(authContextData.activeComumId); // Explicação: Atualiza o backup de ID local de controle.
+    } // Explicação: Fim do bloco comum.
+    if (authContextData?.activeRegionalId) { // Explicação: Se houver uma regional selecionada no contexto global.
+      setActiveRegionalId(authContextData.activeRegionalId); // Explicação: Atualiza o backup de regional local.
+    } // Explicação: Fim do bloco regional.
+  }, [authContextData]); // Explicação: Roda a cada modificação do crachá eletrônico.
 
   useEffect(() => { // Explicação: Escudo de Rota e Identidade: Ouve as mudanças de autenticação do Firebase de forma ultra enxuta.
-    const unsubAuth = onAuthStateChanged(auth, u => {
+    const unsubAuth = onAuthStateChanged(auth, u => { // Explicação: Abre um canal nativo para receber o token de login do dispositivo.
       if (u && !u.emailVerified) { // Explicação: Trava de segurança: Se o e-mail não foi verificado, barra o acesso imediatamente.
-        setUser(null);
-        setView('login');
-        return;
-      }
+        setUser(null); // Explicação: Limpa o usuário do estado interno.
+        setView('login'); // Explicação: Joga a tela obrigatoriamente no formulário de login.
+        return; // Explicação: Corta a execução da subrotina.
+      } // Explicação: Fim da trava de e-mail.
       setUser(u); // Explicação: Registra a chave do usuário autenticado no estado do app.
       
-      if (u) {
-        // CORREÇÃO E ECONOMIA DE COTA: Removemos o onSnapshot redundante da coleção 'users'.
-        // O fluxo de navegação agora é decidido puramente pelas respostas reativas do authContextLoading e authContextData.
-        if (!authContextLoading && authContextData) {
+      if (u) { // Explicação: Se o usuário estiver legitimamente logado.
+        // CORREÇÃO E ECONOMIA DE COTA: O fluxo de navegação agora é decidido puramente pelas respostas reativas do authContextLoading e authContextData.
+        if (!authContextLoading && authContextData) { // Explicação: Se as credenciais do crachá terminaram de baixar do contexto.
           const savedView = localStorage.getItem('lastEventId') ? 'app' : 'lobby'; // Explicação: Se caiu a conexão no meio de um ensaio, volta direto pro contador.
           setView(authContextData.approved || authContextData.accessLevel === 'master' ? savedView : 'waiting-approval'); // Explicação: Desvia usuários não aprovados para a tela de espera.
-        }
-      } else {
-        setEvents([]); 
-        setActiveComumId(null);
-        setActiveRegionalId(null);
+        } // Explicação: Encerra a conferência de dados.
+      } else { // Explicação: Caso não haja nenhuma conta conectada no aparelho.
+        setEvents([]);  // Explicação: Esvazia o cache local de ensaios da igreja por privacidade.
+        setActiveComumId(null); // Explicação: Zera o ponteiro GPS da comum.
+        setActiveRegionalId(null); // Explicação: Zera o ponteiro GPS da regional.
         localStorage.clear(); // Explicação: Higiene de Segurança: Limpa o armazenamento local ao deslogar do sistema.
-        setView('login'); 
-      }
-    });
+        setView('login'); // Explicação: Joga a tela no formulário inicial.
+      } // Explicação: Fim do divisor de autenticação.
+    }); // Explicação: Encerra o escopo do listener nativo.
     return () => unsubAuth(); // Explicação: Desliga os observadores de sessão ao destruir o componente.
-  }, [authContextLoading, authContextData]); 
+  }, [authContextLoading, authContextData]); // Explicação: Re-avalia o canal se os carregamentos mudarem.
 
   // Efeito auxiliar para atualizar a visualização (view) assim que o contexto terminar de carregar na inicialização
-  useEffect(() => {
-    if (!authContextLoading && user && authContextData) {
-      const savedView = localStorage.getItem('lastEventId') ? 'app' : 'lobby';
-      setView(authContextData.approved || authContextData.accessLevel === 'master' ? savedView : 'waiting-approval');
-    } else if (!authContextLoading && !user) {
-      setView('login');
-    }
-  }, [authContextLoading, user, authContextData]);
+  useEffect(() => { // Explicação: Disparado na largada de boot para casar os estados visuais.
+    if (!authContextLoading && user && authContextData) { // Explicação: Se o crachá baixou e o login está firme.
+      const savedView = localStorage.getItem('lastEventId') ? 'app' : 'lobby'; // Explicação: Verifica se deve reabrir direto no contador.
+      setView(authContextData.approved || authContextData.accessLevel === 'master' ? savedView : 'waiting-approval'); // Explicação: Executa o roteamento.
+    } else if (!authContextLoading && !user) { // Explicação: Se o contexto terminou sem usuário ativo.
+      setView('login'); // Força a tela de login.
+    } // Explicação: Encerra a conferência auxiliar.
+  }, [authContextLoading, user, authContextData]); // Explicação: Escuta as chaves de bootstrap.
 
   useEffect(() => { // Explicação: Buscador de Eventos por Comum: Alimenta a listagem filtrando apenas os ensaios da igreja em foco.
-    if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !authContextData) return;
+    if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !authContextData) return; // Explicação: Trava defensiva para não rodar buscas cegas sem chaves de segurança.
     setEvents([]); // Explicação: Limpa a gaveta de ensaios antiga antes de abrir a conexão com a nova comum.
     
-    const q = query(
-      collection(db, 'events_global'), 
-      where('comumId', '==', comumIdEfetivo), 
+    const q = query( // Explicação: Constrói a consulta filtrada indexada do Firestore.
+      collection(db, 'events_global'), // Explicação: Aponta para a coleção central de eventos.
+      where('comumId', '==', comumIdEfetivo), // Explicação: Filtra para trazer apenas os ensaios da igreja selecionada no cabeçalho.
       orderBy('date', 'desc') // Explicação: Ordena os ensaios colocando o mais recente sempre no topo absoluto.
-    );
+    ); // Explicação: Encerra a query técnica.
     
     const unsub = onSnapshot(q, (snapshot) => { // Explicação: Abre canal em tempo real para escutar novos ensaios abertos na comum.
-      const data = snapshot.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data(),
-        comumId: d.data().comumId || comumIdEfetivo 
-      }));
+      const data = snapshot.docs.map(d => ({ // Explicação: Transforma os snapshots crus em objetos nativos.
+        id: d.id, // Insere a ID do documento.
+        ...d.data(), // Clona as propriedades internas de ata e contagens.
+        comumId: d.data().comumId || comumIdEfetivo // Força a amarração contextual da comum.
+      })); // Termina o mapeamento.
       setEvents(data); // Explicação: Satura o estado de ensaios com os dados atualizados.
-    }, (err) => { console.warn("Erro ao buscar ensaios:", err.message); });
+    }, (err) => { console.warn("Erro ao buscar ensaios:", err.message); }); // Explicação: Captura e reporta avisos de rede de forma controlada.
     
-    return () => unsub(); // Explicação: Desliga a escuta territorial ao mudar de foco para poupar cotas do Firestore.
-  }, [comumIdEfetivo, user?.uid, user?.emailVerified, authContextData]); 
+    return () => unsub(); // Explicação: Desliga la escuta territorial ao mudar de foco para poupar cotas do Firestore.
+  }, [comumIdEfetivo, user?.uid, user?.emailVerified, authContextData]); // Explicação: Remonta o canal se a igreja mestre de foco mudar no GPS.
 
   if (view === 'loading' || authContextLoading) { // Explicação: Renderiza o visual de carregamento premium de jurisdição.
-    return (
+    return ( // Explicação: Desenha o spinner centralizado.
       <div className="h-dvh flex flex-col items-center justify-center bg-[#F1F5F9] p-8 text-center space-y-4">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-        <p className="font-black text-slate-950 uppercase text-[10px] tracking-widest italic">Sincronizando Jurisdição...</p>
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" /> {/* Explicação: Círculo animado com rotação contínua Tailwind CSS. */}
+        <p className="font-black text-slate-950 uppercase text-[10px] tracking-widest italic">Sincronizando Jurisdição...</p> {/* Explicação: Texto de rodapé de carregamento em caixa alta micro. */}
       </div>
-    );
-  }
+    ); // Explicação: Fim da renderização do carregamento.
+  } // Explicação: Fim da trava de bootstrap de rede.
 
   return ( // Explicação: Inicia a renderização estrutural do layout do aplicativo.
-    <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left">
+    <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left"> {/* Explicação: Container raiz do aplicativo travado na altura do dispositivo móvel. */}
       <Toaster position="top-center" /> {/* Explicação: Posiciona o contêiner centralizador de alertas e toas flutuantes. */}
-      <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence>
+      <AnimatePresence>{showSplash && <CapaEntrada aoEntrar={() => setShowSplash(false)} />}</AnimatePresence> {/* Explicação: Controla a exibição e saída animada da cortina de Splash Screen. */}
 
       {(view === 'login' || view === 'waiting-approval') ? ( // Explicação: Se o usuário não estiver logado ou aprovado, barra e exibe a tela de credenciais.
-        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData} />
+        <LoginPage authMode={authMode} setAuthMode={setAuthMode} email={email} setEmail={setEmail} pass={pass} setPass={setPass} userName={userName} setUserName={setUserName} userRole={userRole} setUserRole={setUserRole} cargosDinamicos={cargosDinamicos} userData={authContextData} /> // Explicação: Renderiza o portal eclesiástico de entrada.
       ) : view === 'lobby' ? ( // Explicação: Se a sessão for limpa e autorizada, abre o menu principal (Lobby).
         <>
           <Header // Explicação: Renderiza o cabeçalho alimentando-o com o Crachá Eletrônico unificado do contexto.
-            userData={authContextData} 
+            userData={authContextData} // Explicação: Entrega a cópia do crachá de autenticação para o cabeçalho.
             onChurchChange={(id) => setContext('comum', id)} // Explicação: Dispara a atualização do GPS da comum no Cérebro Central.
             onRegionalChange={(id) => setContext('regional', id)} // Explicação: Dispara a atualização do GPS da regional no Cérebro Central.
           />
-          <main className="flex-1 relative overflow-hidden">
-            <AnimatePresence mode="popLayout" custom={direcao}>
+          <main className="flex-1 relative overflow-hidden"> {/* Explicação: Palco central onde as telas das abas inferiores entram e saem. */}
+            <AnimatePresence mode="popLayout" custom={direcao}> {/* Explicação: Gerenciador de animações sincronizadas de entrada e saída de abas. */}
               {/* Explicação: 'pb-36' adicionado para criar uma margem de segurança na base, impedindo que os dados colidam com o novo rodapé fixo. */}
-              <motion.div key={lobbyTab} custom={direcao} initial={{ opacity: 0, x: direcao * 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: direcao * -100 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="w-full h-full overflow-y-auto no-scrollbar pt-4 pb-36 px-4">
-                <div className="max-w-md mx-auto">
+              <motion.div key={lobbyTab} custom={direcao} initial={{ opacity: 0, x: direcao * 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: direcao * -100 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="w-full h-full overflow-y-auto no-scrollbar pt-4 pb-36 px-4"> {/* Explicação: Bloco móvel animado com rolagem vertical livre suave. */}
+                <div className="max-w-md mx-auto"> {/* Explicação: Limitador ergonômico central de largura para smartphones comuns. */}
                   {lobbyTab === 'ensaios' && ( // Explicação: Renderiza a lista de ensaios repassando as permissões unificadas por crachá.
-                    <EventsPage 
-                      key={comumIdEfetivo || 'default'} 
-                      allEvents={events}
-                      userData={authContextData} 
-                      isAdmin={isAdmin} 
-                      onSelectEvent={(id) => { 
-                        setCurrentEventId(id); 
-                        setView('app'); // Explicação: Dispara a abertura imediata do painel do contador.
-                      }} 
-                    />
+                    <EventsPage // Explicação: Invoca a grade de ordens e cultos.
+                      key={comumIdEfetivo || 'default'} // Explicação: Recria o componente se a comum do GPS mudar para evitar vazamento de dados de cache.
+                      allEvents={events} // Explicação: Entrega o array de ensaios monitorados em tempo real.
+                      userData={authContextData} // Explicação: Acopla o crachá de usuário.
+                      isAdmin={isAdmin} // Explicação: Repassa a flag calculada de poder administrativo de caneta.
+                      onSelectEvent={(id) => { // Explicação: Executado quando o secretário seleciona um ensaio da lista.
+                        setCurrentEventId(id); // Explicação: Grava a ID do ensaio na memória global.
+                        setView('app'); // Explicação: Dispara a abertura imediata do painel do contador em tela cheia.
+                      }} // Explicação: Encerra a callback de seleção.
+                    /> // Explicação: Fecha a tag da página de ensaios.
                   )}
-                  {lobbyTab === 'dash' && <DashPage userData={authContextData} />}
-                  {lobbyTab === 'config' && <SettingsPage />}
+                  {lobbyTab === 'dash' && <DashPage userData={authContextData} />} {/* Explicação: Abre o painel estatístico consolidado histórico da comum. */}
+                  {lobbyTab === 'config' && <SettingsPage />} {/* Explicação: Abre o painel de gerenciamento de alistamentos e grade da comum. */}
                 </div>
               </motion.div>
             </AnimatePresence>
@@ -209,26 +208,26 @@ function App() { // Explicação: Início da construção do componente mestre d
           {/* CHAMADA DO NOVO RODAPÉ ATÔMICO ISOLADO E TOTALMENTE ASSENTADO */}
           {/* Explicação: Invocamos o Footer passando os parâmetros necessários de forma enxuta e performática. */}
           <Footer 
-            tabs={ORDEM_TABS} 
-            activeTab={lobbyTab} 
-            onTabChange={mudarTab} 
+            tabs={ORDEM_TABS} // Explicação: Entrega as abas autorizadas baseadas na herança do crachá.
+            activeTab={lobbyTab} // Explicação: Informa qual aba está ativa.
+            onTabChange={mudarTab} // Explicação: Acopla o método de transição inteligente calculado por nós.
           />
         </>
       ) : ( // Explicação: Se a visualização activa for 'app', renderiza o painel do contador de presenças em tela cheia.
         <>
-          <CounterPage 
-            currentEventId={currentEventId} 
-            counts={counts} 
-            onBack={() => {
+          <CounterPage // Explicação: Invoca a interface reativa mestre do contador digital.
+            currentEventId={currentEventId} // Explicação: Passa a ID do ensaio focado ativo.
+            counts={counts} // Explicação: Passa o mapa de contagens.
+            onBack={() => { // Explicação: Executado quando o usuário clica na seta superior de voltar.
               setCurrentEventId(null); // Explicação: Desativa o ensaio focado.
-              setView('lobby'); // Explicação: Devolve o usuário com segurança para o menu principal.
-            }} 
-            isAdmin={isAdmin} 
-            isMaster={isMaster} 
-            userData={authContextData} 
-            allEvents={events} 
-          />
-          {!showSplash && <Tickets moduloAtual="contador" />}
+              setView('lobby'); // Explicação: Devolve o usuário com segurança para o menu principal do Lobby.
+            }} // Explicação: Encerra a callback de retorno.
+            isAdmin={isAdmin} // Explicação: Repassa a flag de permissão de escrita.
+            isMaster={isMaster} // Explicação: Repassa a flag de administrador supremo.
+            userData={authContextData} // Explicação: Passa o crachá eletrônico para as sub-travas internas de controle de naipes.
+            allEvents={events} // Explicação: Passa a lista histórica de suporte para cálculo de deltas estatísticos.
+          /> {/* Explicação: Fecha a tag do contador. */}
+          {!showSplash && <Tickets moduloAtual="contador" />} {/* Explicação: Carrega o suporte no contador. */}
         </>
       )}
     </div>

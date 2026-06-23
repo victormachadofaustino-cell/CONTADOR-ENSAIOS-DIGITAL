@@ -132,7 +132,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
       });
       setIsEditModalOpen(false);
       setEditingMusico(null);
-      toast.success("Ficha do músico atualizada!");
+      toast.success("Ficha do músico updated!");
     } catch (err) {
       toast.error("Erro ao atualizar dados do músico.");
     }
@@ -314,7 +314,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
         {deletingMusico && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeletingMusico(null)} className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs" />
-            <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }} className="relative w-full max-w-xs bg-white rounded-[2.5rem] p-8 shadow-2xl text-center border border-slate-100">
+            <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }} className="relative w-full max-w-xs bg-white rounded-[2.2rem] p-8 shadow-2xl text-center border border-slate-100">
               <div className="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Trash2 size={22} strokeWidth={2.5} />
               </div>
@@ -339,4 +339,4 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
   );
 };
 
-export default ModuleOrchestraBody; // Explicação: Exporta o novo arquivo mestre do Corpo Orquestral, livre de reticências e pronto para uso imediato.
+export default ModuleOrchestraBody;

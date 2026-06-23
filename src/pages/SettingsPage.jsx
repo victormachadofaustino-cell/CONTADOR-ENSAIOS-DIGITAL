@@ -3,7 +3,7 @@ import { db, collection, onSnapshot, doc, query, where } from '../config/firebas
 import { // Explicação: Importa o pacote de ícones modernos e visuais para ilustrar os botões e menus do aplicativo.
   Home, Music, Users, ShieldCheck, Plus, ChevronDown, ChevronRight,
   MapPin, Building2, LayoutGrid, Settings, Briefcase, Trash2, X, ClipboardList, Contact
-} from 'lucide-react';
+} from 'lucide-react'; // Explicação: Biblioteca que fornece as formas dos desenhos dos botões.
 import { useAuth } from '../context/AuthContext'; // Explicação: Importa o sistema de identidade para ler o Crachá Eletrônico do usuário logado.
 import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Importa as ferramentas responsáveis por criar transições e animações suaves na tela.
 import toast from 'react-hot-toast'; // Explicação: Importa o sistema de avisos e alertas flutuantes de sucesso ou erro na tela.
@@ -127,7 +127,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
         const comumDocRef = doc(db, 'comuns', userData.comumId); // Explicação: Cria a mira apontando direto e unicamente para o documento da igreja dele.
         unsubs.push(onSnapshot(comumDocRef, (docSnap) => { // Explicação: Abre o canal de escuta apenas para esse documento específico de forma ultra econômica.
           if (!isMounted || !docSnap.exists()) return; // Explicação: Aborta se o documento não existir ou se a tela foi fechada.
-          const comumUnica = { id: docSnap.id, ...docSnap.data(), comum: docSnap.data().comum || "Sem Nome" }; // Explicação: Monta os dados da única igreja dele.
+          const comumUnica = { id: docSnap.id, ...docSnap.data(), comum: docSnap.data().comum || "Sem Nome" }; // Explicação: Monta os dados della única igreja dele.
           setSharedData(prev => ({ ...prev, comunsDaRegional: [comumUnica], cidades: [{ id: comumUnica.cidadeId, nome: comumUnica.cidadeNome || "SUA CIDADE" }] })); // Explicação: Alimenta as opções da tela direto com o dado dele.
           setSelectedComum(comumUnica); // Explicação: Força a tela a já selecionar a igreja dele automaticamente.
           setLoading(false); // Explicação: Desativa o modo de carregamento da tela.
@@ -151,15 +151,15 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
             const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome })); // Explicação: Transforma as cidades em objetos com ID e Nome.
             const filtradas = isComissao ? todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)) : todasCidades.filter(cid => cid.id === userData?.cidadeId); // Explicação: Membros da comissão veem todas em ordem alfabética; gestores de cidade veem apenas a sua cidade.
             
-            setSharedData(prev => ({ ...prev, cidades: filtradas })); // Explicação: Salva a lista de cidades na memória compartilhada da tela.
-            setLoading(false); // Explicação: Finaliza com sucesso o carregamento de dados da tela.
+            setSharedData(prev => ({ ...prev, cidades: filtradas })); // Explicação: Salva a lista de cidades na memória compartilhada della tela.
+            setLoading(false); // Explicação: Finaliza com sucesso o carregamento de dados della tela.
           }));
         }));
       }
     } catch (error) { // Explicação: Captura qualquer erro inesperado de conexão.
       if (isMounted) setLoading(false); // Explicação: Desativa o carregamento mesmo em caso de erro para não travar a tela do usuário.
     }
-    return () => { isMounted = false; unsubs.forEach(unsub => unsub?.()); }; // Explicação: Função de limpeza que desliga todos os canais de banco ao sair da tela, evitando vazamento de memória.
+    return () => { isMounted = false; unsubs.forEach(unsub => unsub?.()); }; // Explicação: Função de limpeza que desliga todos os canais de banco ao sair della tela, evitando vazamento de memória.
   }, [activeRegionalId, isComissao, level]); // Explicação: Gatilhos que disparam este bloco se sofrerem alterações.
 
   useEffect(() => { // Explicação: Monitor responsável por escutar os detalhes profundos da igreja selecionada (Instrumentos e Métodos).
@@ -168,7 +168,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
     
     const comumAindaValida = sharedData.comunsDaRegional.some(c => c.id === comumIdEfetivo); // Explicação: Checa se a igreja selecionada ainda existe e está disponível na lista ativa.
     if (!comumAindaValida && level !== 'gem_local') { // Explicação: Se a igreja sumiu ou ficou inválida e não for um secretário fixo travado.
-        setSelectedComum(null); // Explicação: Limpa a seleção da tela para evitar falhas de dados órfãos.
+        setSelectedComum(null); // Explicação: Limpa a seleção della tela para evitar falhas de dados órfãos.
         return; // Explicação: Cancela o processo.
     }
 
@@ -273,13 +273,13 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
 
       {/* SEÇÃO 3: PAINEL OPERACIONAL LOCAL (Nível Secretário Local / Zeladoria da Comum Ativa) */}
       <div className="space-y-3 pt-1">
-        {selectedComum?.id && sharedData.comunsDaRegional.some(c => c.id === selectedComum.id) ? ( // Explicação: Checagem Crítica de Segurança: Só renderiza as configurações operacionais se houver uma igreja legitimamente selecionada no topo.
+        {comumIdEfetivo && sharedData.comunsDaRegional.some(c => c.id === comumIdEfetivo) ? ( // Explicação: Checagem Crítica de Segurança: Só renderiza as configurações operacionais se houver uma igreja legitimamente selecionada no topo.
           <div className="space-y-2.5 animate-in fade-in slide-in-from-top-3 duration-500"> {/* Explicação: Agrupador das configurações da igreja com animação premium. */}
             <div className="h-px bg-slate-100 mx-1" /> {/* Explicação: Divisor visual estético. */}
             <div className="px-1 leading-none flex flex-col text-left"> {/* Cabeçalho interno informando a manutenção ativa sem cortes de texto. */}
               <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest italic leading-none">Zeladoria Ativa na Comum:</p> 
               <h3 className="text-[13px] font-black text-slate-950 uppercase italic tracking-tight leading-normal mt-1.5 whitespace-normal break-words"> {/* Explicação: Nome exibido por inteiro sem reticências feias, quebrando linha se necessário. */}
-                {selectedComum.comum}
+                {selectedComum?.comum || "IGREJA SELECIONADA"}
               </h3>
             </div>
 
@@ -321,10 +321,10 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
         {activeModal && ( // Explicação: Se houver qualquer string ativa no estado, monta o contêiner de cortina preta de fundo.
           <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-end justify-center z-50 animate-in fade-in duration-200">
             <motion.div
-              initial={{ y: '100%' }} // Explicação: CORREÇÃO: Limpado ruído '' que impedia compilação do Vite.
-              animate={{ y: 0 }} // Explicação: CORREÇÃO: Limpado ruído ''.
-              exit={{ y: '100%' }} // Explicação: CORREÇÃO: Limpado ruído ''.
-              transition={{ type: 'spring', damping: 26, stiffness: 230 }} // Explicação: CORREÇÃO: Limpado ruído '' de transição elástica.
+              initial={{ y: '100%' }} // Explicação: CORREÇÃO: Limpado ruído que impedia compilação do Vite.
+              animate={{ y: 0 }} 
+              exit={{ y: '100%' }} 
+              transition={{ type: 'spring', damping: 26, stiffness: 230 }} 
               className="bg-white rounded-t-[2.5rem] w-full max-w-md h-[93vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden"
             >
               {/* CABEÇALHO GERAL DO MODAL AUTÔNOMO */}
@@ -360,7 +360,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
                 {activeModal === 'users' && <ModuleAccess comumId={comumIdEfetivo} cargos={sharedData.cargos} />}
                 {activeModal === 'church' && <ModuleChurch localData={selectedComum} onUpdate={(updated) => setSelectedComum(updated)} />}
                 
-                {/* 🔌 PLUGUE E AMARRAÇÃO DOS SUBMÓDULOS REAIS DE DESTINO */}
+                {/* 🔌 AMARRAÇÃO CORRETIVA CRÍTICA: Injetando a ID da igreja Comum de forma explícita para destravar os botões visuais internos */}
                 {activeModal === 'ministerio_local' && <ModuleMinistryLocal comumId={comumIdEfetivo} />}
                 {activeModal === 'corpo_orquestral' && <ModuleOrchestraBody comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />}
               </div>

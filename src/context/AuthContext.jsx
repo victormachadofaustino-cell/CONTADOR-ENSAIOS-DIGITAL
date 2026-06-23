@@ -1,160 +1,165 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'; // Explicação: Importa as ferramentas para criar a memória global do aplicativo.
-import { auth, db, doc, onSnapshot, onAuthStateChanged } from '../config/firebase'; // Explicação: Conecta com o login e o banco de dados.
-import { PERMISSIONS_MAP, ROLES, hasPermission } from '../config/permissions'; // Explicação: Importa as regras de quem pode o quê.
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react'; // Explicação: Importa as ferramentas para criar a memória global, escutas e memorização do aplicativo.
+import { auth, db, doc, onSnapshot, onAuthStateChanged } from '../config/firebase'; // Explicação: Conecta com o login e o banco de dados do Firebase.
+import { PERMISSIONS_MAP, ROLES, hasPermission } from '../config/permissions'; // Explicação: Importa as regras e chaves da nossa matriz de portaria de poder.
 
 // Criação do Contexto
-const AuthContext = createContext(); // Explicação: Cria o reservatório onde guardaremos os dados do usuário logado.
+const AuthContext = createContext(); // Explicação: Cria o reservatório mestre onde guardaremos os dados do usuário logado para distribuição.
 
-export const AuthProvider = ({ children }) => { // Explicação: Componente que distribui as informações de login para todo o app.
-  const [user, setUser] = useState(null); // Explicação: Guarda os dados básicos do login (e-mail, uid).
-  const [userData, setUserData] = useState(null); // Explicação: Guarda o perfil completo (igreja, cargo, nível).
-  const [loading, setLoading] = useState(true); // Explicação: Mantém o app em "carregando" até que a identidade seja confirmada.
+export const AuthProvider = ({ children }) => { // Explicação: Componente envolvente que distribui as informações de login para todo o app.
+  const [user, setUser] = useState(null); // Explicação: Guarda os dados brutos e básicos do login de Auth (e-mail, uid).
+  const [rawUserData, setRawUserData] = useState(null); // Explicação: Isola o perfil bruto baixado da nuvem (igreja original, cargo, nível técnico).
+  const [loading, setLoading] = useState(true); // Explicação: Mantém o aplicativo em ponto de espera até que a identidade seja confirmada pelo servidor.
 
-  // ESTADOS DE NAVEGAÇÃO (GPS)
-  const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId')); // Explicação: Lembra a regional selecionada.
-  const [activeCityId, setActiveCityId] = useState(localStorage.getItem('activeCityId')); // Explicação: Lembra a cidade selecionada.
-  const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId')); // Explicação: Lembra a igreja selecionada.
+  // ESTADOS DE NAVEGAÇÃO (GPS DE TELA)
+  const [activeRegionalId, setActiveRegionalId] = useState(localStorage.getItem('activeRegionalId')); // Explicação: Resgata da memória física qual a regional ativa selecionada.
+  const [activeCityId, setActiveCityId] = useState(localStorage.getItem('activeCityId')); // Explicação: Resgata da memória física qual a cidade ativa selecionada.
+  const [activeComumId, setActiveComumId] = useState(localStorage.getItem('activeComumId')); // Explicação: Resgata da memória física qual a igreja comum ativa selecionada.
 
-  useEffect(() => { // Explicação: Monitor principal que roda ao abrir o app.
-    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => { // Explicação: Vigia se o usuário entrou ou saiu.
-      
-      if (currentUser && !currentUser.emailVerified) { // Explicação: Se não confirmou o e-mail, desconecta por segurança.
-        setUser(null);
-        setUserData(null);
-        setLoading(false);
-        return;
+  // MONITOR PRINCIPAL DE IDENTIDADE (RODA UMA ÚNICA VEZ NO BOOT)
+  useEffect(() => { // Explicação: Gatilho persistente ativado na abertura do ecossistema.
+    let unsubSnap = null; // Explicação: Reserva a variável de limpeza para o canal do Firestore.
+
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => { // Explicação: Abre o vigia nativo para checar se o usuário entrou ou saiu do sistema.
+      if (unsubSnap) { // Explicação: Se já existia um canal aberto de escuta de banco anterior.
+        unsubSnap(); // Explicação: Derruba o canal antigo para não duplicar requisições em background.
+        unsubSnap = null; // Explicação: Limpa a referência da memória.
       }
 
-        setUser(currentUser); // Explicação: Salva o usuário autenticado.
+      if (currentUser && !currentUser.emailVerified) { // Explicação: Trava de segurança: Se o e-mail não foi verificado na portaria, barra o acesso.
+        setUser(null); // Explicação: Apaga os dados básicos de Auth.
+        setRawUserData(null); // Explicação: Apaga os dados eclesiásticos.
+        setLoading(false); // Explicação: Libera a tela para o bloco de login agir.
+        return; // Explicação: Aborta o carregamento.
+      }
+
+      setUser(currentUser); // Explicação: Valida e salva o usuário autenticado atual.
       
-      if (currentUser) { // Explicação: Se estiver logado, busca o perfil no banco de dados.
-        try {
-          // --- v10.6: RENOVAÇÃO FORÇADA DE CRACHÁ ---
-          const tokenResult = await currentUser.getIdTokenResult(true);
-          const claims = tokenResult.claims || {};
-
-          // Helper para calcular e injetar as permissões de forma padronizada
-          const processUserData = (sourceData) => {
-            const level = sourceData.accessLevel || ROLES.BASICO;
-            const isOwner = currentUser.email === 'victormachadofaustino@gmail.com';
-
-            // Explicação: Calcula as bandeiras de poder para facilitar a lógica visual.
-            const permissions = {
-              isMaster: level === ROLES.MASTER || isOwner, 
-              isComissao: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO, 
-              isRegionalCidade: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE, 
-              isGemLocal: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE || level === ROLES.GEM, 
-              isBasico: level === ROLES.BASICO,
-              isAdmin: level !== ROLES.BASICO 
-            };
-
-            // GPS REATIVO v10.10: FOCO OBRIGATÓRIO NO CADASTRO SE O PILL ESTIVER VAZIO
-            // Explicação: Se não houver seleção manual, ele trava nos IDs de cadastro (Comum/Cidade/Regional) para não "vazar" ensaios.
-            const validRegionalId = activeRegionalId || sourceData.regionalId || null;
-            const validCityId = activeCityId || sourceData.cidadeId || null;
-            const validComumId = activeComumId || sourceData.comumId || null;
-
-            return {
-              ...sourceData,
-              uid: currentUser.uid,
-              ...permissions,
-              accessLevel: level,
-              activeRegionalId: validRegionalId, 
-              activeCityId: validCityId,
-              activeComumId: validComumId,
-              // Explicação: Função "can" para perguntar à Regra de Ouro se o usuário pode fazer algo.
-              can: (action, targetRole) => hasPermission({ ...sourceData, ...permissions, accessLevel: level }, action, targetRole)
-            };
-          };
+      if (currentUser) { // Explicação: Se houver uma sessão ativa de usuário autenticado.
+        try { // Explicação: Inicia o tratamento seguro de decodificação de crachá eletrônico.
+          const tokenResult = await currentUser.getIdTokenResult(true); // Explicação: RENOVAÇÃO FORÇADA: Baixa o chip do token renovado da nuvem.
+          const claims = tokenResult.claims || {}; // Explicação: Isola os metadados gravados de Custom Claims.
 
           // ESTRATÉGIA CRACHÁ ELETRÔNICO: Se já temos os dados no chip do token, montamos o perfil de graça!
-          if (claims.accessLevel && claims.comumId) {
-            setUserData(processUserData({
-              email: currentUser.email,
-              name: currentUser.displayName || claims.name || '',
-              accessLevel: claims.accessLevel,
-              comumId: claims.comumId,
-              cidadeId: claims.cidadeId,
-              regionalId: claims.regionalId,
-              approved: claims.approved || true,
-              comum: claims.comum || '',
-              role: claims.role || ''
-            }));
-            setLoading(false);
-            return; // Encerra aqui. Economia de cota efetuada com sucesso!
+          if (claims.accessLevel && claims.comumId) { // Explicação: Confere se os dados de cargo estão gravados diretamente no chip do token.
+            setRawUserData({ // Explicação: Injeta os metadados do chip de forma instantânea sem abrir o banco.
+              email: currentUser.email, // Salva o e-mail do operador.
+              name: currentUser.displayName || claims.name || '', // Salva o nome de exibição.
+              accessLevel: claims.accessLevel, // Salva o cargo técnico (ex: gem_local).
+              comumId: claims.comumId, // Salva a igreja comum de origem.
+              cidadeId: claims.cidadeId, // Salva a cidade de origem.
+              regionalId: claims.regionalId, // Salva a regional de origem.
+              approved: claims.approved || true, // Carimba aprovação automática por chip.
+              comum: claims.comum || '', // Salva o nome textual da igreja comuns.
+              role: claims.role || '' // Salva a descrição textual do cargo eclesiástico.
+            }); // Encerra o despejo de dados de chip.
+            setLoading(false); // Explicação: Destrava a tela para o usuário trabalhar imediatamente.
+            return; // Explicação: Missão Cumprida: Economia de cota efetuada com sucesso de forma síncrona!
           }
 
           // PLANO DE CONTINGÊNCIA: Se o chip do crachá estiver vazio (ex: usuário novo), escuta o Firestore
-          // Explicação: Abre um canal em tempo real com o documento do usuário na pasta /users/.
-          const unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data(); // Explicação: Pega os dados de cargo, igreja e nível.
-              setUserData(processUserData(data));
-              setLoading(false); // Explicação: Só libera o app quando o perfil real for carregado.
-            } else {
-              setLoading(false); // Explicação: Libera se não houver perfil.
-            }
-          }, (err) => {
-            console.error("AuthContext: Erro ao ler perfil:", err);
-            setLoading(false);
-          });
+          unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => { // Explicação: Liga um canal reativo focado na ficha cadastral deste usuário específico.
+            if (docSnap.exists()) { // Explicação: Se a ficha cadastral do obreiro existir na pasta /users/.
+              const data = docSnap.data(); // Explicação: Extrai as propriedades de cargo gravadas na nuvem.
+              setRawUserData(data); // Explicação: Despeja na memória bruta de controle do app.
+            } // Explicação: Fim da checagem de existência.
+            setLoading(false); // Explicação: Libera a interface após concluir o carregamento de segurança.
+          }, (err) => { // Explicação: Captura erros de rede de forma controlada.
+            console.error("AuthContext: Erro ao ler perfil Firestore:", err); // Avisa os logs do console.
+            setLoading(false); // Libera o app para tratamento de erro.
+          }); // Encerra o ouvinte reativo de contingência.
 
-          return () => unsubSnap(); // Explicação: Fecha a conexão ao sair.
-        } catch (err) {
-          console.error("AuthContext: Erro na renovação de identidade:", err);
-          setLoading(false);
-        }
-      } else {
-        // --- LIMPEZA AO SAIR ---
-        setUserData(null);
-        localStorage.clear(); // Explicação: Limpa as memórias de GPS ao fazer logout.
-        setLoading(false);
+        } catch (err) { // Explicação: Trata falhas severas de rede no download do token.
+          console.error("AuthContext: Erro na renovação de identidade:", err); // Avisa os logs.
+          setLoading(false); // Libera a interface.
+        } // Encerra o bloco de tratamento.
+      } else { // Explicação: Se o usuário efetuou logout voluntário ou foi desconectado pelo servidor.
+        setRawUserData(null); // Explicação: Apaga a ficha cadastral de obreiro imediatamente da memória.
+        setLoading(false); // Explicação: Desativa travas de carregamento.
       }
     });
 
-    return () => unsubAuth(); // Explicação: Limpa o vigia de login.
-  }, [activeRegionalId, activeCityId, activeComumId]); 
+    return () => { // Explicação: Retorno de limpeza e desmontagem de componente.
+      unsubAuth(); // Explicação: Desconecta o ouvinte do Firebase Auth.
+      if (unsubSnap) unsubSnap(); // Explicação: Desconecta o ouvinte do Firestore se ele estiver ativo.
+    }; // Explicação: Encerra bloco de limpeza.
+  }, []); // 🚀 BLINDAGEM DE COTA: Matriz vazia garante que essa engrenagem de rede rode apenas UMA vez no boot do app.
 
-  // FUNÇÕES DO GPS v10.7: Ajustado para limpeza em cascata.
-  const setContext = (type, id) => { // Explicação: Muda a igreja ou cidade que o gestor está vendo.
-    if (type === 'regional') {
-      setActiveRegionalId(id);
-      id ? localStorage.setItem('activeRegionalId', id) : localStorage.removeItem('activeRegionalId');
-      setActiveCityId(null); 
-      localStorage.removeItem('activeCityId');
-      setActiveComumId(null); 
-      localStorage.removeItem('activeComumId');
-    }
-    if (type === 'city') {
-      setActiveCityId(id);
-      id ? localStorage.setItem('activeCityId', id) : localStorage.removeItem('activeCityId');
-      setActiveComumId(null); 
-      localStorage.removeItem('activeComumId');
-    }
-    if (type === 'comum') {
-      setActiveComumId(id);
-      id ? localStorage.setItem('activeComumId', id) : localStorage.removeItem('activeComumId');
-    }
+  // COBRANÇA CUSTO ZERO: INTELIGÊNCIA DINÂMICA REATIVA VIA MEMÓRIA RAM DO SMARTPHONE
+  const userData = useMemo(() => { // Explicação: Processa permissões e mescla o GPS sem gerar novas leituras de rede ou banco.
+    if (!rawUserData) return null; // Explicação: Se não há perfil bruto logado, retorna nulo.
+
+    const level = rawUserData.accessLevel || ROLES.BASICO; // Explicação: Extrai o cargo técnico do usuário ou rebaixa para básico de segurança.
+    const isOwner = user?.email === 'victormachadofaustino@gmail.com'; // Explicação: Identifica de forma direta se é o e-mail do Victor.
+
+    // Explicação: Calcula em memória as bandeiras binárias de privilégios hierárquicos para o front-end ler em microsegundos.
+    const permissions = {
+      isMaster: level === ROLES.MASTER || isOwner, // Avalia se é Master Supremo.
+      isComissao: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO, // Avalia se pertence à comissão.
+      isRegionalCidade: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE, // Avalia se administra cidade.
+      isGemLocal: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE || level === level === ROLES.GEM || rawUserData.isGemLocal || (rawUserData.accessLevel === 'gem_local'), // 🚀 ANTIDOTO DE OPACIDADE: Força o reconhecimento estrito do cargo do GEM Local de todas as formas em cache.
+      isBasico: level === ROLES.BASICO, // Avalia se é básico.
+      isAdmin: level !== ROLES.BASICO // Avalia se tem poder administrativo de caneta.
+    };
+
+    // GPS REATIVO v10.10: FOCO OBRIGATÓRIO NO CADASTRO SE O SMART-PILL ESTIVER VAZIO
+    // Explicação: Se o usuário não selecionou nenhuma igreja comuns manualmente, trava nos dados originais dele para evitar vazamento.
+    const validRegionalId = activeRegionalId || rawUserData.regionalId || null; // Cruza regional.
+    const validCityId = activeCityId || rawUserData.cidadeId || null; // Cruza cidade.
+    const validComumId = activeComumId || rawUserData.comumId || null; // Cruza igreja comum.
+
+    return { // Explicação: Cospe o objeto de usuário completo unificado processado em cache.
+      ...rawUserData, // Copia a ficha cadastral original.
+      uid: user?.uid, // Injeta o identificador único.
+      ...permissions, // Injeta o lote booleano de poder calculado.
+      accessLevel: level, // Injeta o cargo limpo padronizado.
+      activeRegionalId: validRegionalId, // Injeta o filtro ativo de regional.
+      activeCityId: validCityId, // Injeta o filtro ativo de cidade.
+      activeComumId: validComumId, // Injeta o filtro ativo de igreja comum.
+      // Explicação: Método reativo direto injetado na alma do perfil para checagem rápida de ações.
+      can: (action, contextRole) => hasPermission({ ...rawUserData, ...permissions, accessLevel: level }, action, contextRole)
+    };
+  }, [rawUserData, user, activeRegionalId, activeCityId, activeComumId]); // Explicação: Só recalcula a matemática se o perfil mudar ou ele tocar no filtro GPS do cabeçalho.
+
+  // FUNÇÕES DO GPS v10.7: Ajustado para limpeza higiênica de filtros em cascata vertical.
+  const setContext = (type, id) => { // Explicação: Método acionado quando o operador altera a localidade no topo do app.
+    if (type === 'regional') { // Explicação: Se ele alterou a Regional mestre.
+      setActiveRegionalId(id); // Altera o estado na RAM do smartphone.
+      id ? localStorage.setItem('activeRegionalId', id) : localStorage.removeItem('activeRegionalId'); // Sincroniza a memória física flash.
+      setActiveCityId(null); // Explicação: EFEITO CASCATA: Limpa a cidade selecionada anteriormente para não gerar buscas órfãs.
+      localStorage.removeItem('activeCityId'); // Expulsa da memória flash.
+      setActiveComumId(null); // Explicação: EFEITO CASCATA: Limpa a igreja comum anterior para blindar o contador.
+      localStorage.removeItem('activeComumId'); // Expulsa da memória flash.
+    } // Fim do bloco regional.
+    if (type === 'city') { // Explicação: Se ele alterou a Cidade.
+      setActiveCityId(id); // Atualiza na RAM.
+      id ? localStorage.setItem('activeCityId', id) : localStorage.removeItem('activeCityId'); // Sincroniza a memória flash.
+      setActiveComumId(null); // Explicação: EFEITO CASCATA: Limpa a igreja comum para obrigar o operador a escolher uma nova comum legítima daquela cidade.
+      localStorage.removeItem('activeComumId'); // Expulsa da memória flash.
+    } // Fim do bloco de cidade.
+    if (type === 'comum') { // Explicação: Se ele focou em uma Igreja Comum específica.
+      setActiveComumId(id); // Atualiza na RAM.
+      id ? localStorage.setItem('activeComumId', id) : localStorage.removeItem('activeComumId'); // Sincroniza a memória física flash.
+    } // Fim do bloco de comum.
+  }; // Explicação: Encerra o gerenciador de GPS.
+
+  const value = { // Explicação: Objeto unificado que empacota os métodos expostos para o front-end.
+    user, // Entrega os dados de Auth.
+    userData, // Entrega o perfil com claims, permissões e filtros calculados a custo zero de banco.
+    loading, // Entrega o estado de carregamento de segurança.
+    // Explicação: Usuário só navega se estiver autenticado no Auth E tiver perfil aprovado (ou for Master Supremo).
+    isAuthenticated: !!user && user.emailVerified && (userData?.approved || userData?.isMaster), // Regra de portaria de roteamento.
+    setContext, // Entrega a chave de mudança de GPS territorial.
   };
 
-  const value = {
-    user,
-    userData,
-    loading,
-    // Explicação: Autenticado se tiver e-mail verificado E perfil aprovado.
-    isAuthenticated: !!user && user.emailVerified && (userData?.approved || userData?.isMaster),
-    setContext,
-  };
+  return ( // Explicação: Renderiza o encapsulador global provendo os estados para os arquivos filhos.
+    <AuthContext.Provider value={value}> {/* Fornece o reservatório reativo blindado. */}
+      {!loading && children} {/* Explicação: Só renderiza as telas do aplicativo se as engrenagens de segurança terminarem o carregamento. */}
+    </AuthContext.Provider> 
+  ); // Explicação: Encerra o retorno de interface.
+}; // Explicação: Encerra o AuthProvider.
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children} 
-    </AuthContext.Provider>
-  );
-};
-
-export const useAuth = () => { // Explicação: Gancho para usar os dados em outros arquivos.
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth deve ser usado dentro de um AuthProvider');
-  return context;
-};
+export const useAuth = () => { // Explicação: Gancho (Hook) customizado para as telas chamarem as credenciais com uma linha de código.
+  const context = useContext(AuthContext); // Explicação: Captura as informações de dentro do reservatório AuthContext.
+  if (!context) throw new Error('useAuth deve ser usado dentro de um AuthProvider'); // Explicação: Trava de desenvolvimento contra chamadas órfãs.
+  return context; // Explicação: Retorna os dados prontos para consumo.
+}; // Explicação: Encerra a exportação do useAuth.

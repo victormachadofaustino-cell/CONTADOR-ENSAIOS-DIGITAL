@@ -1,6 +1,6 @@
 {
-  "short_name": "Ensaio Local",
-  "name": "Ensaio Local CCB",
+  "short_name": "Cont. Ensaios CCB",
+  "name": "Contador de Ensaios CCB",
   "description": "Contagem e gestão de ensaios musicais",
   "start_url": "/",
   "display": "standalone",

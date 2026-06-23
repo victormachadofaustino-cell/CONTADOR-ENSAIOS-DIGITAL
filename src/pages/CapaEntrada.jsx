@@ -27,7 +27,7 @@ const CapaEntrada = ({ aoEntrar }) => {
         <div className="flex flex-col items-center gap-1">
           <div className="h-[2px] w-12 bg-slate-950 mb-4 opacity-20"></div>
           <span className="text-slate-700 text-[14px] font-black uppercase tracking-[0.5em]">
-            Sistema Regional
+            Sistema Regional CCB
           </span>
         </div>
       </div>
@@ -45,7 +45,7 @@ const CapaEntrada = ({ aoEntrar }) => {
 
         <div className="space-y-1">
           <p className="text-white/30 text-[10px] font-black uppercase tracking-[0.5em]">
-            Secretaria da Música Regional
+            Secretaria da Música Regional de Jundiaí
           </p>
         </div>
       </div>

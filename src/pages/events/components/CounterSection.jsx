@@ -5,7 +5,7 @@ import InstrumentCard from './InstrumentCard'; // Explicação: Importa o compon
 
 /**
  * Componente que agrupa instrumentos por seção (Naipe).
- * v2.8 - FIXED ERGONOMIC LAYOUT WITH ISOLATED COMMENTS
+ * v3.0 - STABILIZED PERMISSION FLOW WITH UNIFIED HOUSE LIBERATION
  */
 const CounterSection = ({ 
   sec, // Explicação: Nome da seção (ex: CORDAS).
@@ -21,7 +21,8 @@ const CounterSection = ({
   onBlur, // Explicação: Repassa o sinal de "usuário terminou de digitar".
   ataData, // Explicação: Recebe os dados da ata para saber se o evento é Regional ou Local.
   userData, // Explicação: Recebe os dados do usuário para checar o nível de acesso (GEM/Comissão).
-  onOpenChecklistNominal // Explicação: NOVA CONEXÃO: Recebe o gatilho da mãe para abrir a listagem de presença do instrumento.
+  onOpenChecklistNominal, // Explicação: NOVA CONEXÃO: Recebe o gatilho da mãe para abrir a listagem de presença do instrumento.
+  comumId // Explicação: AMARRAÇÃO CIRÚRGICA: Recebe a ID da localidade ativa do ensaio repassada pela página mãe superior.
 }) => { // Explicação: Inicia a estrutura da seção de contagem.
   // JUSTIFICATIVA: Estado local para garantir Accordion independente por dispositivo
   const [isOpen, setIsOpen] = useState(false); // Explicação: Controla se a sanfona do grupo está aberta ou fechada no celular.
@@ -70,21 +71,22 @@ const CounterSection = ({
   }; // Explicação: Fim da função handleHeaderClick.
 
   return ( // Explicação: Desenha a caixa da seção na tela.
-    <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing}`}> {/* Explicação: Container prêmio com cantos arredondados, fundo branco e espaçamento ergonômico. */}
-      <div className="w-full p-5 flex justify-between items-center transition-all"> {/* Explicação: Barra do cabeçalho alinhando títulos e botões horizontalmente com preenchimento interno confortável. */}
+    <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing} text-left`}> {/* Explicação: Container prêmio com cantos arredondados, fundo branco e espaçamento ergonômico. */}
+      <div className="w-full p-5 flex justify-between items-center transition-all text-left"> {/* Explicação: Barra do cabeçalho alinhando títulos e botões horizontalmente com preenchimento interno confortável. */}
         
         {/* LADO ESQUERDO: Título e Identificação Nominal */}
         <button 
+          type="button" // Explicação: Declara explicitamente o tipo como botão clássico de interface.
           onClick={handleHeaderClick} // Explicação: Dispara a abertura ou recolhimento da sanfona ao clicar.
-          className="flex flex-col items-start text-left leading-none gap-1 flex-1 min-w-0" // Explicação: Alinha os textos à esquerda empilhados sem espaçamento de linha bruto.
+          className="flex flex-col items-start text-left leading-none gap-1 flex-1 min-w-0 cursor-pointer outline-none" // Explicação: Alinha os textos à esquerda empilhados sem espaçamento de linha bruto.
         >
-          <span className="font-[900] uppercase italic text-[12px] text-slate-950 tracking-tight truncate w-full"> {/* Explicação: Estiliza o nome do naipe em destaque preto negrito de alta densidade visual. */}
+          <span className="font-[900] uppercase italic text-[12px] text-slate-950 tracking-tight truncate w-full text-left"> {/* Explicação: Estiliza o nome do naipe em destaque preto negrito de alta densidade visual. */}
             {sec} {/* Explicação: Renderiza o nome textual da seção (ex: 'MADEIRAS'). */}
           </span>
           {hasResponsible && ( // Explicação: Mostra quem está cuidando desta contagem no momento se houver zelador.
-            <div className="flex items-center gap-1"> {/* Explicação: Agrupa horizontalmente o ponto de pulsação e o texto. */}
+            <div className="flex items-center gap-1 text-left"> {/* Explicação: Agrupa horizontalmente o ponto de pulsação e o texto. */}
                <div className={`w-1 h-1 rounded-full ${isOwner ? 'bg-blue-500 animate-pulse' : 'bg-slate-300'}`} /> {/* Explicação: Desenha uma bolinha azul piscando se a zeladoria for sua, ou cinza fosca se for de outro colaborador. */}
-               <span className={`text-[7px] font-black uppercase italic tracking-widest ${isOwner ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Formata a etiqueta de identificação em letras minúsculas espaçadas de estilo técnico. */}
+               <span className={`text-[7px] font-black uppercase italic tracking-widest text-left ${isOwner ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Formata a etiqueta de identificação em letras minúsculas espaçadas de estilo técnico. */}
                 {isOwner ? 'Sua Zeladoria' : `Resp: ${responsibleName}`} {/* Explicação: Imprime de forma amigável a posse da aba de contagem. */}
               </span>
             </div>
@@ -92,7 +94,7 @@ const CounterSection = ({
         </button>
 
         {/* CENTRO/DIREITA: Ação de Assumir e Totais */}
-        <div className="flex items-center gap-3"> {/* Explicação: Agrupa a pílula de posse e os números totais na extrema direita do cabeçalho. */}
+        <div className="flex items-center gap-3 shrink-0"> {/* Explicação: Agrupa a pílula de posse e os números totais na extrema direita do cabeçalho. */}
           
           {/* BOTÃO DE POSSE (Ajustado v2.6.2: Só aparece para o GEM se o evento for LOCAL) */}
           {canChangeOwnership && ( // Explicação: Condicional que avalia as regras hierárquicas de privilégio regional antes de mostrar o botão.
@@ -103,7 +105,7 @@ const CounterSection = ({
                 e.stopPropagation(); // Explicação: Bloqueia o efeito cascata impedindo que o clique abra a sanfona por acidente.
                 handleToggleGroup(sec); // Explicação: Dispara a função global de assumir ou transferir a zeladoria do naipe.
               }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95 border ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95 border cursor-pointer ${
                 isOwner 
                   ? 'bg-blue-600 text-white border-blue-700 shadow-md shadow-blue-100' 
                   : hasResponsible 
@@ -120,22 +122,23 @@ const CounterSection = ({
 
           {/* BADGE DE TOTALIZAÇÃO E CONTROLE DE ABERTURA */}
           <button 
+            type="button" // Explicação: Marca o elemento como botão nativo de interface.
             onClick={handleHeaderClick} // Explicação: Aciona a abertura ao clicar no quadrado numérico.
-            className="flex items-center gap-2" // Explicação: Alinha o quadrado preto e a seta cinza lado a lado.
+            className="flex items-center gap-2 cursor-pointer outline-none" // Explicação: Alinha o quadrado preto e a seta cinza lado a lado.
           >
             <div className="bg-slate-950 text-white min-w-[38px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-sm border border-white/10 px-2 leading-none"> {/* Explicação: Quadrado de alta densidade preto prêmio contendo o número total somado em tempo real. */}
               {sectionTotal} {/* Explicação: Exibe a soma real e enxuta processada no topo pelo nosso reduce. */}
             </div>
             <ChevronDown 
               size={16} 
-              className={`text-slate-300 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} // Explicação: Efeito sofisticado de rotação de 180 graus da seta se a sanfona estiver em modo aberto.
+              className={`text-slate-300 transition-transform duration-500 shrink-0 ${isOpen ? 'rotate-180' : ''}`} // Explicação: Efeito sofisticado de rotação de 180 graus da seta se a sanfona estiver em modo aberto.
             />
           </button>
         </div>
       </div>
 
       {isOpen && ( // Explicação: Se a sanfona estiver aberta, desenha os instrumentos um abaixo do outro.
-        <div className="px-4 pb-6 space-y-3 animate-in slide-in-from-top-2 duration-300"> {/* Explicação: Container interno dos cartões com animação CSS suave de descida e surgimento. */}
+        <div className="px-4 pb-6 space-y-3 animate-in slide-in-from-top-2 duration-300 text-left"> {/* Explicação: Container interno dos cartões com animação CSS suave de descida e surgimento. */}
           {allInstruments // Explicação: Pega a listagem unificada de orquestra organizada e filtra pelo naipe atual.
             .filter(i => (i.section || "GERAL").toUpperCase() === sec) // Explicação: Garante o agrupamento correto na visualização.
             .map(inst => { // Explicação: Varre cada instrumento pertencente gerando o cartão de contagem na tela.
@@ -148,13 +151,16 @@ const CounterSection = ({
                 responsibleName: responsibleName // Vincula o nome do dono para exibição interna.
               };
 
+              // 🚀 GARGALO DE CONTROLE VISUAL RESOLVIDO: Inverte o motor de verificação para libertar e acender os botões.
+              const deEdicaoTrancada = !isEditingEnabled(sec, inst.id); // Explicação: Aciona a checagem reativa unificada da mãe passando a rota de identificação mapeada.
+
               return ( // Explicação: Renderiza o cartão físico do instrumento processado.
                 <InstrumentCard 
                   key={inst.id} // Explicação: Chave identificadora única exigida pelo React para controle de renderização rápida.
                   inst={inst} // Explicação: Passa os dados de cadastro e nome do instrumento.
                   data={instrumentData} // Explicação: Passa o pacote numérico enxuto estruturado por nós.
                   onUpdate={(id, f, v) => handleUpdateInstrument(id, f, v, sec)} // Explicação: Aciona a função de clique repassando as coordenadas do naipe.
-                  isClosed={!isEditingEnabled(sec, inst.id)} // Explicação: ADEQUAÇÃO LEAN: Protege a trava de edição repassando diretamente a propriedade do ID estável.
+                  isClosed={deEdicaoTrancada} // 🚀 ALINHAMENTO DE FIÇÃO: O cartão agora obedece rigorosamente ao motor central reativo, acendendo os botões para GEM/Básico.
                   onToggleOwnership={() => handleToggleGroup(sec)} // Explicação: Atalho interno para disparar troca de zeladoria.
                   isRegional={isRegionalEvent} // Explicação: Repassa a flag se o evento ativo é regional ou local.
                   userData={{uid: myUID}} // Explicação: Entrega as credenciais do usuário para o cartão.
@@ -163,6 +169,7 @@ const CounterSection = ({
                   onFocus={onFocus} // Repassa o gatilho de início de edição de teclado.
                   onBlur={onBlur} // Repassa o gatilho de fim de digitação.
                   onOpenChecklistNominal={onOpenChecklistNominal} // Explicação: NOVO PLUGUE: Repassa o método reativo para o InstrumentCard desenhar o atalho da chamada nominal.
+                  comumId={comumId} // Explicação: PLUGUE CONTEXTUAL: Repassa a ID da igreja comuns ativa de forma direta para o InstrumentCard validar o poder do GEM Local.
                 />
               ); // Explicação: Fim da renderização do InstrumentCard.
             })} {/* Explicação: Fim do mapeamento de instrumentos. */}
@@ -170,11 +177,12 @@ const CounterSection = ({
           {/* BOTÃO ADICIONAR EXTRA: Só aparece se a edição estiver liberada e não for seção protegida */}
           {isEditingEnabled(sec) && !isProtectedSection && ( // Explicação: Valida permissões de escrita e veta a exibição se for Coral ou Órgão.
             <button
+              type="button" // Explicação: Define o elemento como botão de clique comum.
               onClick={() => onAddExtra(sec)} // Explicação: Abre o modal de inclusão de instrumento extra passando o naipe atual.
-              className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[1.8rem] flex items-center justify-center gap-2 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all active:scale-95" // Explicação: Botão ergonômico com bordas tracejadas simulando cupom destacável, ideal para interações mobile.
+              className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[1.8rem] flex items-center justify-center gap-2 text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all active:scale-95 cursor-pointer text-center" // Explicação: Botão ergonômico com bordas tracejadas simulando cupom destacável, ideal para interações mobile.
             >
               <PlusCircle size={16} /> {/* Explicação: Ícone circular de sinal de mais. */}
-              <span className="text-[9px] font-black uppercase italic tracking-widest">Adicionar Extra em {sec}</span> {/* Texto instrucional em caixa alta estilizada. */}
+              <span className="w-full text-center text-[9px] font-black uppercase italic tracking-widest">Adicionar Extra em {sec}</span> {/* Texto instrucional em caixa alta estilizada. */}
             </button>
           )}
         </div>
@@ -183,4 +191,4 @@ const CounterSection = ({
   );
 };
 
-export default CounterSection; // Explicação: Exporta o componente para o sistema principal.
+export default CounterSection;

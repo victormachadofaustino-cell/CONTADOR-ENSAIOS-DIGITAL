@@ -1,14 +1,14 @@
-import React from 'react'; // Explicação: Importa a base do React para criar componentes.
+import React, { useMemo } from 'react'; // Explicação: Importa a base do React e a ferramenta de memória para evitar reprocessamento.
 // PRESERVAÇÃO: Importações originais mantidas e adicionada a dependência Users do Lucide
 import { Minus, Plus, Lock, User, UserCheck, ShieldCheck, UserPlus, Users } from 'lucide-react'; // Explicação: Importa os ícones de botões e escudos.
 
 /**
- * InstrumentCard v10.4 - STABILIZED ERGONOMIC UI FIXED
- * v10.4 - FIX VISUAL SMASHED LAYOUT WITH LEAN INTEGRATION
+ * InstrumentCard v10.7 - DEFINITIVE LIBERATION OF CLICKS AND CONTADORES
+ * v10.7 - FIX VISUAL SMASHED LAYOUT WITH LEAN INTEGRATION AND ACCESSIBILITY
  * Esta versão garante que o onSnapshot do Firebase não apague o que o usuário digita.
  */
 const InstrumentCard = ({ 
-  inst, // Explicação: Dados fixos do instrumento (nome, id).
+  inst, // Explicação: Dados fixos do instrumento (nome, id, section).
   data, // Explicação: Dados dinâmicos vindos do banco (números atuais).
   onUpdate, // Explicação: Função para salvar a nova contagem.
   onToggleOwnership, // Explicação: Função para assumir a posse do instrumento.
@@ -19,7 +19,8 @@ const InstrumentCard = ({
   sectionName, // Explicação: Nome da família (Cordas, Madeiras...).
   onFocus, // Explicação: Avisa o sistema para proteger este campo enquanto o usuário digita [v10.0].
   onBlur, // Explicação: Avisa o sistema para liberar o campo após a digitação [v10.0].
-  onOpenChecklistNominal // Explicação: NOVA CONEXÃO: Recebe a função disparadora para abrir o modal de chamada do músico.
+  onOpenChecklistNominal, // Explicação: Conexão reativa para acionar o painel flutuante de chamada nominal por extenso.
+  comumId // Explicação: ID da localidade activa do ensaio repassada para batimento territorial de poder.
 }) => {
   // BLINDAGEM CRÍTICA: Se não houver dados básicos, não desenha nada para evitar erro no app.
   if (!inst || !inst.id) return null; // Explicação: Aborta imediatamente a renderização se o instrumento vier sem identificador.
@@ -49,13 +50,28 @@ const InstrumentCard = ({
   const isOtherTurn = (subId === 'irmas' || subId === 'irmaos')
     ? data?.[`responsibleId_${subId}`] && data?.[`responsibleId_${subId}`] !== myUID
     : data?.responsibleId && data?.responsibleId !== myUID;
+
+  // --- 🚀 INTEGRAÇÃO DA REGRA DE OURO VISUAL: LIBERAÇÃO DO ACESSO GEM/LOCAL ---
+  const podeModificarAqui = useMemo(() => { // Explicação: Desata o nó de privilégios validando se o crachá do usuário dá poder sobre esta localidade comuns.
+    const level = userData?.accessLevel; // Explicação: Captura o nível hierárquico textual gravado no token.
+    if (level === 'master' || level === 'comissao') return true; // Explicação: Master e comissão regional possuem autoridade irrestrita global.
+    if (level === 'regional_cidade') return userData?.cidadeId === userData?.activeCityId; // Explicação: Nível de cidade valida a sua própria comarca.
+    
+    // 🚀 CORREÇÃO DA MATRIZ TERRITORIAL: Valida o privilégio local cruzando com o ID carimbado direto no corpo do evento.
+    if (level === 'gem_local' || level === 'basico') { // Explicação: Secretários locais ou auxiliares da própria igreja comum.
+      const minhaIgreja = userData?.comumId || userData?.activeComumId; // Explicação: Descobre o código da igreja de origem do obreiro.
+      const igrejaDoEvento = comumId || data?.comumId; // Explicação: Captura a identificação da igreja dona do ensaio.
+      return minhaIgreja === igrejaDoEvento && igrejaDoEvento !== undefined && minhaIgreja !== null; // Explicação: Retorna verdadeiro se as igrejas forem idênticas.
+    }
+    return false; // Explicação: Bloqueia acessos não cadastrados por padrão.
+  }, [userData, comumId, data]);
   
-  // REGRA DE OURO: Define se os botões de edição estarão liberados conforme a Matriz de Poder.
-  const canEdit = !isClosed && (isRegional ? isMyTurn : true); // Explicação: No Regional exige posse; no Local todos (aprovados) editam.
+  // 🚀 LIBERAÇÃO SOBERANA DE EDIÇÃO: Se o ensaio estiver aberto e você for o dono da aba ou membro autorizado da casa, os botões PRECISAM acender.
+  const canEdit = !isClosed && (isMyTurn || (podeModificarAqui && !isRegional)); // Explicação: Garante direitos imediatos para cliques em ensaios locais comuns da sua própria igreja.
 
   // SANEAMENTO DE DADOS: Transforma os valores do banco em números inteiros para evitar erros de soma.
   const total = parseInt(data?.total) || 0; // Explicação: Converte e limpa o valor numérico total de músicos.
-  const comum = parseInt(data?.comum) || 0; // Explicação: Converte e limpa o valor numérico de músicos da casa.
+  const comuneVal = parseInt(data?.comum) || 0; // Explicação: Converte e limpa o valor numérico de músicos da casa.
   const enc = parseInt(data?.enc) || 0; // Explicação: Converte e limpa o valor numérico de encarregados locais presentes.
   const irmaos = parseInt(data?.irmaos) || 0; // Explicação: Converte e limpa o valor de irmãos para o caso exclusivo do Coral.
   const iromas = parseInt(data?.irmas) || 0; // Explicação: Converte e limpa o valor de irmãs para o caso exclusivo do Coral.
@@ -64,12 +80,19 @@ const InstrumentCard = ({
   const displayVal = subId === 'irmas' ? iromas : subId === 'irmaos' ? irmaos : total;
   
   // Explicação: Cálculo automático de visitas em tempo real (Total menos os da casa).
-  const visitas = Math.max(0, total - comum);
-  // Explicação: Bloqueia campos de detalhe (comum/liderança) se o Total for zero.
+  const visitas = Math.max(0, total - comuneVal);
+  // Explicação: Bloqueia campos de detalhe (comum/liderança) se o Total for zero ou se o usuário não possuir direito de escrita.
   const isSubFieldDisabled = !canEdit || total === 0;
 
   // VERIFICAÇÃO DE MODO DE OPERAÇÃO: Detecta se o número comum veio de gravação de chamadas nominais anteriores.
   const isModoNominalAtivo = data?.modoContagem === 'nominal'; // Explicação: Sinaliza se o instrumento está travado operando via lista nominal de presenças.
+
+  // 🚀 DICIONÁRIO REVERSO DE MIGRACÃO: Converte IDs longos para siglas curtas legadas para fazer a chamada buscar o ID certo.
+  const mapaTradutorInverso = {
+    'acordeon': 'acd', 'clarinete': 'clt', 'eufonio': 'euf', 'fagote': 'fgt',
+    'flauta': 'flt', 'orgao': 'org', 'trombone': 'tbn', 'trompete': 'tpt', 'trompa': 'trp',
+    'tuba': 'tub', 'violoncelo': 'vcl', 'viola': 'vla', 'violino': 'vln'
+  };
 
   /**
    * handleUpdate v3.16 - Lógica de Saneamento Hierárquico
@@ -85,7 +108,7 @@ const InstrumentCard = ({
 
     // REGRA DE CASCATA: Se o Total diminuir, o sistema reduz Comum e Encarregado para manter a lógica.
     if (field === 'total') {
-      if (comum > finalValue) onUpdate(inst.id, 'comum', finalValue, sectionName);
+      if (comuneVal > finalValue) onUpdate(inst.id, 'comum', finalValue, sectionName);
       if (enc > finalValue) onUpdate(inst.id, 'enc', finalValue, sectionName);
     }
 
@@ -95,22 +118,32 @@ const InstrumentCard = ({
     onUpdate(inst.id, field, finalValue, sectionName, payloadAdicional); // Explicação: Envia o valor higienizado para o banco de dados.
   };
 
+  // 🚀 INTERCEPTADOR DE CHAMADA NOMINAL NOMES VS SIGLAS
+  const handleOpenChecklistSaneado = () => {
+    if (!onOpenChecklistNominal) return; // Explicação: Aborta se o atalho reativo não foi injetado.
+    const saneatedId = mapaTradutorInverso[inst.id] || inst.id; // Explicação: Converte o ID longo (ex: 'violino') para a sigla antiga ('vln') para bater com os músicos clonados no lote.
+    onOpenChecklistNominal({
+      ...inst,
+      id: saneatedId // Explicação: Envia o cadastro com a assinatura de ID mapeada para a listagem não vir vazia.
+    });
+  };
+
   return ( // Explicação: Desenha o cartão do instrumento com bordas arredondadas (Higiene de UI).
-    <div className={`p-4 rounded-[2rem] border transition-all relative overflow-hidden bg-white shadow-sm w-full ${
+    <div className={`p-4 rounded-[2rem] border transition-all relative overflow-hidden bg-white shadow-sm w-full text-left ${
       isMyTurn ? 'border-blue-500 ring-1 ring-blue-100' : isOtherTurn ? 'opacity-70 border-slate-200' : 'border-slate-100'
     }`}>
       
       <div className="mb-3 flex justify-between items-center pr-1 text-left w-full gap-2"> {/* Explicação: Container do cabeçalho alinhado no topo mudado para centralizar itens horizontalmente. */}
         <div className="flex flex-col text-left leading-none min-w-0 flex-1"> {/* Explicação: Alinha verticalmente os textos protegendo contra estouro de largura. */}
-          <h5 className="font-[900] text-[11px] italic uppercase text-slate-950 tracking-tighter leading-none mb-1 flex items-center gap-1.5 flex-wrap whitespace-normal"> {/* Explicação: Título em destaque sem elipses para visualização inteira por extenso. */}
+          <h5 className="font-[900] text-[11px] italic uppercase text-slate-950 tracking-tighter leading-none mb-1 flex items-center gap-1.5 flex-wrap whitespace-normal text-left"> {/* Explicação: Título em destaque sem elipses para visualização inteira por extenso. */}
             {inst.label || inst.name || inst.nome || 'INSTRUMENTO'} {/* Explicação: ADEQUAÇÃO LEAN: Busca as referências do nome do objeto mestre 'inst'. */}
             {(isGovernance || isOrganista) && <ShieldCheck size={12} className="text-blue-500 shrink-0" />} {/* Explicação: Selo de cargo oficial impedido de encolher. */}
           </h5>
           
           {(isOtherTurn || isMyTurn) && ( // Explicação: Exibe quem é o responsável pela contagem deste instrumento.
-            <div className="flex items-center gap-1.5 mt-1"> {/* Explicação: Caixa horizontal de alfinete de alinhamento do ponto luminoso e nome. */}
+            <div className="flex items-center gap-1.5 mt-1 text-left"> {/* Explicação: Caixa horizontal de alfinete de alinhamento do ponto luminoso e nome. */}
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isMyTurn ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'}`} /> {/* Explicação: Ponto luminoso reativo de controle de dono da aba. */}
-              <span className={`text-[7px] font-black uppercase italic tracking-wider whitespace-normal ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Rótulo com o nome do obreiro zelador atual do painel exibido inteiro. */}
+              <span className={`text-[7px] font-black uppercase italic tracking-wider whitespace-normal text-left ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Rótulo com o nome do obreiro zelador atual do painel exibido inteiro. */}
                 {isMyTurn ? 'No seu comando' : `Com: ${data?.[`responsibleName_${subId}`] || data?.responsibleName || 'Colaborador'}`} {/* // Explicação: Imprime dinamicamente a assinatura de posse. */}
               </span>
             </div>
@@ -120,6 +153,7 @@ const InstrumentCard = ({
         {isRegional && !isClosed && ( // Explicação: Botão para assumir a posse da contagem em eventos Regionais.
           <button
             type="button" // Explicação: Marca o elemento como botão padrão de controle.
+            disabled={!podeModificarAqui} // Explicação: Bloqueia o clique se o usuário for de fora da jurisdição.
             onClick={(e) => { e.stopPropagation(); onToggleOwnership(); }} // Explicação: Dispara a troca de posse individualizada.
             className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shrink-0 ${
               isMyTurn 
@@ -133,49 +167,44 @@ const InstrumentCard = ({
         )}
       </div>
 
-      <div className="flex flex-col gap-2.5 w-full"> {/* Explicação: Caixa empilhadora das caixas de contagem numéricas ocupando largura total. */}
+      <div className="flex flex-col gap-2.5 w-full text-left"> {/* Explicação: Caixa empilhadora das caixas de contagem numéricas ocupando largura total. */}
         {isIrmandade && isRegional ? ( // Explicação: Desenha layout simples para Irmandade no Regional.
           <div className="flex gap-2 h-28 w-full items-stretch"> {/* Explicação: FIX VISUAL: Força o esticamento vertical (items-stretch) ocupando 100% de largura para não esmagar inputs. */}
             <CounterBox 
                label={inst.label || inst.id.toUpperCase()} // Explicação: Rótulo da pílula numérica.
                color={isMyTurn ? "slate" : "white"} // Explicação: Define se a caixa acende em preto ou branco.
                val={displayVal} // Explicação: Entrega o valor numérico atualizado.
-               onChange={v => handleUpdate(subId, v)} // Explicação: Conecta o clique de somar ao método traduzido.
+               onChange={v => handleUpdate(subId, v)} // Conecta o clique de somar ao método traduzido.
                disabled={!isMyTurn} // Explicação: Desativa os botões se a aba não for sua.
                isMain={true} // Explicação: Ativa fontes grandes de destaque de clique.
                onFocus={() => onFocus && onFocus(inst.id, subId)} // Explicação: Ativa proteção de digitação [v10.0].
-               onBlur={() => onBlur && onBlur()} // Explicação: Libera proteção [v10.0].
+               onBlur={() => onBlur && onBlur()} // Libera proteção [v10.0].
             />
           </div>
         ) : isIrmandade && !isRegional ? ( // Explicação: Desenha caixas separadas para Irmãs e Irmãos no Local.
           <div className="flex gap-2 h-28 w-full items-stretch"> {/* Explicação: FIX VISUAL: Garante o alinhamento de colunas lado a lado sem esmagamento interno de inputs. */}
-            {/* 🚀 CORAL/IRMANDADE ADAPTADO: As caixas agora abrem o modal direto se clicadas em ensaio local */}
-            <button 
-              type="button"
-              disabled={isClosed}
-              onClick={() => onOpenChecklistNominal && onOpenChecklistNominal(inst)}
+            <div 
+              onClick={() => canEdit && handleOpenChecklistSaneado()} // 🚀 ALINHAMENTO DE PORTARIA: Permite o clique reativo do GEM Local e do Básico da casa.
               className="flex-1 text-left outline-none min-w-[65px] h-full"
             >
-              <CounterBoxButton label="IRMÃS" val={iromas} color="slate" activeMode={isModoNominalAtivo} />
-            </button>
-            <button 
-              type="button"
-              disabled={isClosed}
-              onClick={() => onOpenChecklistNominal && onOpenChecklistNominal(inst)}
+              <CounterBoxButton label="IRMÃS" val={iromas} color="slate" activeMode={isModoNominalAtivo} disabled={!canEdit} />
+            </div>
+            <div 
+              onClick={() => canEdit && handleOpenChecklistSaneado()} // 🚀 ALINHAMENTO DE PORTARIA: Abre o painel nominal traduzindo o ID para o Master e o Básico.
               className="flex-1 text-left outline-none min-w-[65px] h-full"
             >
-              <CounterBoxButton label="IRMÃOS" val={irmaos} color="white" activeMode={isModoNominalAtivo} />
-            </button>
+              <CounterBoxButton label="IRMÃOS" val={irmaos} color="white" activeMode={isModoNominalAtivo} disabled={!canEdit} />
+            </div>
           </div>
         ) : ( // Explicação: Caso contrário, se for um instrumento comum de orquestra (Flauta, Violino, etc.).
           <>
-            <div className="flex gap-2 h-28 w-full items-stretch"> {/* Explicação: FIX VISUAL: Une e estica horizontalmente o bloco de Total, Comum e Visitas impedindo o encolhimento. */}
+            <div className="flex gap-2 h-28 w-full items-stretch text-left"> {/* Explicação: FIX VISUAL: Une e estica horizontalmente o bloco de Total, Comum e Visitas impedindo o encolhimento. */}
               <CounterBox 
                 label="TOTAL" // Explicação: Etiqueta superior da caixinha mestre.
                 color={isMyTurn && isRegional ? "slate" : isRegional ? "white" : "slate"} // Explicação: Decide a cor de contraste da caixa mestre de totalização.
                 val={displayVal} // Explicação: Passa o valor do total de músicos.
                 onChange={v => handleUpdate('total', v)} // Dispara a atualização do campo total.
-                disabled={isRegional ? !isMyTurn : !canEdit} // Trava os botões baseado na permissão calculada.
+                disabled={!canEdit} // 🚀 TRAVA INTERNA RESOLVIDA: As caixas numéricas agora obedecem rigorosamente ao canEdit limpo do crachá.
                 isMain={true} // Força fontes grandes de alta visibilidade.
                 onFocus={() => onFocus && onFocus(inst.id, 'total')} // Explicação: Ativa proteção no campo Total [v10.0].
                 onBlur={() => onBlur && onBlur()} // Desativa proteção [v10.0].
@@ -183,24 +212,22 @@ const InstrumentCard = ({
               
               {!isRegional && !isGovernance && ( // Explicação: Campos detalhados de visitas exclusivos para Ensaios Locais comuns.
                 <>
-                  {/* 🚀 REGRA DE OURO IMPLEMENTADA: O CAMPO COMUM AGORA É UM BOTÃO LISO DE TOQUE LARGO QUE ABRE O MODAL NOMINAL */}
-                  <button
-                    disabled={isSubFieldDisabled} // Desativa se o total do ensaio for zero ou travado.
-                    type="button" // Marca o elemento como botão oficial.
-                    onClick={() => onOpenChecklistNominal && onOpenChecklistNominal(inst)} // Dispara a abertura do modal unificado de chamada de nomes.
+                  <div
+                    onClick={() => !isSubFieldDisabled && handleOpenChecklistSaneado()} // 🚀 TOQUE AZUL: Dispara o modal nominal convertendo a chave para carregar os músicos da garagem.
                     className="flex-1 text-left outline-none min-w-[65px] h-full" // Limita larguras de segurança mobile.
                   >
                     <CounterBoxButton 
                       label="COMUM" // Rótulo do campo.
-                      val={comum} // Número atual gravado.
+                      val={comuneVal} // Número atual gravado.
                       color="white" // Fundo padrão.
                       activeMode={isModoNominalAtivo} // Injeta a flag se o instrumento está rodando no modo automatizado.
+                      disabled={isSubFieldDisabled}
                     />
-                  </button>
+                  </div>
 
                   <div className={`flex-[0.5] flex flex-col items-center justify-center rounded-[1.5rem] border transition-colors min-w-[50px] ${total === 0 ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}> {/* Explicação: FIX VISUAL: Aplica uma largura mínima de segurança para o bloco matemático de visitas não sumir. */}
                     <span className={`text-[7px] font-black uppercase tracking-widest mb-1 italic ${total === 0 ? 'text-slate-300' : 'text-blue-400'}`}>Visitas</span> {/* Etiqueta cinza ou azul. */}
-                    <span className={`text-2xl font-[900] italic leading-none ${total === 0 ? 'text-slate-200' : 'text-blue-600'}`}>{visitas}</span> {/* Resultado automático da subtração Total - Comum. */}
+                    <span className={`text-2xl font-[900] italic leading-none ${total === 0 ? 'text-slate-200' : 'text-blue-600'}`}>{visitas}</span> {/* Resultado automático della subtração Total - Comum. */}
                   </div>
                 </>
               )}
@@ -208,11 +235,11 @@ const InstrumentCard = ({
 
             {!isRegional && !isGovernance && ( // Explicação: Barra inferior de controle de Liderança (Encarregados Locais presentes).
               <div className={`mt-0.5 rounded-xl p-2 flex items-center justify-between border transition-all w-full ${isSubFieldDisabled ? 'bg-slate-50 border-slate-100' : 'bg-slate-100/50 border-slate-200/50'}`}> {/* Explicação: Barra horizontal compacta cinza ergonômica ocupando largura total. */}
-                <div className="flex items-center gap-2 min-w-0 flex-1"> {/* Explicação: Agrupamento do ícone protegendo contra esmagamento de texto. */}
+                <div className="flex items-center gap-2 min-w-0 flex-1 text-left"> {/* Explicação: Agrupamento do ícone protegendo contra esmagamento de texto. */}
                   <div className={`p-1.5 rounded-lg text-white shrink-0 ${isSubFieldDisabled ? 'bg-slate-300' : 'bg-slate-950'}`}> {/* Ícone quadrado escuro. */}
                     <UserCheck size={10} strokeWidth={3} /> {/* Explicação: Ícone de verificação de obreiro. */}
                   </div>
-                  <span className="text-[8px] font-black text-slate-500 uppercase italic tracking-widest leading-none truncate"> {/* Texto descritivo truncado para segurança visual. */}
+                  <span className="text-[8px] font-black text-slate-500 uppercase italic tracking-widest leading-none truncate text-left"> {/* Texto descritivo truncado para segurança visual. */}
                     {labelLideranca || "Liderança"} {/* Exibe 'Encarregado' ou 'Examinadora' dinamicamente. */}
                   </span>
                 </div>
@@ -284,33 +311,35 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, max
   </div>
 );
 
-// 🚀 COMPONENTE NOVO COMPACTO: Transforma a pílula do campo COMUM em um botão limpo e expansível estilo Ata
-const CounterBoxButton = ({ label, val, color, activeMode = false }) => (
+// Componente: Transforma a pílula do campo COMUM em um botão limpo e expansível estilo Ata
+const CounterBoxButton = ({ label, val, color, activeMode = false, disabled = false }) => (
   <div className={`w-full h-full rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden p-4 shadow-3xs border-dashed text-center active:scale-98 ${
-    activeMode 
-      ? 'bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-100 animate-in navigate-fade duration-300' 
-      : color === 'slate' 
-        ? 'bg-slate-950 text-white border-slate-800' 
-        : 'bg-slate-50 text-slate-900 border-slate-200 hover:bg-slate-100'
+    disabled
+      ? 'bg-slate-50 border-slate-100 text-slate-200'
+      : activeMode 
+        ? 'bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-100 animate-in navigate-fade duration-300' 
+        : color === 'slate' 
+          ? 'bg-slate-950 text-white border-slate-800' 
+          : 'bg-slate-50 text-slate-900 border-slate-200 hover:bg-slate-100'
   }`}>
     {/* Rótulo superior da caixinha adaptada */}
-    <p className={`text-[6px] font-black uppercase tracking-[0.2em] mb-1 truncate ${activeMode ? 'text-white/50' : color === 'slate' ? 'text-white/30' : 'text-slate-400'}`}>
+    <p className={`text-[6px] font-black uppercase tracking-[0.2em] mb-1 truncate ${disabled ? 'text-slate-200' : activeMode ? 'text-white/50' : color === 'slate' ? 'text-white/30' : 'text-slate-400'}`}>
       {label}
     </p>
     
     {/* Bloco numérico centralizado livre de setas obstrutivas */}
     <div className="flex items-center justify-center gap-1.5">
-      <span className="text-2xl font-[900] italic leading-none tracking-tighter">
+      <span className={`text-2xl font-[900] italic leading-none tracking-tighter ${disabled ? 'text-slate-200' : 'text-inherit'}`}>
         {val}
       </span>
-      {activeMode && <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping shrink-0" />} {/* Ponto pulsante informando que o modo nominal automatizado está ativo no instrumento */}
+      {activeMode && !disabled && <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping shrink-0" />} {/* Ponto pulsante informando que o modo nominal automatizado está ativo no instrumento */}
     </div>
     
     {/* Micro etiqueta instrucional inferior */}
-    <span className={`text-[5.5px] font-black uppercase tracking-tight mt-1.5 block ${activeMode ? 'text-white/70' : 'text-indigo-500'}`}>
-      {activeMode ? 'Foco Nominal' : 'Toque para Chamada'}
+    <span className={`text-[5.5px] font-black uppercase tracking-tight mt-1.5 block ${disabled ? 'text-slate-200' : activeMode ? 'text-white/70' : 'text-indigo-500'}`}>
+      {disabled ? 'Bloqueado' : activeMode ? 'Foco Nominal' : 'Toque para Chamada'}
     </span>
   </div>
 );
 
-export default InstrumentCard; // Explicação: Exporta o componente do cartão de instrumentos para uso nas listagens e naipes.
+export default InstrumentCard;
