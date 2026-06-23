@@ -212,7 +212,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
 
         // 2. Clonagem e Isolamento Nominal do Ministério Local (Obreiros)
         const ministerioSnap = await getDocs(collection(db, 'comuns', comumId, 'ministerio_lista')); // Explicação: Vai até a subcoleção eclesiástica buscar Anciães e Diáconos cadastrados.
-        ministerioSnap.docs.forEach(minDoc => { // Explicação: Passa obreiro por obreiro montando o cartão de presença da liderança.
+        minDoc.docs?.forEach(minDoc => { // Explicação: Passa obreiro por obreiro montando o cartão de presença da liderança.
           const minData = minDoc.data(); // Explicação: Captura o nome por extenso e o cargo ministerial.
           const chamadaMinRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_ministerio'), minDoc.id); // Explicação: Cria um endereço único para o obreiro dentro deste ensaio.
           batchChamada.set(chamadaMinRef, { // Explicação: Monta a ficha de presença inicial do obreiro.
@@ -231,7 +231,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     } catch (err) {
       console.error("Erro na criação do evento:", err); // Explicação: Imprime falhas técnicas no painel do administrador.
       if (err.message === "CONFIG_REQUIRED") throw err; // Explicação: Repassa o erro de configuração exigida para a interface tratar.
-      throw new Error("Falha ao inicializar evento."); // Explicação: Dispara erro genérico amigável de rede.
+      throw new Error("Falha ao initialize evento."); // Explicação: Dispara erro genérico amigável de rede.
     }
   },
 
@@ -370,6 +370,66 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     } catch (e) {
       console.error("Erro salvar Ata:", e);
       throw new Error("Erro de salvamento.");
+    }
+  },
+
+  // =========================================================================
+  // --- 🏛️ NOVAS FUNÇÕES EXCLUSIVAS DE GESTÃO NOMINAL COMPLETA DE MÚSICOS DA COMUM ---
+  // =========================================================================
+
+  /**
+   * ADICIONA NOVO MÚSICO DEFINITIVO NA LISTA DA COMUM FIXA
+   */
+  addMusicoComum: async (comumId, musicoPayload) => { // Explicação: Função que insere de forma perpétua a ficha de um novo irmão na lista daquela igreja.
+    if (!comumId || !musicoPayload.nome || !musicoPayload.instrumentoId) throw new Error("Parâmetros incompletos."); // Explicação: Trava contra envio de dados corrompidos.
+    try {
+      const novaFichaRef = doc(collection(db, 'comuns', comumId, 'musicos_lista')); // Explicação: Cria uma nova chave de ID exclusiva na garagem fixa de músicos da comum.
+      const payloadSaneado = { // Explicação: Limpa os dados de texto forçando o padrão caixa alta.
+        nome: musicoPayload.nome.toUpperCase().trim(),
+        instrumentoId: musicoPayload.instrumentoId,
+        instrumentoNome: (musicoPayload.instrumentoNome || musicoPayload.instrumentoId).toUpperCase().trim(),
+        situacao: musicoPayload.situacao || "Aluno",
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      await setDoc(novaFichaRef, payloadSaneado); // Explicação: Registra a ficha perpétua na coleção fixa da igreja.
+      return novaFichaRef.id; // Explicação: Retorna a identificação gerada para confirmação na interface.
+    } catch (e) {
+      console.error("Erro ao adicionar músico comum:", e); // Explicação: Avisa em caso de falha física de rede.
+      throw new Error("Erro ao salvar músico."); // Explicação: Repassa o erro amigável de portaria.
+    }
+  },
+
+  /**
+   * ATUALIZA FICHA DO MÚSICO EXISTENTE NA COMUM
+   */
+  updateMusicoComum: async (comumId, musicoId, camposNovos) => { // Explicação: Função para alterar dados (como nome, situação ou instrumento) de um irmão alistado.
+    if (!comumId || !musicoId) throw new Error("Identificadores ausentes."); // Explicação: Trava de proteção lógica.
+    try {
+      const fichaRef = doc(db, 'comuns', comumId, 'musicos_lista', musicoId); // Explicação: Localiza o documento fixo do irmão.
+      const payloadUpdates = { ...camposNovos, updatedAt: Date.now() }; // Explicação: Acopla o marco de tempo de modificação aos campos editados.
+      if (payloadUpdates.nome) payloadUpdates.nome = payloadUpdates.nome.toUpperCase().trim(); // Explicação: Saneia o nome em caixa alta se tiver sido alterado.
+      if (payloadUpdates.instrumentoNome) payloadUpdates.instrumentoNome = payloadUpdates.instrumentoNome.toUpperCase().trim(); // Explicação: Saneia o nome do naipe.
+      await updateDoc(fichaRef, payloadUpdates); // Explicação: Envia a alteração de escrita cirúrgica para a nuvem.
+      return true;
+    } catch (e) {
+      console.error("Erro ao atualizar músico comum:", e);
+      throw new Error("Erro ao salvar alterações.");
+    }
+  },
+
+  /**
+   * EXCLUI MÚSICO DEFINITIVO DO ALISTAMENTO DA COMUM FIXA
+   */
+  deleteMusicoComum: async (comumId, musicoId) => { // Explicação: Remove permanentemente um irmão da lista fixa de músicos oficiais daquela igreja.
+    if (!comumId || !musicoId) throw new Error("Identificadores ausentes."); // Explicação: Trava lógica contra deleção cega.
+    try {
+      const fichaRef = doc(db, 'comuns', comumId, 'musicos_lista', musicoId); // Explicação: Encontra a ficha do irmão no servidor.
+      await deleteDoc(fichaRef); // Explicação: Executa a remoção definitiva do documento na garagem de alistados.
+      return true;
+    } catch (e) {
+      console.error("Erro ao excluir músico comum:", e);
+      throw new Error("Erro ao deletar músico.");
     }
   }
 };

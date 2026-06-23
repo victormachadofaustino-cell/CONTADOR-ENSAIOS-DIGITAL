@@ -17,6 +17,7 @@ import CounterSection from './components/CounterSection'; // Explicação: Compo
 import OwnershipModal from './components/OwnershipModal'; // Explicação: Janela de "Deseja assumir esta seção?".
 import ExtraInstrumentModal from './components/ExtraInstrumentModal'; // Explicação: Janela para adicionar instrumentos na hora.
 import CounterRegional from './components/CounterRegional'; // Explicação: Modo de contagem em massa para eventos regionais.
+import CounterFooter from './components/CounterFooter'; // Explicação: NOVA IMPORTAÇÃO: Traz o nosso novo rodapé isolado e fixado na base absoluta da tela.
 
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Explicação: Inicia a estrutura da página de contagem.
   const { userData } = useAuth(); // Explicação: Puxa o crachá eletrônico do usuário logado.
@@ -331,7 +332,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
             <p className="text-[14px] font-bold text-slate-900 leading-none"> {/* Explicação: Formata o texto da data com destaque e cor grafite escuro. */}
               {eventDateRaw ? `${eventDateRaw.split('-')[2]}/${eventDateRaw.split('-')[1]}/${eventDateRaw.split('-')[0]}` : '---'} {/* Explicação: Recorta a data americana do banco e exibe no formato brasileiro (Dia/Mês/Ano). */}
             </p>
-            <div className="flex items-center justify-center gap-1.5 mt-1"> {/* Explicação: Container para alinhar o ponto de pulsação regional e o nome da igreja. */}
+            <div className="flex items-center justify-center gap-1.5 mt-1"> {/* Explicação: Container para alinhar o ponto de pulsação regional and o nome da igreja. */}
                {ataData?.scope === 'regional' && <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"/>} {/* Explicação: Se o ensaio for regional, renderiza um círculo azul piscando em modo alerta. */}
                <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-[150px]"> {/* Explicação: Estiliza o nome da localidade em formato de etiqueta fosca elegante. */}
                  {ataData?.comumNome || "Localidade"} {/* Explicação: Renderiza o nome carimbado da igreja (ex: 'PARQUE 120'). */}
@@ -399,13 +400,12 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
         </div>
       </main>
 
-      <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] z-[50]"> {/* Explicação: Barra inferior flutuante suspensa ancorada milimetricamente no meio della tela do smartphone. */}
-        <nav className="flex justify-around bg-slate-950/95 backdrop-blur-xl border border-white/10 p-2 rounded-[2.5rem] shadow-2xl"> {/* Explicação: Cápsula preta premium translúcida com efeito de desfoque de fundo de vidro (backdrop-blur-xl). */}
-          <TabButton active={activeTab === 'contador'} icon={<LayoutGrid size={18}/>} label="Contar" onClick={() => setActiveTab('contador')} /> {/* Explicação: Botão da primeira aba focado nas contagens numéricas. */}
-          <TabButton active={activeTab === 'ata'} icon={<ClipboardCheck size={18}/>} label="Ata" onClick={() => setActiveTab('ata')} /> {/* Explicação: Botão da segunda aba focado nos dados e hinos do ensaio. */}
-          <TabButton active={activeTab === 'dash'} icon={<BarChart3 size={18}/>} label="Dash" onClick={() => setActiveTab('dash')} /> {/* Explicação: Botão da terceira aba focado nos relatórios estatísticos in gráficos. */}
-        </nav>
-      </footer>
+      {/* CHAMADA DO NOVO COMPONENTE ATÔMICO DE RODAPÉ ASSENTADO NATIVAMENTE */}
+      {/* Explicação: Invocamos o novo arquivo CounterFooter repassando as abas e o gatilho de troca rápida de tela. */}
+      <CounterFooter 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+      />
 
       {/* 🏛️ INTERFACE MODAL UNIFICADA: ADAPTADO PARA FUNDO BRANCO (AUSENTE) E FUNDO AZUL INDIGO (PRESENTE) COMPACTO ESTILO ATA */}
       <AnimatePresence>
@@ -523,10 +523,4 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => { // Expl
   );
 };
 
-const TabButton = ({ active, icon, label, onClick }) => ( // Explicação: Componente auxiliar que draws e estiliza individualmente cada botão da barra de navegação inferior.
-  <button onClick={onClick} className={`flex flex-col items-center justify-center py-3 px-6 rounded-[2rem] transition-all duration-300 ${active ? 'bg-white text-slate-950 shadow-xl scale-105 font-[900]' : 'text-slate-50'}`}> {/* Explicação: Se estiver ativo, se transforma em uma pílula branca com texto ultra-negrito e efeito de pulo (scale-105). */}
-    {icon}<span className="text-[8px] font-black uppercase italic mt-1 tracking-[0.2em] leading-none">{label}</span> {/* Explicação: Renderiza o ícone e o texto da etiqueta com espaçamento técnico estrito e elegante. */}
-  </button>
-);
-
-export default CounterPage; // Explicação: Exporta a tela de contagem total blindada e enxuto para uso nas rotas principais do ecossistema.
+export default CounterPage; // Explicação: Exporta a tela de contagem total blindada e enxuta para uso nas rotas principais do ecossistema.

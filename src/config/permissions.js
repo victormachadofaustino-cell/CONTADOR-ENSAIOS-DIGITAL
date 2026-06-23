@@ -18,7 +18,7 @@ const ROLE_LEVELS = {
   [ROLES.BASICO]: 1
 };
 
-// Explicação: Este objeto é o mapa que diz o que cada "crachá" consegue acessar.
+// Explicação: Este objeto é o mapa que diz o que cada "crachá" consegue acessar no ecossistema mobile.
 export const PERMISSIONS_MAP = {
   [ROLES.MASTER]: {
     modules: ['ensaios', 'geral', 'ajustes'], // Acesso total às abas.
@@ -53,7 +53,7 @@ export const PERMISSIONS_MAP = {
     canApprove: [ROLES.BASICO, ROLES.GEM], // GEM agora pode promover Básico para GEM.
     canReopenAta: false, // Uma vez fechada por ele, só o gestor acima reabre.
     canDeleteEvent: 'local_only', // GEM pode apagar o que é local, mas não o Regional.
-    canManageTeam: 'local_only', // Só gerencia equipe se o ensaio for Local.
+    canManageTeam: true, // v11.3: LIBERADO - GEM possui autoridade de gerenciar a equipe nominal da sua localidade igreja.
     canGenerateReport: 'local_only' // Só gera PDF/Compartilha se o ensaio for Local.
   },
   [ROLES.BASICO]: {
@@ -77,6 +77,16 @@ export const hasPermission = (user, action, context = null) => {
 
   const config = PERMISSIONS_MAP[user.accessLevel]; // Explicação: Pega a regra específica do nível do usuário.
   if (!config) return false; // Explicação: Se não reconhecer o crachá, barra.
+
+  // --- NOVA REGRA ESTRETA SOLICITADA: GESTÃO DE MÚSICOS (CRIAR, EDITAR, EXCLUIR) DA COMUM ---
+  if (action === 'gerenciar_musicos') { // Explicação: Gatilho que valida se o secretário pode mexer nas fichas fixas de alistamento.
+    if (user.accessLevel === ROLES.COMISSAO || user.accessLevel === ROLES.CIDADE) return true; // Explicação: Níveis superiores possuem acesso master total em qualquer localidade.
+    if (user.accessLevel === ROLES.GEM) { // Explicação: GEM Local pode gerenciar músicos se a igreja alvo for rigorosamente igual à igreja dele.
+      if (!context) return true; // Explicação: Se não foi passado contexto (abrindo a tela de cadastro vazia), libera o botão.
+      return user.comumId === context; // Explicação: REGRA DE OURO TERRITORIAL: Retorna verdadeiro apenas se o comumId bater com o do crachá do GEM.
+    }
+    return false; // Explicação: Usuários básicos ou sem cargo de portaria são sumariamente barrados.
+  }
 
   // Explicação: Lógica para Aprovação e Troca de Cargo (Promoção/Rebaixamento).
   if (action === 'approve_user' || action === 'change_role') {
