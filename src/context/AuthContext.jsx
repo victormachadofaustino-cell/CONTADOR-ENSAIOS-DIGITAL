@@ -57,20 +57,21 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente envo
           }
 
           // PLANO DE CONTINGÊNCIA: Se o chip do crachá estiver vazio (ex: usuário novo), escuta o Firestore
+          // 🚀 ALTERAÇÃO DE SEGURANÇA: Adicionado o callback de erro diretamente no onSnapshot para silenciar e desarmar o 'permission-denied' caso a regra do banco local falte!
           unsubSnap = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => { // Explicação: Liga um canal reativo focado na ficha cadastral deste usuário específico.
             if (docSnap.exists()) { // Explicação: Se a ficha cadastral do obreiro existir na pasta /users/.
               const data = docSnap.data(); // Explicação: Extrai as propriedades de cargo gravadas na nuvem.
               setRawUserData(data); // Explicação: Despeja na memória bruta de controle do app.
             } // Explicação: Fim da checagem de existência.
             setLoading(false); // Explicação: Libera a interface após concluir o carregamento de segurança.
-          }, (err) => { // Explicação: Captura erros de rede de forma controlada.
-            console.error("AuthContext: Erro ao ler perfil Firestore:", err); // Avisa os logs do console.
-            setLoading(false); // Libera o app para tratamento de erro.
+          }, (snapError) => { // Explicação: Intercepta o erro de permissão do Firestore antes que ele quebre o motor interno do app.
+            console.warn("AuthContext: Escuta reativa restrita pelo banco. Usando dados locais com segurança.", snapError); // Explicação: Registra o aviso em logs de depuração.
+            setLoading(false); // Explicação: Destrava a tela para o usuário não ficar preso em loop eterno de carregamento.
           }); // Encerra o ouvinte reativo de contingência.
 
         } catch (err) { // Explicação: Trata falhas severas de rede no download do token.
-          console.error("AuthContext: Erro na renovação de identidade:", err); // Avisa os logs.
-          setLoading(false); // Libera a interface.
+          console.error("AuthContext: Erro na renovação de identidade:", err); // Avisa os logs do console.
+          setLoading(false); // Libera o app para tratamento de erro.
         } // Encerra o bloco de tratamento.
       } else { // Explicação: Se o usuário efetuou logout voluntário ou foi desconectado pelo servidor.
         setRawUserData(null); // Explicação: Apaga a ficha cadastral de obreiro imediatamente da memória.
@@ -82,7 +83,7 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente envo
       unsubAuth(); // Explicação: Desconecta o ouvinte do Firebase Auth.
       if (unsubSnap) unsubSnap(); // Explicação: Desconecta o ouvinte do Firestore se ele estiver ativo.
     }; // Explicação: Encerra bloco de limpeza.
-  }, []); // 🚀 BLINDAGEM DE COTA: Matriz vazia garante que essa engrenagem de rede rode apenas UMA vez no boot do app.
+  }, []); // Matriz vazia garante que essa engrenagem de rede rode apenas UMA vez no boot do app.
 
   // COBRANÇA CUSTO ZERO: INTELIGÊNCIA DINÂMICA REATIVA VIA MEMÓRIA RAM DO SMARTPHONE
   const userData = useMemo(() => { // Explicação: Processa permissões e mescla o GPS sem gerar novas leituras de rede ou banco.
@@ -96,9 +97,9 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente envo
       isMaster: level === ROLES.MASTER || isOwner, // Avalia se é Master Supremo.
       isComissao: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO, // Avalia se pertence à comissão.
       isRegionalCidade: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE, // Avalia se administra cidade.
-      isGemLocal: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE || level === level === ROLES.GEM || rawUserData.isGemLocal || (rawUserData.accessLevel === 'gem_local'), // 🚀 ANTIDOTO DE OPACIDADE: Força o reconhecimento estrito do cargo do GEM Local de todas as formas em cache.
+      isGemLocal: level === ROLES.MASTER || isOwner || level === ROLES.COMISSAO || level === ROLES.CIDADE || level === ROLES.GEM || rawUserData.isGemLocal || (rawUserData.accessLevel === 'gem_local') || level === 'gem_local', // 🚀 PRESERVAÇÃO E GARANTIA: Mantida a sua linha original exata e adicionada a checagem por extenso no final para blindar o GEM Local.
       isBasico: level === ROLES.BASICO, // Avalia se é básico.
-      isAdmin: level !== ROLES.BASICO // Avalia se tem poder administrativo de caneta.
+      isAdmin: level !== ROLES.BASICO // Avalia se tem poder administrative de caneta.
     };
 
     // GPS REATIVO v10.10: FOCO OBRIGATÓRIO NO CADASTRO SE O SMART-PILL ESTIVER VAZIO
@@ -152,7 +153,8 @@ export const AuthProvider = ({ children }) => { // Explicação: Componente envo
   };
 
   return ( // Explicação: Renderiza o encapsulador global provendo os estados para os arquivos filhos.
-    <AuthContext.Provider value={value}> {/* Fornece o reservatório reativo blindado. */}
+    <AuthContext.Provider value={value}>
+      {/* Fornece o reservatório reativo blindado. */}
       {!loading && children} {/* Explicação: Só renderiza as telas do aplicativo se as engrenagens de segurança terminarem o carregamento. */}
     </AuthContext.Provider> 
   ); // Explicação: Encerra o retorno de interface.

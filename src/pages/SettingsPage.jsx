@@ -200,7 +200,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
       {/* 📍 REORGANIZAÇÃO FIXA NO TOPO: FILTROS E GPS DE NAVEGAÇÃO JURISDICIONAL */}
       {isRegionalCidade && ( // Explicação: Só exibe seletores de GPS se o usuário tiver poder regional para gerenciar mais de uma localidade.
         <div key={`pills-container-${activeRegionalId}`} className="grid grid-cols-1 gap-2.5 pb-4 border-b border-slate-100"> {/* Explicação: Grid empilhado verticalmente com espaçamento premium de mercado no topo absoluto. */}
-          /* Pill Cidade */
+          {/* Pill Cidade */}
           <div className={`flex items-center gap-2.5 bg-white/60 backdrop-blur-sm p-3 rounded-2xl border border-slate-200 shadow-xs transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}> {/* Explicação: Card com fundo branco semi-transparente, efeito vidro, bordas arredondadas e toque confortável. Fica cinza se for Secretário Local travado. */}
             <MapPin size={13} className="text-indigo-600 shrink-0" /> {/* Explicação: Ícone de alfinete de localização na cor azul/indigo de alta legibilidade. */}
             <select // Explicação: Menu de seleção da Cidade ativa.
