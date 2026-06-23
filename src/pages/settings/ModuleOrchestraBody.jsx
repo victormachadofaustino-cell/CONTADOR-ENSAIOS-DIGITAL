@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'; // Explicação: Importa as ferramentas essenciais do React para criar componentes e monitorar mudanças de estado.
-import { db, collection, onSnapshot, doc, addDoc, deleteDoc, updateDoc } from '../../config/firebase'; // Explicação: Importa os motores de conexão em tempo real com o banco de dados Firebase.
+import { db, collection, onSnapshot, doc, addDoc, deleteDoc, updateDoc } from '../../config/firebase'; // Explicação: CORREÇÃO: Ajustado caminho para voltar 2 níveis e achar o Firebase de forma limpa.
 import { Shield, Lock, Plus, Trash2, Edit3, X, Save, Contact, Music, ChevronDown } from 'lucide-react'; // Explicação: Importa o pacote de ícones modernos e visuais para ilustrar os botões e menus do aplicativo.
-import { useAuth } from '../../context/AuthContext'; // Explicação: Importa o sistema de identidade para ler o Crachá Eletrônico do usuário logado.
+import { useAuth } from '../../context/AuthContext'; // Explicação: CORREÇÃO: Ajustado caminho para voltar 2 níveis e ler o Crachá Eletrônico.
 import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Biblioteca de animações físicas para gerar transições premium de mercado.
 import toast from 'react-hot-toast'; // Explicação: Importa o sistema de balões de aviso flutuantes de sucesso ou erro na tela.
 
@@ -13,6 +13,8 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
   const [newMusico, setNewMin] = useState({ nome: '', instrumentoId: '', situacao: '' }); // Explicação: Memória temporária para o formulário de cadastro de um novo músico.
   
   // Estados para Controle de Modais Internos de Edição e Exclusão
+  const [niveisTeste, setNiveisTeste] = useState([]); // Explicação: Armazena em cache local a listagem de níveis puxada diretamente do banco de dados.
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false); // Explicação: Controla a janela popup do formulário de inserção de novo músico.
   const [editingMusico, setEditingMusico] = useState(null); // Explicação: Armazena o músico selecionado para alteração.
   const [isEditModalOpen, setIsEditModalOpen] = useState(false); // Explicação: Controla a visibilidade da janela de edição.
   const [deletingMusico, setDeletingMusico] = useState(null); // Explicação: Armazena o músico que está na fila de exclusão.
@@ -30,9 +32,6 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
     
     return isGemLocal && userData?.comumId === comumId; // Explicação: Secretário local só edita se for estritamente a igreja do crachá dele.
   }, [userData, comumId]);
-
-  // Lista fixa de situações operacionais da CCB para triagem
-  const situacoesOficiais = ['Oficializado', 'RJM (Jovens)', 'Aluno / Aprendiz']; 
 
   const ordemSessoesDefinidas = ['CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS', 'ORGANISTAS', 'IRMANDADE', 'GERAL']; // Explicação: Vetor fixo de referência para ordenar as divisórias de naipes no menu suspenso.
 
@@ -68,6 +67,17 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
     return [...instrumentsData].filter(i => i.active);
   }, [instrumentsData]);
 
+  // 📡 MONITOR REAL-TIME: Baixa de forma reativa a coleção de Níveis de Teste configurada pelo Regional
+  useEffect(() => {
+    const niveisRef = collection(db, 'config_niveis_teste');
+    const unsubNiveis = onSnapshot(niveisRef, (snap) => {
+      const res = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      res.sort((a, b) => (a.order || 99) - (b.order || 99)); // Ordena baseado na ordenação técnica
+      setNiveisTeste(res); // Guarda na memória suspensa
+    });
+    return () => unsubNiveis();
+  }, []);
+
   // Listener reativo isolado para a subcoleção de Músicos
   useEffect(() => { // Explicação: Escuta em tempo real os músicos desta comum apenas quando este modal está aberto na tela.
     if (!comumId) return;
@@ -92,7 +102,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
 
   const handleInsertMusico = async () => { // Explicação: Injeta um novo músico na base de dados da igreja atual.
     if (!newMusico.nome.trim() || !newMusico.instrumentoId || !newMusico.situacao) {
-      return toast.error("Preencha o nome completo, selecione o instrumento e a situação!");
+      return toast.error("Preencha o nome completo, selecione o instrumento e o nível de teste!");
     }
     if (!temPoderEdicao) return toast.error("Seu crachá não autoriza gravações nesta localidade.");
 
@@ -109,6 +119,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
         updatedAt: Date.now() 
       });
       setNewMin({ nome: '', instrumentoId: '', situacao: '' }); // Explicação: Limpa os campos do formulário para o próximo cadastro.
+      setIsAddModalOpen(false); // Explicação: Fecha o popup automaticamente após cadastrar.
       toast.success("Músico cadastrado no Corpo Orquestral!");
     } catch (err) { 
       toast.error("Falha ao salvar músico."); 
@@ -132,7 +143,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
       });
       setIsEditModalOpen(false);
       setEditingMusico(null);
-      toast.success("Ficha do músico updated!");
+      toast.success("Ficha do músico atualizada!");
     } catch (err) {
       toast.error("Erro ao atualizar dados do músico.");
     }
@@ -157,7 +168,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
   );
 
   return (
-    <div className="space-y-6 text-left pb-10 font-sans">
+    <div className="space-y-4 text-left pb-10 font-sans relative">
       
       {/* INDICADOR DE ACESSO GEOGRÁFICO */}
       <div className={`p-3.5 rounded-2xl flex items-center gap-3 border ${temPoderEdicao ? 'bg-blue-50/60 border-blue-100' : 'bg-amber-50/60 border-amber-100'}`}>
@@ -170,60 +181,17 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
           </div>
       </div>
 
-      {/* FORMULÁRIO DE SELEÇÃO E INSERÇÃO COMPACTO (44PX) */}
+      {/* BOTÃO ÚNICO DE INSERÇÃO COMPACTO DE MERCADO */}
       {temPoderEdicao && (
-        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200/50 space-y-3">
-          <div className="flex items-center gap-2 px-0.5">
-            <Contact size={13} className="text-indigo-600 shrink-0" />
-            <p className="text-[9px] font-black text-slate-950 uppercase tracking-wider italic">Alistar Novo Músico Local</p>
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Nome Completo do Músico (Exibição sem cortes)</label>
-              <input type="text" placeholder="NOME COMPLETO DO IRMÃO POR EXTENSO" className="w-full bg-white p-3.5 rounded-xl font-black text-slate-950 text-xs border border-slate-200 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] whitespace-normal break-words" value={newMusico.nome} onChange={e => setNewMin({...newMusico, nome: e.target.value})} />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Dropdown de Instrumentos ativos AGRUPADOS POR NAIPES EXCLUSIVO NATIVO */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Instrumento Cadastrado</label>
-                <div className="relative">
-                  <select className="w-full bg-white p-3.5 rounded-xl font-black text-slate-950 text-[10px] border border-slate-200 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] appearance-none cursor-pointer" value={newMusico.instrumentoId} onChange={e => setNewMin({...newMusico, instrumentoId: e.target.value})}>
-                      <option value="">INSTRUMENTO...</option>
-                      {instrumentosAgrupados.map(grupo => (
-                        <optgroup key={grupo.naipe} label={`── ${grupo.naipe} ──`} className="text-slate-400 font-bold bg-slate-50">
-                          {grupo.itens.map(i => (
-                            <option key={i.id} value={i.id} className="text-slate-900 font-black">{i.name}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Dropdown de Situação da CCB */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Categoria / Situação</label>
-                <div className="relative">
-                  <select className="w-full bg-white p-3.5 rounded-xl font-black text-slate-950 text-[10px] border border-slate-200 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] appearance-none cursor-pointer" value={newMusico.situacao} onChange={e => setNewMin({...newMusico, situacao: e.target.value})}>
-                      <option value="">SITUAÇÃO...</option>
-                      {situacoesOficiais.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-
-            <button onClick={handleInsertMusico} className="w-full h-11 bg-indigo-600 text-white rounded-xl flex items-center justify-center gap-2 font-black uppercase italic text-[10px] tracking-wider shadow-md shadow-indigo-100 active:scale-[0.98] transition-all pt-0.5 mt-1">
-              <Plus size={14} strokeWidth={2.5}/> Alistar Músico ao Corpo Fixo
-            </button>
-          </div>
-        </div>
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="w-full h-11 bg-indigo-600 text-white font-black rounded-xl flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider shadow-lg shadow-indigo-100 active:scale-95 transition-all cursor-pointer pt-0.5"
+        >
+          <Plus size={14} strokeWidth={3} /> Alistar Novo Músico Local
+        </button>
       )}
 
-      {/* CARDS VERTICAIS SEM CORTE TEXTUAL (...) */}
+      {/* CARDS VERTICAIS SEM CORTE TEXTUAL */}
       <div className="space-y-2">
         <div className="px-1.5 flex flex-col text-left">
           <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest italic leading-none">Corpo Orquestral Alistado ({musicos.length})</span>
@@ -236,8 +204,8 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
         ) : (
           <div className="space-y-2">
             {musicos.map((m) => (
-              <div key={m.id} className="flex justify-between items-center p-4 bg-white rounded-2xl border border-slate-200/60 shadow-xs gap-3">
-                <div className="leading-tight text-left flex-1 min-w-0 pr-1 whitespace-normal break-words"> {/* Exibição por extenso sem elipses (...) */}
+              <div key={m.id} className="flex justify-between items-center p-4 bg-white rounded-2xl border border-slate-200/60 shadow-3xs gap-3 text-left">
+                <div className="leading-tight text-left flex-1 min-w-0 pr-1 whitespace-normal break-words">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[7.5px] font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md uppercase italic flex items-center gap-1"><Music size={8}/> {m.instrumentoNome || 'GERAL'}</span>
                     <span className="text-[7.5px] font-black text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded-md uppercase italic">{m.situacao || 'OFF'}</span>
@@ -245,7 +213,7 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
                   <p className="text-[11.5px] font-black text-slate-900 uppercase italic mt-1.5 leading-snug whitespace-normal break-words">{m.nome || 'SEM NOME REGISTRADO'}</p>
                 </div>
                 
-                {temPoderEdicao && ( // Controle ergonômico de 44px para cliques no celular
+                {temPoderEdicao && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => { setEditingMusico(m); setIsEditModalOpen(true); }} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all min-h-[36px]">
                         <Edit3 size={13}/>
@@ -261,6 +229,56 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
         )}
       </div>
 
+      {/* MODAL INTERNO AUTO-SUPORTADO PREMIUM: CADASTRO DE NOVO MÚSICO */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddModalOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs" />
+            <motion.div initial={{ scale: 0.93, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.93, opacity: 0, y: 10 }} className="relative w-full max-w-xs bg-white rounded-[2.2rem] p-6 shadow-2xl border border-slate-100 text-left">
+              <div className="flex justify-between items-center mb-5 border-b border-slate-50 pb-2.5">
+                <h3 className="text-[10px] font-black uppercase italic text-slate-950 tracking-wider">Alistar Novo Músico Local</h3>
+                <button onClick={() => setIsAddModalOpen(false)} className="w-8 h-8 bg-slate-50 rounded-full flex items-center justify-center text-slate-400"><X size={14}/></button>
+              </div>
+              <div className="space-y-3.5 text-left">
+                <div className="flex flex-col gap-1 text-left">
+                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Nome Completo do Músico</label>
+                  <input type="text" placeholder="NOME DO IRMÃO POR EXTENSO" className="w-full bg-slate-50 p-3.5 rounded-xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none focus:border-indigo-600 min-h-[44px]" value={newMusico.nome} onChange={e => setNewMin({...newMusico, nome: e.target.value})} />
+                </div>
+                <div className="flex flex-col gap-1 text-left">
+                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Instrumento Cadastrado</label>
+                  <div className="relative">
+                    <select className="w-full bg-slate-50 p-3.5 rounded-xl font-black text-slate-950 text-[10px] border border-slate-100 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] appearance-none cursor-pointer" value={newMusico.instrumentoId} onChange={e => setNewMin({...newMusico, instrumentoId: e.target.value})}>
+                      <option value="">INSTRUMENTO...</option>
+                      {instrumentosAgrupados.map(grupo => (
+                        <optgroup key={grupo.naipe} label={`── ${grupo.naipe} ──`} className="text-slate-500 font-bold bg-slate-100">
+                          {grupo.itens.map(i => (
+                            <option key={i.id} value={i.id} className="text-slate-900 font-black">{i.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1 text-left">
+                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Nível de Teste Atual</label>
+                  <div className="relative">
+                    <select className="w-full bg-slate-50 p-3.5 rounded-xl font-black text-slate-950 text-[10px] border border-slate-100 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] appearance-none cursor-pointer" value={newMusico.situacao} onChange={e => setNewMin({...newMusico, situacao: e.target.value})}>
+                      <option value="">SELECIONE O NÍVEL...</option>
+                      {niveisTeste.map(n => <option key={n.id} value={n.name}>{n.name.toUpperCase()}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+                <button onClick={handleInsertMusico} className="w-full h-11 bg-indigo-600 text-white rounded-xl font-black uppercase italic text-[10px] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 pt-0.5 mt-2">
+                  <Plus size={13} /> Alistar ao Corpo Fixo
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* MODAL INTERNO AUTO-SUPORTADO: EDIÇÃO DE IRMÃO */}
       <AnimatePresence>
         {isEditModalOpen && editingMusico && (
@@ -271,12 +289,12 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
                 <h3 className="text-[10px] font-black uppercase italic text-slate-950 tracking-wider">Ajustar Ficha de Alistamento</h3>
                 <button onClick={() => setIsEditModalOpen(false)} className="w-8 h-8 bg-slate-50 rounded-full flex items-center justify-center text-slate-400"><X size={14}/></button>
               </div>
-              <div className="space-y-3.5">
-                <div className="flex flex-col gap-1">
+              <div className="space-y-3.5 text-left">
+                <div className="flex flex-col gap-1 text-left">
                   <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Nome Completo</label>
                   <input type="text" className="w-full bg-slate-50 p-3.5 rounded-xl font-black text-slate-950 text-xs border border-slate-100 uppercase italic outline-none focus:border-indigo-600 min-h-[44px]" value={editingMusico.nome} onChange={e => setEditingMusico({...editingMusico, nome: e.target.value})} />
                 </div>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 text-left">
                   <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Instrumento</label>
                   <div className="relative">
                     <select className="w-full bg-slate-50 p-3.5 rounded-xl font-black text-slate-950 text-[10px] border border-slate-100 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] appearance-none" value={editingMusico.instrumentoId} onChange={e => setEditingMusico({...editingMusico, instrumentoId: e.target.value})}>
@@ -291,11 +309,11 @@ const ModuleOrchestraBody = ({ comumId, instrumentsData = [] }) => { // Explica�
                     <ChevronDown size={14} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Categoria / Situação</label>
+                <div className="flex flex-col gap-1 text-left">
+                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1">Nível de Teste Atual</label>
                   <div className="relative">
                     <select className="w-full bg-slate-50 p-3.5 rounded-xl font-black text-slate-950 text-[10px] border border-slate-100 uppercase italic outline-none focus:border-indigo-600 min-h-[44px] appearance-none" value={editingMusico.situacao} onChange={e => setEditingMusico({...editingMusico, situacao: e.target.value})}>
-                      {situacoesOficiais.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+                      {niveisTeste.map(n => <option key={n.id} value={n.name}>{n.name.toUpperCase()}</option>)}
                     </select>
                     <ChevronDown size={14} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
                   </div>

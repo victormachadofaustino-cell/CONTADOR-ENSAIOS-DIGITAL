@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'; // Explicação: Im
 import { db, collection, onSnapshot, doc, query, where } from '../config/firebase'; // Explicação: Importa os motores de conexão em tempo real com o banco de dados Firebase.
 import { // Explicação: Importa o pacote de ícones modernos e visuais para ilustrar os botões e menus do aplicativo.
   Home, Music, Users, ShieldCheck, Plus, ChevronDown, ChevronRight,
-  MapPin, Building2, LayoutGrid, Settings, Briefcase, Trash2, X, ClipboardList, Contact
+  MapPin, Building2, LayoutGrid, Settings, Briefcase, Trash2, X, ClipboardList, Contact, Layers
 } from 'lucide-react'; // Explicação: Biblioteca que fornece as formas dos desenhos dos botões.
 import { useAuth } from '../context/AuthContext'; // Explicação: Importa o sistema de identidade para ler o Crachá Eletrônico do usuário logado.
 import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Importa as ferramentas responsáveis por criar transições e animações suaves na tela.
@@ -17,6 +17,8 @@ import ModuleCities from './settings/ModuleCities'; // Explicação: Importa o s
 import ModuleChurchesManager from './settings/ModuleChurchesManager'; // Explicação: Importa o gerenciador geral de criação e manutenção de cookies comuns.
 import ModuleMinistryLocal from './settings/ModuleMinistryLocal'; // Explicação: AMARRAÇÃO DE INFRAESTRUTURA: Importa o novo lar purificado do Corpo Ministerial Eclesiástico.
 import ModuleOrchestraBody from './settings/ModuleOrchestraBody'; // Explicação: AMARRAÇÃO DE INFRAESTRUTURA: Importa a garagem nominal de músicos para a chamada de presença.
+// 🚀 NOVA EMBUTIDURA DE PORTARIA: Importa o módulo visual que criaremos para gerenciar os níveis na lista suspensa
+import ModuleTestLevels from './settings/ModuleTestLevels'; 
 
 const SettingsPage = () => { // Explicação: Inicia a construção da página principal de Configurações e Ajustes.
   const { userData, setContext } = useAuth(); // Explicação: Puxa as informações do usuário logado e a ferramenta de mudar o foco territorial do GPS.
@@ -29,7 +31,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
   // --- LÓGICA DE COMPETÊNCIAS v2.1 (MATRIZ DE PODER VIA CRACHÁ ELETRÔNICO) ---
   const level = userData?.accessLevel; // Explicação: Lê o cargo de autoridade gravado no Crachá Eletrônico do usuário.
   const isMaster = level === 'master'; // Explicação: Verifica se o usuário é o criador/administrador supremo do sistema.
-  const isComissao = isMaster || level === 'comissao'; // Explicação: Define se o usuário pertence à comissão técnica regional de música.
+  const isComissao = isMaster || level === 'comissao'; // Explicação: Define se o usuário pertence à comissão regional ou master.
   const isRegionalCidade = isComissao || level === 'regional_cidade'; // Explicação: Define se o usuário tem poder para gerenciar uma cidade inteira.
   const isGemLocal = isRegionalCidade || level === 'gem_local'; // Explicação: Define se o usuário é um secretário de igreja comum local.
 
@@ -50,7 +52,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
       <div className="flex flex-col gap-4 p-1 min-w-[280px]"> {/* Explicação: Caixa vertical com espaçamentos confortáveis para cliques no celular. */}
         <div className="flex flex-col gap-1 text-left"> {/* Explicação: Agrupa os textos de aviso de exclusão alinhados à esquerda. */}
           <div className="flex items-center gap-2 text-red-600"> {/* Explicação: Linha com ícone de lixeira e título na cor vermelha de perigo. */}
-            <Trash2 size={16} strokeWidth={3} /> {/* Explicação: Ícone visual de lixeira com traço grosso e bem visível. */}
+            <Trash2 size={16} strokeWidth={3} /> {/* Explicação: Ícone visual de lixeira com traço grosso and bem visível. */}
             <p className="text-[12px] font-black uppercase tracking-wider">Confirmar Exclusão</p> {/* Explicação: Texto de cabeçalho em letras maiúsculas e bem marcantes. */}
           </div> {/* Explicação: Fecha o cabeçalho do aviso. */}
           <p className="text-[11px] text-slate-500 font-medium leading-relaxed whitespace-normal break-words"> {/* Explicação: Parágrafo explicativo em tom cinza com quebra de linha de texto inteira sem cortes. */}
@@ -107,7 +109,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
   useEffect(() => { // Explicação: O Motor de Otimização de Banco de Dados que busca as locais de apoio baseadas no Crachá do Usuário.
     if (!activeRegionalId || !userData) return; // Explicação: Se o usuário não tiver uma regional definida, cancela para evitar erros.
     let isMounted = true; // Explicação: Mecanismo de segurança para saber se a tela ainda está aberta antes de salvar dados.
-    const unsubs = []; // Explicação: Caixa coletora que guardará todos os canais de conexão abertos com o banco.
+    const unsubs = []; // Explicação: Caixa coletora que guardará todos os canais de conexão abertos with o banco.
 
     setLoading(true); // Explicação: Coloca a tela no modo "Carregando" por segurança.
 
@@ -172,12 +174,12 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
         return; // Explicação: Cancela o processo.
     }
 
-    const docRefFocado = doc(db, 'comuns', comumIdEfetivo); // Explicação: Cria a referência imutável do documento da comum ativa.
+    const docRefFocado = doc(db, 'comuns', comumIdEfetivo); // Explicação: Cria a referência imutável do documento da comum activa.
     const unsub = onSnapshot(docRefFocado, (docSnap) => { // Explicação: Abre o canal em tempo real para monitorar os dados cadastrais da igreja comum selecionada.
         if (docSnap.exists() && isMounted) setSelectedComum({ id: docSnap.id, ...docSnap.data() }); // Explicação: Atualiza em tempo real as informações de endereço e horários da igreja comum.
     });
     const unsubInst = onSnapshot(collection(db, 'comuns', comumIdEfetivo, 'instrumentos_config'), (sInst) => { // Explicação: Abre canal com a subcoleção interna que diz quais instrumentos estão ativos ou desativados nesta igreja.
-      if (!isMounted) return; // Explicação: Aborta se a tela foi fechada.
+      if (!isMounted) return; // Explicação: Aborta if a tela foi fechada.
       setSharedData(prev => ({ ...prev, instruments: sInst.docs.map(d => ({ ...d.data(), id: d.id, section: d.data().section?.toUpperCase() || 'GERAL' })) })); // Explicação: Transforma a lista de instrumentos em maiúsculo por segurança e salva na memória do app.
     });
     return () => { isMounted = false; unsub(); unsubInst(); }; // Explicação: Desliga os ouvintes de detalhes da igreja ao trocar de seleção ou fechar a página.
@@ -198,7 +200,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
       {/* 📍 REORGANIZAÇÃO FIXA NO TOPO: FILTROS E GPS DE NAVEGAÇÃO JURISDICIONAL */}
       {isRegionalCidade && ( // Explicação: Só exibe seletores de GPS se o usuário tiver poder regional para gerenciar mais de uma localidade.
         <div key={`pills-container-${activeRegionalId}`} className="grid grid-cols-1 gap-2.5 pb-4 border-b border-slate-100"> {/* Explicação: Grid empilhado verticalmente com espaçamento premium de mercado no topo absoluto. */}
-          {/* Pill Cidade */}
+          /* Pill Cidade */
           <div className={`flex items-center gap-2.5 bg-white/60 backdrop-blur-sm p-3 rounded-2xl border border-slate-200 shadow-xs transition-all ${(!isComissao || sharedData.cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}> {/* Explicação: Card com fundo branco semi-transparente, efeito vidro, bordas arredondadas e toque confortável. Fica cinza se for Secretário Local travado. */}
             <MapPin size={13} className="text-indigo-600 shrink-0" /> {/* Explicação: Ícone de alfinete de localização na cor azul/indigo de alta legibilidade. */}
             <select // Explicação: Menu de seleção da Cidade ativa.
@@ -228,7 +230,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
               onChange={(e) => { // Explicação: Executa ao escolher uma igreja.
                 const com = sharedData.comunsDaRegional.find(c => c.id === e.target.value); // Explicação: Acha a igreja correspondente na memória da lista.
                 setSelectedComum(com); // Explicação: Foca a tela nesta igreja comum.
-                setContext('comum', com?.id); // Explicação: Atualiza o GPS global do app informando qual igreja está ativa agora.
+                setContext('comum', com?.id); // Explicação: Atualiza o GPS global do app informando qual igreja está activa agora.
               }}
             >
               <option value="" className="text-slate-900"> {/* Explicação: Linha padrão explicativa com texto escuro para legibilidade interna. */}
@@ -245,7 +247,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
 
       {/* 🔐 REORGANIZAÇÃO: CONDIÇÕES E BOTÕES COMPACTOS SEPARADOS POR NÍVEL DE ACESSO */}
       
-      {/* SEÇÃO 1: PAINEL ADMINISTRATIVO REGIONAL (Nível Master / Comissão) */}
+      {/* SEÇÃO 1: PAINEL ADMINISTRATIVO REGIONAL (Nível Master / Commission) */}
       {isComissao && ( // Explicação: Matriz de Permissão: Renderiza os botões de administração de base apenas para quem possui crachá Master ou Comissão.
         <div className="space-y-2 animate-in fade-in duration-300">
           <div className="px-1 flex flex-col text-left"> {/* Explicação: Pequeno rótulo de seção organizacional para guiar o usuário sem tutoriais. */}
@@ -254,6 +256,10 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
           <div className="grid grid-cols-2 gap-2"> {/* Explicação: Interface compacta de mercado dividindo as ações em 2 colunas menores e organizadas. */}
             <MenuButton icon={<Briefcase size={15}/>} title="Cargos & Funções" onClick={() => setActiveModal('global')} /> {/* Explicação: Botão compacto que aciona o modal autônomo de cargos. */}
             <MenuButton icon={<MapPin size={15}/>} title="Gestão de Cidades" onClick={() => setActiveModal('cities')} /> {/* Explicação: Botão compacto que aciona o modal autônomo de cidades. */}
+          </div>
+          {/* 🚀 EXPANSÃO DA ESTEIRA REGIONAL: Injeção da nova linha de botões de controle para o painel de níveis suspensos */}
+          <div className="grid grid-cols-1 pt-0.5">
+            <MenuButton icon={<Layers size={15}/>} title="Níveis de Teste da Lista Suspensa" moduleName="Regional" onClick={() => setActiveModal('niveis_teste')} />
           </div>
         </div>
       )}
@@ -273,7 +279,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
 
       {/* SEÇÃO 3: PAINEL OPERACIONAL LOCAL (Nível Secretário Local / Zeladoria da Comum Ativa) */}
       <div className="space-y-3 pt-1">
-        {comumIdEfetivo && sharedData.comunsDaRegional.some(c => c.id === comumIdEfetivo) ? ( // Explicação: Checagem Crítica de Segurança: Só renderiza as configurações operacionais se houver uma igreja legitimamente selecionada no topo.
+        {comumIdEfetivo && sharedData.comunsDaRegional.some(c => c.id === comumIdEfetivo) ? ( // Explicação: Chegagem Crítica de Segurança: Só renderiza as configurações operacionais se houver uma igreja legitimamente selecionada no topo.
           <div className="space-y-2.5 animate-in fade-in slide-in-from-top-3 duration-500"> {/* Explicação: Agrupador das configurações da igreja com animação premium. */}
             <div className="h-px bg-slate-100 mx-1" /> {/* Explicação: Divisor visual estético. */}
             <div className="px-1 leading-none flex flex-col text-left"> {/* Cabeçalho interno informando a manutenção ativa sem cortes de texto. */}
@@ -310,7 +316,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
               <MapPin size={24} /> {/* Explicação: Ícone grande de alfinete de mapa indicando foco de localização geográfica. */}
             </div> {/* Explicação: Fecha a moldura do ícone. */}
             <p className="text-slate-400 font-black uppercase italic text-[9px] tracking-widest leading-relaxed whitespace-normal px-2"> {/* Explicação: Texto de instrução por extenso sem cortes. */}
-              Jurisdição Territorial Indefinida <br/> <span className="text-[8px] opacity-75 normal-case font-bold text-slate-400 block mt-1">Por favor, utilize os seletores de filtros localizados no topo da tela para selecionar uma localidade ativa e liberar os painéis de ajustes.</span> {/* Explicação: Explica de forma interativa o que fazer. */}
+              Jurisdição Territorial Indefinida <br/> <span className="text-[8px] opacity-75 normal-case font-bold text-slate-400 block mt-1">Por favor, utilize os seletores de filtros localizados no topo da tela para selecionar uma localidade activa e liberar os painéis de ajustes.</span> {/* Explicação: Explica de forma interativa o que fazer. */}
             </p> {/* Explicação: Fecha o texto de instrução. */}
           </div> // Explicação: Fecha o card de orientação.
         )}
@@ -340,6 +346,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
                     {activeModal === 'ministerio_local' && 'Painel da Comum: Corpo Ministerial Eclesiástico'}
                     {activeModal === 'corpo_orquestral' && 'Painel da Comum: Cadastro Nominal do Corpo Orquestral'}
                     {activeModal === 'orchestra' && 'Configuração de Orquestra & Ativação de Naipes'}
+                    {activeModal === 'niveis_teste' && 'Painel Regional: Gestão de Níveis de Teste'}
                   </h3>
                 </div>
                 {/* ÁREA DE TOQUE DE FECHAMENTO CONFORTO ERGONÔMICO DE 44PX */}
@@ -359,17 +366,18 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
                 {activeModal === 'orchestra' && <ModuleOrchestra comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />}
                 {activeModal === 'users' && <ModuleAccess comumId={comumIdEfetivo} cargos={sharedData.cargos} />}
                 {activeModal === 'church' && <ModuleChurch localData={selectedComum} onUpdate={(updated) => setSelectedComum(updated)} />}
-                
-                {/* 🔌 AMARRAÇÃO CORRETIVA CRÍTICA: Injetando a ID da igreja Comum de forma explícita para destravar os botões visuais internos */}
                 {activeModal === 'ministerio_local' && <ModuleMinistryLocal comumId={comumIdEfetivo} />}
                 {activeModal === 'corpo_orquestral' && <ModuleOrchestraBody comumId={comumIdEfetivo} instrumentsData={sharedData.instruments} />}
+                
+                {/* 🔌 PLUGUE DE ROTEAMENTO: Aciona a interface de gerenciamento dinâmico passando a ID da regional de forma envelopada e segura */}
+                {activeModal === 'niveis_teste' && <ModuleTestLevels regionalId={activeRegionalId} />}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-    </div> // Explicação: Fecha o contêiner geral da página.
+    </div> /* Explicação: Fecha o contêiner geral da página. */
   );
 };
 
@@ -385,8 +393,8 @@ const MenuButton = ({ icon, title, moduleName, onClick }) => { // Explicação: 
           {icon}
         </div>
         <div className="min-w-0 flex-1 leading-tight">
-          {moduleName && ( // Explicação: Pequena tag superior em itálico azul indicando o escopo funcional (ex: CADASTRO, SEGURANÇA)
-            <p className="text-[7.5px] font-black text-indigo-600 uppercase mb-0.5 tracking-wider italic opacity-85 leading-none">{moduleName}</p>
+          {moduleName && ( /* Explicação: Pequena tag superior em itálico azul indicando o escopo funcional */
+            <p className="text-[7px] font-black text-indigo-600 uppercase mb-0.5 tracking-wider italic opacity-85 leading-none">{moduleName}</p>
           )}
           <h3 className="text-[11px] font-black text-slate-800 uppercase italic tracking-tight whitespace-normal break-words leading-snug">{title}</h3> {/* Explicação: Exibição textual por extenso, sem cortes em elipse para total higiene visual. */}
         </div>
