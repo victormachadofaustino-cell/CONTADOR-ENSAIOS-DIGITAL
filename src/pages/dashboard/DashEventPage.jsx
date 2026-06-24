@@ -1,430 +1,389 @@
-import React, { useMemo, useState } from 'react'; // Explicação: Ferramenta base do React que gerencia os estados das abas e evita cálculos repetidos na memória.
-import toast from 'react-hot-toast'; // Explicação: Sistema de avisos que faz aparecer pequenos balões flutuantes de sucesso ou erro na tela.
-import { 
-  TrendingUp, Music, Star, 
-  Share2, Activity, PieChart, 
-  CheckCircle2, Info, ShieldCheck, Users, FileText, Briefcase, Menu, BookOpen, ChevronDown, ChevronUp
-} from 'lucide-react'; // Explicação: Biblioteca que fornece os desenhos dos ícones usados nos botões e nos títulos dos cartões.
-import { pdfEventService } from '../../services/pdfEventService'; // Explicação: Serviço interno responsável por desenhar e gerar o arquivo PDF oficial da Ata.
-import { whatsappService } from '../../services/whatsappService'; // Explicação: Serviço interno que formata as mensagens de texto com os números para enviar ao WhatsApp.
-import { useAuth } from '../../context/AuthContext'; // Explicação: Conecta com o sistema de login para ler o "Crachá Eletrônico" (Custom Claims) do usuário logado.
-import { db, doc, getDoc } from '../../config/firebase'; // Explicação: Componentes oficiais de conexão que fazem a ponte com o banco de dados central Firebase.
+import React, { useMemo, useState, useEffect } from 'react'; // 💡 Importa as ferramentas oficiais do React para gerenciar memória, estados e efeitos de escuta.
+import { useAuth } from '../../context/AuthContext'; // 💡 Conecta ao sistema de login para ler o "Crachá Eletrônico" (Custom Claims) do usuário ativo.
+import { hasPermission } from '../../config/permissions'; // 💡 Importa a tabela de segurança para decidir quem pode exportar relatórios.
+import { pdfEventService } from '../../services/pdfEventService'; // 💡 Importa o serviço responsável por construir o documento impresso em PDF.
+import { whatsappService } from '../../services/whatsappService'; // 💡 Importa o formatador automatizado de mensagens para o WhatsApp.
+import { db } from '../../config/firebase'; // 💡 Conexão cirúrgica com o banco de dados sem requisições redundantes.
+import { collection, onSnapshot } from 'firebase/firestore'; // 💡 Importa o escutador em tempo real e o direcionador de coleções do Firebase.
+import toast from 'react-hot-toast'; // 💡 Importa o sistema de balões de aviso flutuantes para a interface.
+import { LayoutGrid, ClipboardList, Scale, PieChart, FileText, Share2 } from 'lucide-react'; // 💡 Importa os ícones do menu de navegação do carrossel, o ícone de arquivo e o ícone de compartilhar.
+import { AnimatePresence, motion } from 'framer-motion'; // 💡 Motor de animação para transições suaves de deslize entre as telas.
 
-// v8.9.3: Importação da Regra de Ouro para travar exportação (PDF/Compartilhar)
-import { hasPermission } from '../../config/permissions'; // Explicação: Importa o gerenciador oficial que decide se o usuário pode ou não exportar os dados.
+// 📦 IMPORTAÇÃO DAS 4 TELAS ESPECIALIZADAS E DESMEMBRADAS
+import ScreenGeral from './components/ScreenGeral.jsx'; // 💡 Importa a Tela 1: Cards Interativos e Gráficos Históricos.
+import ScreenPresenca from './components/ScreenPresenca.jsx'; // 💡 Importa a Tela 2: Trilho de Chamada Nominal de Presentes.
+import ScreenEquilibrio from './components/ScreenEquilibrio.jsx'; // 💡 Importa a Tela 3: Distribuição e Porcentagem de Naipes.
+import ScreenResumo from './components/ScreenResumo.jsx'; // 💡 Importa a Tela 4: Painel da Copa e Conclusão Operacional.
 
-// IMPORTAÇÃO DOS MÓDULOS ATÔMICOS v8.9.1
-import DashStatsHeader from './components/DashStatsHeader.jsx'; // Explicação: Importa o componente visual do cabeçalho de alimentação (lanches).
-import DashEquilibriumSection from './components/DashEquilibriumSection.jsx'; // Explicação: Importa o componente visual que exibe o equilíbrio e divisão de naipes da orquestra.
-import DashFinalSummary from './components/DashFinalSummary.jsx'; // Explicação: Importa o componente dos botões finais de compartilhamento e relatórios.
-
-const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) => { // Explicação: Início do componente principal que constrói a página do painel do ensaio, recebendo a lista histórica para comparação.
-  const { userData } = useAuth(); // Explicação: Extrai as informações de perfil do usuário que está visualizando a página através do AuthContext.
-  const level = userData?.accessLevel; // Explicação: Armazena o nível de poder (Master, GEM, etc.) extraído diretamente do crachá do usuário logado.
+const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) => { // 💡 Início do componente Maestro que gerencia o painel do ensaio.
+  const { userData } = useAuth(); // 💡 Recupera o Crachá Eletrônico do usuário conectado de forma local (Custo Zero de cota).
   
-  // Explicação: Estados locais para monitorar qual aba está selecionada e se o menu de 3 barras do topo está aberto.
-  const [activeTab, setActiveTab] = useState('geral'); // Explicação: Define por padrão que a aba inicial exibida é a de 'Visão Geral'.
-  const [dropdownOpen, setDropdownOpen] = useState(false); // Explicação: Define que o menu suspenso de 3 barras inicia fechado.
-  const [expandedCard, setExpandedCard] = useState(null); // Explicação: Estado controlado que sabe qual cartão mestre de Big Number está expandido mostrando o Drilldown.
+  // 🛡️ VALIDAÇÃO DE PERMISSÃO EM TEMPO REAL
+  const canExport = hasPermission(userData, 'generate_report', ataData?.scope); // 💡 Valida se o crachá do usuário permite emitir relatórios.
 
-  // Explicação: Cria travas de segurança booleanas (verdadeiro/falso) baseadas no nível de poder do crachá eletrônico.
-  const isMaster = userData?.isMaster; // Explicação: Verifica se o usuário é Administrador Master.
-  const isComissao = userData?.isComissao; // Explicação: Verifica se o usuário faz parte da Comissão Musical.
-  const isRegionalCidade = userData?.isRegionalCidade; // Explicação: Verifica se o usuário é um Encarregado Regional ou de Cidade.
-  const isGemLocal = userData?.isGemLocal; // Explicação: Verifica se o usuário é um Examinador ou Encarregado de nível Local.
-  const isBasico = userData?.isBasico; // Explicação: Verifica se o usuário possui acesso básico apenas para consulta.
+  const [currentScreen, setCurrentScreen] = useState('geral'); // 💡 Estado que controla qual aba do carrossel está ativa.
+  const [activeModal, setActiveModal] = useState(null); // 💡 Estado global que gerencia qual modal de Drilldown está aberto centralizado na tela.
 
-  // v8.9.2: CÁLCULO DE ESTATÍSTICAS COM PROTEÇÃO DE PROCESSAMENTO
-  const stats = useMemo(() => { // Explicação: Inicia o agrupador inteligente de cálculos pesados para evitar que o celular processe somas repetidas.
-    const totals = { // Explicação: Objeto limpo que servirá de gaveta para acumular os totais de cada categoria.
+  const isBasico = userData?.isBasico; // 💡 Verifica se é um usuário com acesso básico de consulta.
+
+  // 📡 PONTE REATIVA DE PRESENÇA (CAPTURA A SUBCOLEÇÃO DO FIRESTORE EM TEMPO REAL)
+  const [chamadaNominal, setChamadaNominal] = useState([]); // 💡 Estado local que guardará a lista de chamada vinda de chamada_musicos.
+
+  useEffect(() => {
+    if (!eventId) return; // 💡 Trava de segurança caso o identificador do evento não seja carregado na inicialização.
+
+    // 🎯 Mira diretamente na subcoleção do evento atual para não misturar dados
+    const chamadaRef = collection(db, 'events_global', eventId, 'chamada_musicos');
+
+    // 🏎️ Escuta reativa em tempo real com custo zero de re-consultas na navegação de abas
+    const unsubscribe = onSnapshot(chamadaRef, (snapshot) => {
+      const listaMusicos = []; // 💡 Cria a gaveta vazia temporária para receber os músicos da portaria.
+      snapshot.forEach((docSnap) => { // 💡 Varre documento por documento reativamente.
+        const dados = docSnap.data(); // 💡 Puxa o JSON puro interno do Firestore.
+        listaMusicos.push({
+          id: docSnap.id, // 💡 Carimba a ID única gerada pelo Firebase.
+          nome: dados.nome || '', // 💡 Salva o nome do irmão oficializado ou em ensaio.
+          instrumentoNome: dados.instrumentoNome || 'SOLISTA', // 💡 Resgata o nome por extenso do naipe dele.
+          presente: dados.presente === true // 💡 Força o booleano seguro
+        });
+      });
+      setChamadaNominal(listaMusicos); // 💡 Atualiza a esteira de presença dinamicamente
+    }, (error) => {
+      console.error("Erro na escuta da chamada:", error); // 💡 Emite alerta no console se houver perda de autenticação no Firebase.
+    });
+
+    return () => unsubscribe(); // 💡 Desliga a escuta ao fechar o painel para proteger a bateria e a cota de dados.
+  }, [eventId]); // 💡 Monitora re-atualizações baseadas estritamente se o ID do ensaio mudar.
+
+  // ⚡ COMPILADOR MATEMÁTICO INTEGRADO (PROCESSA TUDO EM MEMÓRIA LOCAL SEM CUSTO DE COTA - DENORMALIZADO)
+  const stats = useMemo(() => { // 💡 useMemo retém os cálculos em cache e só reprocessa se os dados mudarem fisicamente.
+    const totals = { 
       geral: 0, orquestra: 0, musicos: 0, organistas: 0, irmandade: 0, 
       irmaos: 0, irmas: 0, hinos: 0, visitas_total: 0, ministerio_oficio: 0,
-      cordas: 0, madeiras: 0, metais: 0, saxofones: 0, teclas: 0,
-      encRegional: 0, encLocal: 0, examinadoras: 0,
-      musicosComum: 0, musicosVisita: 0,
+      cordas: 0, cordasComum: 0, cordasVisita: 0,
+      madeiras: 0, madeirasComum: 0, madeirasVisita: 0,
+      metais: 0, metaisComum: 0, metaisVisita: 0,
+      saxofones: 0, saxofonesComum: 0, saxofonesVisita: 0,
+      teclas: 0, teclasComum: 0, teclasVisita: 0,
       organistasComum: 0, organistasVisita: 0,
-      orquestraTotalComum: 0, orquestraTotalVisita: 0,
-      irmandadeComum: 0, irmandadeVisita: 0,
-      examinadorasComum: 0, examinadorasVisita: 0,
-      ministerioCasa: 0, ministerioVisita: 0,
-      hinosP1: 0, // Explicação: Nova gaveta para guardar o total de hinos cantados especificamente na primeira parte do ensaio.
-      hinosP2: 0,  // Explicação: Nova gaveta para guardar o total de hinos cantados especificamente na segunda parte do ensaio.
-      hinosListaP1: [], // Explicação: Guarda a lista nominal de hinos executados na primeira parte para o Drilldown.
-      hinosListaP2: [], // Explicação: Guarda a lista nominal de hinos executados na segunda parte para o Drilldown.
-      deltaGeral: 0, // Explicação: Diferença matemática de público total contra o ensaio passado.
-      deltaOrquestra: 0, // Explicação: Diferença matemática de instrumentistas contra o ensaio passado.
-      deltaHinos: 0, // Explicação: Diferença matemática de hinos cantados contra o ensaio passado.
-      deltaCorpoTecnico: 0, // Explicação: Diferença matemática de corpo técnico contra o ensaio passado.
-      musicosPresentesLista: [] // Explicação: GAVETA EXCLUSIVA: Armazena estritamente os alistados locais que responderam com presente VERDADEIRO.
+      musicosComum: 0, musicosVisita: 0,
+      encRegionalComum: 0, encRegionalVisita: 0, encLocalComum: 0, encLocalVisita: 0,
+      encTotal: 0, examinadorasComum: 0, examinadorasVisita: 0, examinadorasTotal: 0,
+      hinosP1: [], hinosP2: [],
+      deltaGeral: 0, deltaOrquestra: 0, deltaCoral: 0, deltaHinos: 0, deltaEncarregados: 0,
+      musicosPresentesLista: chamadaNominal, 
+      historicoGrafico: [] 
     };
 
-    if (counts) { // Explicação: Proteção de código. Se os dados de contagem existirem no documento, inicia a varredura naipe por naipe.
-      Object.entries(counts).forEach(([id, data]) => { // Explicação: Transforma o mapa de instrumentos em uma lista iterável para fazer as somas.
-        if (id.startsWith('meta_')) return; // Explicação: Ignora propriedades de controle do banco de dados que começam com o prefixo 'meta_'.
-        
-        const valTotal = parseInt(data.total) || 0; // Explicação: Converte o texto do total de instrumentos em um número inteiro seguro.
-        const valComum = parseInt(data.comum) || 0; // Explicação: Converte o texto de músicos locais (da comum) em um número inteiro seguro.
-        const valIrmaos = parseInt(data.irmaos) || 0; // Explicação: Converte o número de irmãos cadastrados na seção em valor numérico.
-        const valIrmas = parseInt(data.irmas) || 0; // Explicação: Converte o número de irmãs cadastradas na seção em valor numérico.
-        const section = (data.section || "GERAL").toUpperCase(); // Explicação: Lê a família do instrumento e padroniza em letras maiúsculas (ex: CORDAS).
-        const saneId = id.toLowerCase(); // Explicação: Padroniza o identificador único do instrumento em letras minúsculas.
-        const visitasCalc = Math.max(0, valTotal - valComum); // Explicação: Descobre o número de visitas subtraindo os músicos da casa do total geral, impedindo números negativos.
+    if (counts) {
+      Object.entries(counts).forEach(([id, data]) => {
+        if (id.startsWith('meta_')) return;
+        const valTotal = parseInt(data.total) || 0;
+        const valComum = parseInt(data.comum) || 0;
+        const valVisita = Math.max(0, valTotal - valComum);
+        const section = (data.section || "GERAL").toUpperCase();
+        const saneId = id.toLowerCase();
 
-        if (section === 'CORAL' || section === 'IRMANDADE' || saneId === 'coral' || saneId === 'irmandade') { // Explicação: Identifica se a linha atual pertence ao grupo de vozes ou público.
-          totals.irmaos += valIrmaos || (saneId === 'irmandade' ? valTotal : 0); // Explicação: Acumula o total de homens na bancada da irmandade ou coro.
-          totals.irmas += valIrmas; // Explicação: Acumula o total de mulheres na bancada da irmandade ou coro.
-          totals.irmandadeComum += valComum; // Explicação: Soma os membros locais da irmandade.
-          totals.irmandadeVisita += visitasCalc; // Explicação: Soma os membros visitantes da irmandade.
-        } 
-        else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { // Explicação: Identifica se a linha avaliada se refere às organistas.
-          totals.organistas += valTotal; // Explicação: Adiciona as organistas ao totalizador específico delas.
-          totals.organistasComum += valComum; // Explicação: Acumula o total de organistas locais dellaquela igreja.
-          totals.organistasVisita += visitasCalc; // Explicação: Acumula o total de organistas que vieram visitar de fora.
-        } 
-        else { // Explicação: Se não for coro nem organista, o systema sabe que se trata de um músico de instrumento de sopro ou cordas.
-          totals.musicos += valTotal; // Explicação: Acumula o total de músicos de orquestra na gaveta geral.
-          totals.musicosComum += valComum; // Explicação: Acumula os músicos que são membros oficiais della localidade.
-          totals.musicosVisita += visitasCalc; // Explicação: Acumula os músicos que vieram apoiar o ensaio vindos de outras igrejas.
-          if (section === 'CORDAS' || ['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo'].includes(saneId)) totals.cordas += valTotal; // Explicação: Agrupa especificamente a soma da família das Cordas.
-          else if (section.includes('SAX')) totals.saxofones += valTotal; // Explicação: Agrupa especificamente a soma da família dos Saxofones.
-          else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt', 'flauta', 'clarinete', 'fagote', 'claronealto', 'claronebaixo', 'corneingles'].includes(saneId)) totals.madeiras += valTotal; // Explicação: Agrupa especificamente a soma da família das Madeiras.
-          else if (section.includes('METAI') || ['tpt', 'tbn', 'trp', 'euf', 'tub', 'trompete', 'trombone', 'trompa', 'eufonio', 'tuba', 'flugelhorn'].includes(saneId)) totals.metais += valTotal; // Explicação: Agrupa especificamente a soma da família dos Metais.
-          else if (section === 'TECLAS' || saneId === 'acordeon' || saneId === 'acd') totals.teclas += valTotal; // Explicação: Agrupa a soma de instrumentos de teclas adicionais como acordeons.
+        if (saneId === 'coral' || section === 'IRMANDADE' || saneId.includes('irmandade') || saneId.includes('irmao') || saneId.includes('irma')) { 
+          const irmaosCount = parseInt(data.irmaos) || 0; 
+          const irmasCount = parseInt(data.irmas) || 0; 
+          totals.irmaos += irmaosCount; 
+          totals.irmas += irmasCount; 
+          totals.irmandade += (irmaosCount + irmasCount); 
+        } else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { 
+          totals.organistas += valTotal; 
+          totals.organistasComum += valComum;
+          totals.organistasVisita += valVisita;
+        } else { 
+          totals.musicos += valTotal; 
+          totals.musicosComum += valComum;
+          totals.musicosVisita += valVisita;
+
+          if (['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo', 'contrabaixo'].includes(saneId) || section.includes('CORDA')) {
+            totals.cordas += valTotal; totals.cordasComum += valComum; totals.cordasVisita += valVisita;
+          } else if (section.includes('SAX')) {
+            totals.saxofones += valTotal; totals.saxofonesComum += valComum; totals.saxofonesVisita += valVisita;
+          } else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt', 'flauta', 'clarinete'].includes(saneId)) {
+            totals.madeiras += valTotal; totals.madeirasComum += valComum; totals.madeirasVisita += valVisita;
+          } else if (section.includes('METAI') || ['tpt', 'tbn', 'trp', 'euf', 'tub', 'trompete'].includes(saneId)) {
+            totals.metais += valTotal; totals.metaisComum += valComum; totals.metaisVisita += valVisita;
+          } else if (saneId === 'acordeon') {
+            totals.teclas += valTotal; totals.teclasComum += valComum; totals.teclasVisita += valVisita;
+          }
         }
       });
     }
 
-    const oficio = ['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM']; // Explicação: Vetor de controle que lista as strings exatas correspondentes ao ministério de altar.
-    const processarPessoasAta = (lista, isVisitante = false) => { // Explicação: Função interna reutilizável para ler as assinaturas inseridas na ata e catalogar os cargos.
-      if (!lista || !Array.isArray(lista)) return; // Explicação: Proteção de barreira. Se a lista de nomes virem vazia ou corrompida, cancela o processamento da linha.
-      lista.forEach(p => { // Explicação: Inicia a varredura de cada pessoa registrada na ata de presença do evento.
-        const cargo = (p.min || p.role || ""); // Explicação: Captura o cargo ministerial digitado (pode estar em min ou role dependendo della versão do documento).
-        if (isVisitante) totals.visitas_total++; // Explicação: Se o indicador de visitante for verdadeiro, incrementa o contador geral de visitas na ata.
-        if (cargo === 'Encarregado Regional') totals.encRegional++; // Explicação: Incrementa especificamente a quantidade de Encarregados Regionais presentes.
-        if (cargo === 'Encarregado Local') totals.encLocal++; // Explicação: Incrementa especificamente a quantidade de Encarregados Locais presentes.
-        if (cargo === 'Examinadora') { // Executa o cálculo técnico.
-          totals.examinadoras++; 
-          if (isVisitante) totals.examinadorasVisita++; 
-          else totals.examinadorasComum++; 
+    const processarPessoasAta = (lista, isVisitante = false) => { 
+      if (!lista || !Array.isArray(lista)) return;
+      lista.forEach(p => {
+        const cargo = (p.min || p.role || "");
+        if (isVisitante) totals.visitas_total++;
+        
+        if (cargo === 'Encarregado Regional') {
+          if (isVisitante) totals.encRegionalVisita++; else totals.encRegionalComum++;
         }
-        if (oficio.includes(cargo)) { // Executa o agrupamento espiritual.
-          totals.ministerio_oficio++; 
-          if (isVisitante) totals.ministerioVisita++; 
-          else totals.ministerioCasa++; 
+        if (cargo === 'Encarregado Local') {
+          if (isVisitante) totals.encLocalVisita++; else totals.encLocalComum++;
+        }
+        if (cargo === 'Examinadora') {
+          if (isVisitante) totals.examinadorasVisita++; else totals.examinadorasComum++;
+          totals.examinadorasTotal++;
+        }
+        if (['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM'].includes(cargo)) {
+          totals.ministerio_oficio++;
         }
       });
     };
 
-    processarPessoasAta(ataData?.visitantes, true); // Explicação: Executa o processador passando a lista de pessoas que assinaram como visitantes da reunião.
-    processarPessoasAta(ataData?.presencaLocalFull, false); // Explicação: Executa o processador passando a lista de ministério local que assinou a presença.
+    processarPessoasAta(ataData?.presencaLocalFull, false); 
+    processarPessoasAta(ataData?.visitantes, true); 
 
-    totals.orquestraTotalComum = totals.musicosComum + totals.organistasComum; // Explicação: Consolida a soma de todos os instrumentistas e organistas que são da casa.
-    totals.orquestraTotalVisita = totals.musicosVisita + totals.organistasVisita; // Explicação: Consolida a soma de todos os instrumentistas e organistas que vieram de fora.
-    totals.irmandade = totals.irmaos + totals.irmas; // Explicação: Consolida a soma total de pessoas sentadas na irmandade (Homens + Mulheres).
-    totals.orquestra = totals.musicos + totals.organistas; // Explicação: Consolida a soma musical da orquestra juntando músicos e organistas.
-    totals.geral = totals.orquestra + totals.irmandade; // Explicação: Consolida o número máximo de cabeças do evento (Orquestra somada com a Irmandade).
+    totals.orquestra = totals.musicos + totals.organistas; 
+    totals.geral = totals.orquestra + totals.irmandade; 
+    totals.encTotal = totals.encRegionalComum + totals.encRegionalVisita + totals.encLocalComum + totals.encLocalVisita; 
 
-    // Extração e fatiamento avançado de hinos para o Drilldown
-    if (ataData?.partes) { // Explicação: Proteção de segurança. Se o documento contiver a lista de partes musicais, calcula os hinos.
-      totals.hinos = ataData.partes.reduce((acc, p) => acc + (p.hinos?.filter(h => h && h.trim() !== '').length || 0), 0); // Explicação: Puxa o totalizador mestre de hinos.
-      
-      const p1Obj = ataData.partes.find(p => p.label?.includes('1ª') || p.id === 'parte_1'); // Explicação: Filtra as informações da primeira metade do ensaio.
-      if (p1Obj) {
-        totals.hinosListaP1 = p1Obj.hinos?.filter(h => h && h.trim() !== '') || []; // Explicação: Constrói a lista nominal de hinos para o Drilldown expansível.
-        totals.hinosP1 = totals.hinosListaP1.length;
-      }
-      
-      const p2Obj = ataData.partes.find(p => p.label?.includes('2ª') || p.id === 'parte_2'); // Explicação: Filtra as informações da segunda metade do ensaio.
-      if (p2Obj) {
-        totals.hinosListaP2 = p2Obj.hinos?.filter(h => h && h.trim() !== '') || []; // Explicação: Constrói a lista nominal de hinos para o Drilldown expansível.
-        totals.hinosP2 = totals.hinosListaP2.length;
-      }
+    if (ataData?.partes) { 
+      const p1Obj = ataData.partes.find(p => p.label?.includes('1ª') || p.id === 'parte_1');
+      if (p1Obj) totals.hinosP1 = p1Obj.hinos?.filter(h => h && h.trim() !== '') || [];
+      const p2Obj = ataData.partes.find(p => p.label?.includes('2ª') || p.id === 'parte_2');
+      if (p2Obj) totals.hinosP2 = p2Obj.hinos?.filter(h => h && h.trim() !== '') || [];
+      totals.hinos = totals.hinosP1.length + totals.hinosP2.length;
     }
 
-    // --- FILTRAGEM RIGOROSA DE MÚSICOS E ORGANISTAS PRESENTES [SÓ ENTRA QUEM FOR TRUE] ---
-    if (ataData?.presencaLocalFull && Array.isArray(ataData.presencaLocalFull)) { // Explicação: Se a lista de chamadas nominais residir na memória da ata.
-      // Explicação Abaixo: Captura e salva estritamente quem está com a flag presente ligada, ocultando totalmente os faltantes.
-      totals.musicosPresentesLista = ataData.presencaLocalFull.filter(membro => membro.presente === true); 
-    }
+    if (allEvents && allEvents.length > 0 && ataData?.comumId) {
+      const atualCreatedAt = ataData?.createdAt || Date.now();
 
-    // --- CUSTO ZERO DE FIRESTORE: MÓDULO DE INTELIGÊNCIA HISTÓRICA E EQUIVALÊNCIA DE ESCOPO ---
-    if (allEvents && allEvents.length > 0 && ataData?.comumId && ataData?.scope) { // Explicação: Inteligência de Delta: Varre os dados locais.
-      const eventosFiltradosMesmaIgreja = allEvents
-        .filter(ev => ev.comumId === ataData.comumId && (ev.scope || 'local') === ataData.scope && ev.id !== eventId) // CORREÇÃO DO MOTOR: Filtra por Comum E obrigatoriamente pelo mesmo tipo de Escopo (Local com Local, Regional com Regional).
-        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)); // Explicação: Ordena por data colocando o ensaio anterior correspondente na frente.
+      const eventos2026 = allEvents 
+        .filter(ev => ev.comumId === ataData.comumId && ev.createdAt && ev.createdAt <= atualCreatedAt) 
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); 
 
-      const eventoPassado = eventosFiltradosMesmaIgreja[0]; // Explicação: Resgata a cópia do documento do mês passado guardada na memória.
-      if (eventoPassado) { // Explicação: Se encontrou o evento anterior fidedigno, faz os batimentos matemáticos.
-        let musPassado = 0; let orgPassado = 0; let irmPassado = 0; let hinPassado = 0; let tecnicoPassado = 0;
-        
-        if (eventoPassado.counts) { // Explicação: Processa as somas do mês passado localmente na memória de forma gratuita.
-          Object.entries(eventoPassado.counts).forEach(([id, data]) => {
+      eventos2026.forEach((ev) => {
+        let totalEv = 0; let orqEv = 0; let comEv = 0; let visEv = 0;
+        if (ev.counts) {
+          Object.entries(ev.counts).forEach(([id, d]) => {
             if (id.startsWith('meta_')) return;
-            const val = parseInt(data.total) || 0;
-            const sec = (data.section || "GERAL").toUpperCase();
-            const sId = id.toLowerCase();
-            if (sec === 'CORAL' || sec === 'IRMANDADE' || sId === 'coral' || sId === 'irmandade') irmPassado += val;
-            else if (sec === 'ORGANISTAS' || sId === 'orgao' || sId === 'org') orgPassado += val;
-            else musPassado += val;
+            const t = parseInt(d.total) || 0;
+            const c = parseInt(d.comum) || 0;
+            const s = (d.section || "").toUpperCase();
+            const sid = id.toLowerCase();
+            
+            if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) {
+              totalEv += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0));
+            } else {
+              totalEv += t;
+              orqEv += t;
+              comEv += c; 
+              visEv += Math.max(0, t - c); 
+            }
           });
         }
-        if (eventoPassado.ata?.partes) { // Explicação: Resgata a soma de hinos do ensaio anterior.
-          hinPassado = eventoPassado.ata.partes.reduce((acc, p) => acc + (p.hinos?.filter(h => h && h.trim() !== '').length || 0), 0);
+        const dataFormatada = ev.date ? new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : '---'; 
+        totals.historicoGrafico.push({
+          name: dataFormatada.toUpperCase().replace('.', ''),
+          público: totalEv,
+          orquestra: orqEv,
+          orquestraComum: comEv, 
+          visitantesApoio: visEv  
+        });
+      });
+
+      if (!eventos2026.some(e => e.id === eventId)) {
+        totals.historicoGrafico.push({ 
+          name: 'ATUAL', 
+          público: totals.geral, 
+          orquestra: totals.orquestra,
+          orquestraComum: totals.musicosComum + totals.organistasComum,
+          visitorsApoio: totals.musicosVisita + totals.organistasVisita
+        });
+      }
+
+      const ensaiosPassados = allEvents
+        .filter(ev => ev.comumId === ataData.comumId && ev.id !== eventId && ev.createdAt && ev.createdAt < atualCreatedAt) 
+        .sort((a, b) => (a.createdAt || 0) - (a.createdAt || 0)); 
+
+      const uEnsaio = ensaiosPassados[0]; 
+      if (uEnsaio) {
+        let uOrq = 0; let uCoral = 0; let uHinos = 0; let uEnc = 0; 
+        
+        if (uEnsaio.counts) { 
+          Object.entries(uEnsaio.counts).forEach(([id, d]) => {
+            if (id.startsWith('meta_')) return;
+            const t = parseInt(d.total) || 0;
+            const s = (d.section || "").toUpperCase();
+            const sid = id.toLowerCase();
+            
+            if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) {
+              uCoral += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0)); 
+            } else {
+              uOrq += t; 
+            }
+          });
         }
         
-        const contarTecnicoAntigo = (lista) => { // Explicação: Processa a liderança técnica do mês passado.
-          if (!lista || !Array.isArray(lista)) return;
+        if (uEnsaio.partes) {
+          uHinos = uEnsaio.partes.reduce((acc, p) => acc + (p.hinos?.filter(h => h && h.trim() !== '').length || 0), 0);
+        }
+        
+        const contarEncAntigo = (lista) => {
+          if (!lista) return;
           lista.forEach(p => {
-            if (['Encarregado Regional', 'Encarregado Local', 'Examinadora'].includes(p.min || p.role)) tecnicoPassado++;
+            if (['Encarregado Regional', 'Encarregado Local', 'Examinadora'].includes(p.min || p.role)) uEnc++;
           });
         };
-        contarTecnicoAntigo(eventoPassado.ata?.visitantes);
-        contarTecnicoAntigo(eventoPassado.ata?.presencaLocalFull);
+        contarEncAntigo(uEnsaio.ata?.presencaLocalFull);
+        contarEncAntigo(uEnsaio.ata?.visitantes);
 
-        totals.deltaGeral = totals.geral - (musPassado + orgPassado + irmPassado); // Explicação: Armazena o saldo real de público total.
-        totals.deltaOrquestra = totals.orquestra - (musPassado + orgPassado); // Explicação: Armazena o saldo real de instrumentistas.
-        totals.deltaHinos = totals.hinos - hinPassado; // Explicação: Armazena o saldo real de hinos.
-        totals.deltaCorpoTecnico = (totals.encRegional + totals.encLocal + totals.examinadoras) - tecnicoPassado; // Explicação: Armazena o saldo real técnico.
+        totals.deltaGeral = totals.geral - (uOrq + uCoral); 
+        totals.deltaOrquestra = totals.orquestra - uOrq; 
+        totals.deltaCoral = totals.irmandade - uCoral; 
+        totals.deltaHinos = totals.hinos - uHinos; 
+        totals.deltaEncarregados = totals.encTotal - uEnc; 
       }
     }
 
-    return totals; // Explicação: Retorna o objeto contendo as somas agregadas e a inteligência de tendências históricas.
-  }, [counts, ataData, allEvents, eventId]); // Explicação: O useMemo protege o processador remontando as contas apenas se houver novos dados físicos.
+    return totals; 
+  }, [counts, ataData, allEvents, eventId, chamadaNominal]);
 
-  const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0"; // Explicação: Função matemática que extrai a porcentagem de participação de um naipe, evitando divisão por zero.
-  
-  // v8.9.3: LIBERAÇÃO CONTEXTUAL DA EXPORTAÇÃO
-  const canExport = hasPermission(userData, 'generate_report', ataData?.scope); // Explicação: Valida no arquivo de permissões se o escopo atual do usuário permite disparar relatórios.
-
-  const handleShareLanche = async () => { // Explicação: Função disparada ao clicar no botão de compartilhar dados de copa/cozinha.
-    const msg = whatsappService.obterTextoAlimentacao(ataData, stats); // Explicação: Solicita ao formatador a mensagem padrão de alimentação montada com os dados locais.
-    if (navigator.share) { // Explicação: Se o celular do usuário der suporte ao menu nativo de compartilhamento do sistema operacional.
-      try { await navigator.share({ text: msg }); } catch (err) { } // Explicação: Abre o menu nativo do celular (WhatsApp, Telegram, etc.) para repassar o texto.
-    } else { // Caso seja um navegador antigo sem suporte a compartilhamento nativo.
-      navigator.clipboard.writeText(msg); // Injeta o texto automaticamente na área de transferência.
-      toast.success("Resumo Alimentação Copiado!"); // Dispara um aviso visual flutuante.
+  // 🎯 CORREÇÃO DE PONTE COMPACTA DE LANCHES (WHATSAPP): Aciona o método real de montagem de strings
+  const handleShareLanche = () => {
+    if (!counts) return toast.error('Dados de contagem indisponíveis'); // 💡 Bloqueia se o barramento estiver vazio.
+    if (whatsappService && typeof whatsappService.obterTextoAlimentacao === 'function') { // 💡 Valida se a função de strings está pronta.
+      const msg = whatsappService.obterTextoAlimentacao({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // 🚀 Compila o texto oficial do lanche da portaria.
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // 🚀 Dispara no navegador para o celular abrir o App.
+    } else {
+      toast.error('Serviço de compartilhamento pendente de carregamento'); // 💡 Mensagem de fallback seguro.
     }
   };
 
-  const handleShareEstatistico = async () => { // Explicação: Função disparada ao clicar no botão de compartilhar dados estatísticos e totais de naipes.
-    const msg = whatsappService.obterTextoEstatistico({ ...ataData, counts }, stats); // Explicação: Solicita ao gerador de texto do WhatsApp o relatório completo estruturado por naipes.
-    if (navigator.share) { // Valida se o smartphone possui suporte a API nativa.
-      try { await navigator.share({ text: msg }); } catch (err) { } // Invoca a janela nativa.
-    } else { // Fallback para computadores tradicionais.
-      navigator.clipboard.writeText(msg); // Salva o texto automaticamente na memória.
-      toast.success("Resumo Estatístico Copiado!"); // Emite o balão de aviso.
+  // 🎯 CORREÇÃO DE PONTE COMPACTA ESTATÍSTICA (WHATSAPP): Aciona o método real de montagem de strings
+  const handleShareEstatistico = () => {
+    if (!counts) return toast.error('Dados estatísticos indisponíveis'); // 💡 Bloqueia se a volumetria estiver vazia.
+    if (whatsappService && typeof whatsappService.obterTextoEstatistico === 'function') { // 💡 Valida se a função de strings está pronta.
+      const msg = whatsappService.obterTextoEstatistico({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // 🚀 Compila o texto estatístico oficial.
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // 🚀 Dispara no navegador para o celular abrir o App.
+    } else {
+      toast.error('Serviço estatístico pendente de carregamento'); // 💡 Mensagem de fallback seguro.
     }
   };
 
-  const handleGeneratePDF = async () => { // Explicação: Função responsável por unificar as informações e acionar o construtor do arquivo PDF della Ata.
-    const loadingToast = toast.loading("Gerando PDF..."); // Explicação: Trava a tela com um indicador visual de carregamento contínuo.
-    try { 
-      const comumId = ataData?.comumId || counts?.comumId || userData?.activeComumId || userData?.comumId; // Explicação: Tenta recuperar o identificador único della localidade igreja.
-      if (!comumId) throw new Error("ID da localidade ausente."); // Aborta se falhar na ID.
-      let comumFullData = (userData?.comumId === comumId && userData?.comumDados) ? userData.comumDados : null; // Otimização de cota.
-      if (!comumFullData) { 
-        const comumSnap = await getDoc(doc(db, 'comuns', comumId)); // Faz a leitura cirúrgica.
-        comumFullData = comumSnap.exists() ? comumSnap.data() : null; 
+  // 🎯 CORREÇÃO DE PONTE DO PDF ORIGINAL: Conecta diretamente ao método 'generateAtaEnsaio' descoberto no arquivo
+  const handleGeneratePDF = async () => {
+    try {
+      if (pdfEventService && typeof pdfEventService.generateAtaEnsaio === 'function') { // 💡 Valida o nome exato do método da classe.
+        await pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, ataData); // 🚀 Invoca passando os 5 barramentos de dados estruturados exigidos.
+        toast.success('PDF gerado com sucesso!'); // 💡 Balão informativo de sucesso.
+      } else {
+        toast.error('Serviço de PDF pendente de carregamento'); // 💡 Alerta caso a função falte.
       }
-      pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, comumFullData); // Passa os dados para o construtor da impressão.
-      toast.dismiss(loadingToast); // Limpa a tela.
-      toast.success("Documento gerado!"); // Confirma sucesso.
-    } catch (error) { 
-      toast.dismiss(loadingToast); 
-      toast.error(error.message || "Erro ao processar PDF."); 
+    } catch (error) {
+      console.error(error); // 💡 Registra o rastro do erro no log.
+      toast.error('Erro ao gerar relatório em PDF'); // 💡 Balão informativo de erro na compilação.
     }
   };
 
-  const toggleCard = (cardId) => { // Explicação: Chaveia a abertura ou fechamento da gaveta interna de Drilldown ao clicar em um cartão.
-    setExpandedCard(expandedCard === cardId ? null : cardId); // Explicação: Se clicou no mesmo, recolhe; senão abre o novo bloco correspondente.
-  };
+  const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0"; // 💡 Função auxiliar de percentual.
 
-  const renderDelta = (delta) => { // CORREÇÃO INSPIRADA TOTALMENTE NO ANEXO: Remove caixas coloridas, exibe apenas pontas de setas limpas e números diretos.
-    if (delta === 0 || isNaN(delta)) return <span className="text-slate-300 font-black text-sm select-none">―</span>; // Explicação: Exibe apenas um traço horizontal elegante se o valor for idêntico ao mês passado.
-    const isUp = delta > 0; // Explicação: Identifica se a tendência é de alta ou de baixa.
-    return ( // Explicação: Renderiza unicamente a ponta de seta sólida triangular e o número limpo da diferença matemática.
-      <span className={`text-[11px] font-black flex items-center select-none ${isUp ? 'text-emerald-600' : 'text-rose-600'}`}>
-        {isUp ? '▲' : '▼'} {isUp ? `+${delta}` : delta}
-      </span>
-    );
-  };
-
-  // Explicação: Dicionário estático que mapeia as visões para exibição textual no topo do painel.
-  const views = {
-    geral: 'Painel Executivo',
-    orquestra: 'Equilíbrio da Orquestra',
-    acoes: 'Exportação & Atas'
-  };
-
-  return ( // Explicação: Inicia a renderização do esqueleto HTML que monta a interface visual adaptada para smartphones.
-    <div className="flex flex-col h-full bg-[#F1F5F9] text-left max-w-md mx-auto animate-premium pt-4 relative">
+  return (
+    <div className="space-y-4 text-slate-900 pb-24 max-w-md mx-auto px-1">
       
-      {/* COMPONENTE DA ALIMENTAÇÃO CRÍTICO: FIXADO NO TOPO EM TODAS AS VIEWS */}
-      <div className="px-4 shrink-0 z-20">
-        <DashStatsHeader stats={stats} isBasico={isBasico} handleShareLanche={handleShareLanche} canExport={canExport} />
-      </div>
-
-      {/* SEÇÃO DE SELEÇÃO: MENU SUSPENSO DE 3 BARRAS FIXO NO CANTO DIREITO */}
-      <div className="px-4 my-3 shrink-0 flex items-center justify-between relative z-30">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-          Painel Ativo: <span className="text-blue-600 font-extrabold">{views[activeTab]}</span>
-        </span>
-        <div className="relative">
-          <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center justify-center w-11 h-11 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-all min-h-[44px]" aria-label="Abrir menu de visualizações">
-            <Menu className="w-5 h-5 text-slate-700" />
-          </button>
-          {dropdownOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
-              <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-1.5 animate-fadeIn">
-                {Object.entries(views).map(([key, label]) => (
-                  <button key={key} onClick={() => { setActiveTab(key); setDropdownOpen(false); }} className={`w-full text-left px-4 py-3 text-xs font-semibold block min-h-[44px] transition-colors ${activeTab === key ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* JANELA DE EXIBIÇÃO: CONTEÚDO LIMITADO COM ROLAGEM VERTICAL COMPORTADA */}
-      <div className="flex-1 overflow-y-auto px-4 pb-28">
+      {/* 👥 SEÇÃO DE TOPO DUPLA: CARD DE ALIMENTAÇÃO + BOTÃO AZUL ORIGINAL DE PDF LADO A LADO */}
+      <div className="flex gap-2 items-center w-full">
         
-        {/* VIEW REORGANIZADA: PAINEL INTELIGENTE CONTÍNUO COM BIG NUMBERS E DELTAS CLEAN */}
-        {activeTab === 'geral' && (
-          <div className="space-y-4 animate-fadeIn">
-            
-            {/* CARD 1: INDEX LITÚRGICO DE HINOS */}
-            <div onClick={() => toggleCard('hinos')} className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-sm space-y-3 cursor-pointer select-none transition-all active:bg-slate-50/50 min-h-[88px] flex flex-col justify-center">
-              <div className="flex justify-between items-center w-full">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl shrink-0"><BookOpen size={18} /></div>
-                  <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Hinos Chamados</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.hinos}</span></div>
-                </div>
-                {/* Lado Direito: Exibição limpa da ponta de seta e do valor de diferença e o chevron */}
-                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaHinos)}{expandedCard === 'hinos' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
-              </div>
-              {/* DRILLDOWN SANEADO: DETALHES DE HINOS LANÇADOS POR EXTENSO */}
-              {expandedCard === 'hinos' && (
-                <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-1 gap-3 animate-slideDown text-left">
-                  <div className="p-3 bg-slate-50 rounded-xl space-y-2"><span className="text-[8px] font-black text-indigo-600 uppercase tracking-wider block">1ª Parte ({stats.hinosP1})</span>{stats.hinosListaP1.length === 0 ? <p className="text-[10px] font-bold text-slate-400 italic">Nenhum hino</p> : <div className="flex flex-wrap gap-1.5">{stats.hinosListaP1.map((h, i) => <span key={i} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-800 text-[11px] font-black rounded-lg shadow-3xs">{h}</span>)}</div>}</div>
-                  <div className="p-3 bg-slate-50 rounded-xl space-y-2"><span className="text-[8px] font-black text-indigo-600 uppercase tracking-wider block">2ª Parte ({stats.hinosP2})</span>{stats.hinosListaP2.length === 0 ? <p className="text-[10px] font-bold text-slate-400 italic">Nenhum hino</p> : <div className="flex flex-wrap gap-1.5">{stats.hinosListaP2.map((h, i) => <span key={i} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-800 text-[11px] font-black rounded-lg shadow-3xs">{h}</span>)}</div>}</div>
-                </div>
-              )}
-            </div>
-
-            {/* CARD 2: CORPO MUSICAL (TOTAL QUANTITATIVO DA ORQUESTRA) */}
-            <div onClick={() => toggleCard('orquestra')} className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-sm space-y-3 cursor-pointer select-none transition-all active:bg-slate-50/50 min-h-[88px] flex flex-col justify-center">
-              <div className="flex justify-between items-center w-full">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl shrink-0"><Music size={18} /></div>
-                  <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Corpo Musical</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.orquestra}</span></div>
-                </div>
-                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaOrquestra)}{expandedCard === 'orquestra' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
-              </div>
-              {/* DRILLDOWN QUANTITATIVO: SEPARAÇÃO DE SOLISTAS, ORGANISTAS E QUANTIDADE DE VISITAS */}
-              {expandedCard === 'orquestra' && (
-                <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-2.5 animate-slideDown text-left">
-                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Músicos Solistas</span><p className="text-xs font-black text-slate-800 mt-1">{stats.musicos} <span className="text-[9px] text-slate-400 font-bold">({stats.musicosComum} / {stats.musicosVisita})</span></p></div>
-                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Organistas</span><p className="text-xs font-black text-slate-800 mt-1">{stats.organistas} <span className="text-[9px] text-slate-400 font-bold">({stats.organistasComum} / {stats.organistasVisita})</span></p></div>
-                  <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl col-span-2 flex justify-between items-center"><span className="text-[9px] font-black text-blue-700 uppercase tracking-wider">Apoio Logístico Total</span><span className="text-xs font-black text-blue-800">{stats.orquestraTotalVisita} Visitantes</span></div>
-                </div>
-              )}
-            </div>
-
-            {/* CARD 3: CARD DEDICADO - LISTA NOMINAL EXCLUSIVA DE PRESENTES [PRESENTE === TRUE] */}
-            <div onClick={() => toggleCard('chamada_nominal')} className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-sm space-y-3 cursor-pointer select-none transition-all active:bg-slate-50/50 min-h-[88px] flex flex-col justify-center">
-              <div className="flex justify-between items-center w-full">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl shrink-0"><CheckCircle2 size={18} /></div>
-                  <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Chamada da Comum</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.musicosPresentesLista.length}</span></div>
-                </div>
-                <div className="flex items-center space-x-1.5 shrink-0"><span className="text-[9px] font-black text-purple-500 uppercase tracking-wider bg-purple-50 px-2 py-0.5 rounded-md">Ativos</span>{expandedCard === 'chamada_nominal' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
-              </div>
-              {/* CAMADA DE RAIO-X EXCLUSIVA: OCULTA COMPLETAMENTE QUEM ESTÁ COM FALSO E ROLA EM CAIXA FECHADA CONFORME DIRETRIZ 4 */}
-              {expandedCard === 'chamada_nominal' && (
-                <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-1 gap-2.5 animate-slideDown text-left">
-                  <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider block">Lista de Alistados Confirmados [Presentes]</span>
-                  {stats.musicosPresentesLista.length === 0 ? (
-                    <p className="text-[10px] font-bold text-slate-400 italic">Nenhum irmão marcado como presente neste ensaio.</p>
-                  ) : (
-                    <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto pr-1 no-scrollbar">
-                      {stats.musicosPresentesLista.map((membro) => (
-                        <div key={membro.id} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200/50 rounded-xl text-xs">
-                          <span className="font-black text-slate-800 uppercase italic truncate max-w-[180px]">{membro.nome}</span>
-                          <span className="text-[8px] font-black px-2 py-0.5 bg-white border border-slate-200 text-slate-500 rounded-md uppercase tracking-wider italic shrink-0">{membro.instrumentoNome || "Coral"}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* CARD 4: PRESENÇA GERAL (PÚBLICO TOTAL) */}
-            <div onClick={() => toggleCard('coral')} className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-sm space-y-3 cursor-pointer select-none transition-all active:bg-slate-50/50 min-h-[88px] flex flex-col justify-center">
-              <div className="flex justify-between items-center w-full">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl shrink-0"><Users size={18} /></div>
-                  <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Presença Geral</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.geral}</span></div>
-                </div>
-                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaGeral)}{expandedCard === 'coral' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
-              </div>
-              {/* DRILLDOWN: DIVISÃO POR GÊNERO NA BANCADA */}
-              {expandedCard === 'coral' && (
-                <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-2.5 animate-slideDown text-left">
-                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Irmãos</span><p className="text-xs font-black text-slate-800 mt-1">{stats.irmaos}</p></div>
-                  <div className="p-3 bg-slate-50 rounded-xl"><span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Irmãs</span><p className="text-xs font-black text-slate-800 mt-1">{stats.irmas}</p></div>
-                  <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl col-span-2 flex justify-between items-center"><span className="text-[9px] font-black text-emerald-700 uppercase tracking-wider">Vozes do Coral</span><span className="text-xs font-black text-emerald-800">{stats.irmandade}</span></div>
-                </div>
-              )}
-            </div>
-
-            {/* CARD 5: CORPO TÉCNICO REGIONAL */}
-            <div onClick={() => toggleCard('tecnico')} className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-sm space-y-3 cursor-pointer select-none transition-all active:bg-slate-50/50 min-h-[88px] flex flex-col justify-center">
-              <div className="flex justify-between items-center w-full">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl shrink-0"><Star size={18} /></div>
-                  <div className="min-w-0"><span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider leading-none">Corpo Técnico</span><span className="text-[28px] font-black text-slate-900 tracking-tighter block mt-1 leading-none">{stats.encRegional + stats.encLocal + stats.examinadoras}</span></div>
-                </div>
-                <div className="flex items-center space-x-1.5 shrink-0">{renderDelta(stats.deltaCorpoTecnico)}{expandedCard === 'tecnico' ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}</div>
-              </div>
-              {/* DRILLDOWN SANEADO: COMPACTO E EXECUTIVO */}
-              {expandedCard === 'tecnico' && (
-                <div onClick={(e) => e.stopPropagation()} className="pt-4 border-t border-slate-100 grid grid-cols-1 gap-2.5 animate-slideDown text-left">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-slate-50 p-2 text-center rounded-xl"><span className="block text-[7px] font-black text-slate-400 uppercase">Regional</span><p className="text-xs font-black text-slate-800 mt-0.5">{stats.encRegional}</p></div>
-                    <div className="bg-slate-50 p-2 text-center rounded-xl"><span className="block text-[7px] font-black text-slate-400 uppercase">Local</span><p className="text-xs font-black text-slate-800 mt-0.5">{stats.encLocal}</p></div>
-                    <div className="bg-slate-50 p-2 text-center rounded-xl"><span className="block text-[7px] font-black text-slate-400 uppercase">Examinadoras</span><p className="text-xs font-black text-slate-800 mt-0.5">{stats.examinadoras}</p></div>
-                  </div>
-                  <div className="p-3 bg-purple-50/50 border border-purple-100 rounded-xl flex justify-between items-center">
-                    <span className="text-[8px] font-black text-purple-700 uppercase tracking-wider">Ministério Geral</span>
-                    <span className="text-xs font-black text-purple-800">{stats.ministerio_oficio}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
+        {/* 🧳 CARD ESCURO DE ALIMENTAÇÃO: Cópia idêntica e sem alterações de 'image_53cee1.png' */}
+        <div className="bg-slate-950 px-5 py-4 rounded-[2rem] shadow-xl border border-white/5 min-h-[76px] flex items-center overflow-hidden flex-1 text-left relative">
+          <div className="w-[35%] leading-none"> {/* 💡 Alinhamento textual esquerdo exato para o título da Copa. */}
+            <p className="text-[7px] font-black text-amber-500 uppercase tracking-[0.3em] mb-1 italic">Alimentação</p> {/* 💡 Tag superior dourada. */}
+            <h3 className="text-xl font-[1000] text-white uppercase italic tracking-tighter">Resumo</h3> {/* 💡 Subtítulo branco em caixa alta. */}
           </div>
-        )}
-
-        {/* FILTRO VISUAL: EQUILÍBRIO NAIPES ORQUESTRA */}
-        {activeTab === 'orquestra' && (
-          <div className="space-y-3 animate-fadeIn">
-            <DashEquilibriumSection stats={stats} getPerc={getPerc} />
+          <div className="w-[42%] text-center"> {/* 💡 Coluna centralizada do indicador master. */}
+            <span className="text-4xl font-[1000] text-white italic tracking-tighter leading-none">{stats.geral}</span> {/* 💡 Placar volumétrico total do evento. */}
           </div>
-        )}
-
-        {/* FILTRO VISUAL: EXPORTAÇÃO E CONCLUSÃO OPERACIONAL */}
-        {activeTab === 'acoes' && (
-          <div className="space-y-3 animate-fadeIn">
-            <DashFinalSummary stats={stats} canExport={canExport} handleShareEstatistico={handleShareEstatistico} handleGeneratePDF={handleGeneratePDF} />
+          <div className="w-[45%] flex gap-4 border-l border-white/10 pl-4 h-10 items-center justify-end"> {/* 💡 Setor direito de sub-totais operacionais. */}
+            <div className="text-center leading-none"> {/* 💡 Caixa numérica da orquestra. */}
+              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Orq</p> {/* 💡 Legenda cinza. */}
+              <p className="text-lg font-black text-white">{stats.orquestra}</p> {/* 💡 Contagem de lanches da orquestra. */}
+            </div>
+            <div className="text-center leading-none"> {/* 💡 Caixa numérica do coral. */}
+              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Coral</p> {/* 💡 Legenda cinza. */}
+              <p className="text-lg font-black text-white">{stats.irmandade}</p> {/* 💡 Contagem de lanches do coro. */}
+            </div>
+            <button 
+              onClick={handleShareLanche} // 💡 Gatilho reativo de envio de texto estruturado para o WhatsApp.
+              className="text-emerald-500 active:scale-90 ml-1 min-w-[32px] h-8 flex items-center justify-center outline-none" // 💡 Área de clique livre de interrupções.
+              aria-label="Compartilhar Lanches" // 💡 Controle de acessibilidade de tela.
+            >
+              <Share2 size={18} /> {/* 💡 Desenho do nó gráfico verde de compartilhamento. */}
+            </button>
           </div>
-        )}
+        </div>
 
+        {/* ⚡ BOTÃO DE PDF ORIGINAL RESTAURADO: Alinhamento, cor, borda e texto 100% idênticos a 'image_53d665.png' */}
+        {canExport && (
+          <button 
+            onClick={handleGeneratePDF} // 💡 Executa a compilação do relatório impresso.
+            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex items-center justify-center gap-0.5 min-h-[76px] px-2.5 shadow-sm font-black text-[11px] uppercase tracking-wider shrink-0 outline-none layout-touch" // 🎯 DESIGN ATUALIZADO RIGOROSAMENTE CONFORME 'image_53d665.png'
+          >
+            <FileText size={16} className="text-blue-600" /> {/* 💡 Ícone técnico azul nativo da biblioteca Lucide. */}
+            <span className="font-extrabold tracking-tight">PDF</span> {/* 💡 Inscrição textual pura original sem reescritas. */}
+          </button>
+        )}
       </div>
+
+      {/* Carrossel de Abas Fixo */}
+      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+        <button onClick={() => setCurrentScreen('geral')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'geral' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+          <LayoutGrid size={12} /> Geral
+        </button>
+        <button onClick={() => setCurrentScreen('presenca')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'presenca' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+          <ClipboardList size={12} /> Presença
+        </button>
+        <button onClick={() => setCurrentScreen('equilibrio')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'equilibrio' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+          <Scale size={12} /> Equilíbrio
+        </button>
+        <button onClick={() => setCurrentScreen('resumo')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'resumo' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+          <PieChart size={12} /> Resumo
+        </button>
+      </div>
+
+      {/* Janela Dinâmica */}
+      <AnimatePresence mode="wait">
+        {currentScreen === 'geral' && (
+          <motion.div key="geral" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+            <ScreenGeral stats={stats} renderDelta={renderDelta} activeModal={activeModal} setActiveModal={setActiveModal} />
+          </motion.div>
+        )}
+
+        {currentScreen === 'presenca' && (
+          <motion.div key="presenca" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+            <ScreenPresenca stats={stats} />
+          </motion.div>
+        )}
+
+        {currentScreen === 'equilibrio' && (
+          <motion.div key="equilibrio" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+            <ScreenEquilibrio stats={stats} getPerc={getPerc} />
+          </motion.div>
+        )}
+
+        {currentScreen === 'resumo' && (
+          <motion.div key="resumo" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+            <ScreenResumo stats={stats} canExport={canExport} handleShareLanche={handleShareLanche} handleShareEstatistico={handleShareEstatistico} handleGeneratePDF={handleGeneratePDF} isBasico={isBasico} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
+  );
+};
+
+const renderDelta = (val) => {
+  if (val === 0 || isNaN(val)) return <span className="text-slate-300 font-black text-sm select-none">―</span>;
+  const isUp = val > 0;
+  return (
+    <span className={`text-[11px] font-black flex items-center select-none ${isUp ? 'text-emerald-600' : 'text-rose-600'}`}>
+      {isUp ? '▲' : '▼'} {isUp ? `+${val}` : val}
+    </span>
   );
 };
 

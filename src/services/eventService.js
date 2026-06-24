@@ -51,7 +51,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     } // Explicação: Encerra a checagem da regional.
 
     // Explicação: Regra específica para GEM Local (Igreja própria + Convidados).
-    if (user.accessLevel === ROLES.GEM) { // Explicação: Se o nível de acesso do usuário for exatamente o de secretário GEM Local.
+    if (user.accessLevel === ROLES.GEM || user.accessLevel === 'gem_local') { // 🚀 CORREÇÃO CIRÚRGICA: Expandida a checagem com a string literal 'gem_local' para sincronizar com o novo AuthContext e blindar o ouvinte.
       constraints = [or( // Explicação: Aplica uma lógica onde basta uma das duas condições abaixo ser verdadeira.
         where('comumId', '==', user.comumId), // Explicação: O ensaio pertence à própria igreja de origem do secretário local.
         where('invitedUsers', 'array-contains', user.uid) // Explicação: Ou o ID do secretário está na lista de convidados especiais do ensaio.
@@ -82,7 +82,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     const auth = getAuth(); // Explicação: Invoca o sistema de autenticação de usuários do Firebase.
     const currentUser = auth.currentUser; // Explicação: Captura o usuário ativo que está comandando a criação do evento.
 
-    if (eventData.scope === 'regional' && (eventData.accessLevel === ROLES.GEM || userData?.accessLevel === ROLES.GEM)) { // Explicação: Impede que administradores locais criem eventos de nível regional.
+    if (eventData.scope === 'regional' && (eventData.accessLevel === ROLES.GEM || userData?.accessLevel === ROLES.GEM || userData?.accessLevel === 'gem_local')) { // Explicação: Impede que administradores locais criem eventos de nível regional.
       throw new Error("Seu nível de acesso não permite criar eventos regionais."); // Explicação: Estoura o erro de veto de permissão.
     } // Explicação: Encerra a trava de escopo regional.
 
@@ -90,8 +90,8 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     let initialCounts = {}; // Explicação: Prepara o objeto vazio onde montaremos a orquestra inicial do ensaio.
 
     // 🚀 TRAVA E BLINDAGEM DE CONTRATO FIRESTORE (Anti-Missing Permissions)
-    const finalScope = (userData?.accessLevel === ROLES.GEM || eventData.accessLevel === ROLES.GEM) ? 'local' : (scope || 'local'); // Explicação: Intercepta e força o escopo a ser "local" se o criador for GEM Local, atendendo à Security Rule.
-    const finalComumId = (userData?.accessLevel === ROLES.GEM) ? (userData.comumId || comumId) : comumId; // Explicação: Obriga o ID da igreja a ser o do cadastro do próprio GEM Local, impedindo rejeição por divergência de portaria.
+    const finalScope = (userData?.accessLevel === ROLES.GEM || userData?.accessLevel === 'gem_local' || eventData.accessLevel === ROLES.GEM) ? 'local' : (scope || 'local'); // Explicação: Intercepta e força o escopo a ser "local" se o criador for GEM Local, atendendo à Security Rule.
+    const finalComumId = (userData?.accessLevel === ROLES.GEM || userData?.accessLevel === 'gem_local') ? (userData.comumId || comumId) : comumId; // Explicação: Obriga o ID da igreja a ser o do cadastro do próprio GEM Local, impedindo rejeição por divergência de portaria.
 
     try { // Explicação: Inicia a tentativa de montar e salvar o ensaio na nuvem.
       const localRef = collection(db, 'comuns', finalComumId, 'instrumentos_config'); // Explicação: Acessa o endereço da subcoleção usando o ID verificado e blindado da igreja comum.
@@ -152,7 +152,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
               comum: 0, // Explicação: Zera o contador de músicos que pertencem à casa.
               enc: 0, // Explicação: Zera o contador de encarregados locais associados.
               updatedAt: Date.now() // Explicação: Registra o marco temporal.
-            }; // Explicação: Encerra o solista local.
+            }; // Explicação: Encerra the solista local.
           } // Explicação: Encerra o divisor de escopo do instrumento solista.
         } // Explicação: Encerra o mapeamento do instrumento.
       }); // Explicação: Fecha o laço do forEach de instrumentos da igreja.
@@ -190,7 +190,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
         counts: initialCounts, // Explicação: Acopla a grade zerada de orquestra montada e individualizada por instrumento.
         createdAt: Date.now(), // Explicação: Registra a hora exata da criação definitiva do ensaio.
         updatedAt: Date.now(), // Explicação: Sincroniza o horário da última modificação geral do ensaio.
-        dbVersion: "12.0-nominal_cloned" // Explicação: Versão do banco atualizada para suportar chamadas nominais independentes.
+        dbVersion: "12.0-nominal_cloned" // Explicação: Versão do banco updated para suportar chamadas nominais independentes.
       }; // Explicação: Encerra a conclusão do documento de dados (payload).
 
       const docNovoCriado = await addDoc(collection(db, 'events_global'), payload); // Explicação: Registra o novo ensaio diretamente na coleção global do Firebase com o payload aceito pelas regras de segurança.
@@ -204,7 +204,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
         const musicosSnap = await getDocs(musicosRef); // Explicação: Vai até a garagem fixa da comum buscar as fichas dos músicos cadastrados.
         
         musicosSnap.docs.forEach(musicoDoc => { // Explicação: Passa de irmão em irmão montando o cartão de chamada de presença do ensaio.
-          const mData = musicoDoc.data(); // Explicação: Extrai o conteúdo da ficha estável.
+          const mData = musicoDoc.data(); // Explicação: Extrai o conteúdo della ficha estável.
           const llamadaRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_musicos'), musicoDoc.id); // Explicação: Crava o ID fixo do músico no cartão de chamada do ensaio para manter a reatividade síncrona.
           
           batchChamada.set(llamadaRef, { // Explicação: Prepara os dados iniciais do cartão de presença marcando-o originalmente como ausente.
@@ -214,13 +214,13 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
             situacao: mData.situacao || "Oficializado", // Explicação: Copia se é Oficializado, RJM ou Aprendiz.
             presente: false, // Explicação: Inicializa o cartão em falso (Ausente) esperando a caneta do secretário.
             avaliacao: 'Sem', // Explicação: Inicializa o nível de teste/avaliação de ensaio técnico limpo.
-            updatedAt: Date.now() // Explicação: Registra o marco do tempo da clonagem nominal.
+            updatedAt: Date.now() // Explicação: Registra o marco do tempo della clonagem nominal.
           }); // Explicação: Encerra la inserção do músico no lote.
         }); // Explicação: Fecha o laço dos músicos.
 
         // 2. Clonagem e Isolamento Nominal do Ministério Local (Obreiros)
         const ministerioSnap = await getDocs(collection(db, 'comuns', finalComumId, 'ministerio_lista')); // Explicação: Vai buscar Anciães e Diáconos cadastrados na igreja correta.
-        ministerioSnap.docs.forEach(minDoc => { // Explicação: Passa obreiro por obreiro montando o cartão de presença da Liderança.
+        minisiterioSnap.docs.forEach(minDoc => { // Explicação: Passa obreiro por obreiro montando o cartão de presença da Liderança.
           const minData = minDoc.data(); // Explicação: Captura o nome por extenso e o cargo ministerial.
           const chamadaMinRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_ministerio'), minDoc.id); // Explicação: Cria um endereço único para o obreiro dentro deste ensaio.
           batchChamada.set(chamadaMinRef, { // Explicação: Monta a ficha de presença inicial do obreiro.
@@ -361,7 +361,8 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
     const eventRef = doc(db, 'events_global', eventId); // Localiza o ensaio ativo.
     
     let todosHinos = []; // Prepara uma sacola vazia para juntar os hinos.
-    (ataData.partes || []).forEach(p => { // Varre as partes do ensaio (Abertura, Meio, Encerramento).
+    let partesValidas = Array.isArray(ataData.partes) ? ataData.partes : []; // Explicação: Garante que a estrutura interna de partes musicais seja um vetor válido.
+    partesValidas.forEach(p => { // Varre as partes do ensaio (Abertura, Meio, Encerramento).
       if (p.hinos) todosHinos = [...todosHinos, ...p.hinos.filter(h => h && h.trim() !== '')]; // Filtra hinos válidos digitados e adiciona na sacola.
     }); // Encerra o agrupamento de hinos.
 
@@ -421,7 +422,7 @@ export const eventService = { // Explicação: Inicia o conjunto de funções de
       await updateDoc(fichaRef, payloadUpdates); // Explicação: Envia a alteração de escrita cirúrgica para a nuvem.
       return true; // Retorna verdadeiro indicando sucesso.
     } catch (e) { // Captura falha de rede.
-      console.error("Erro ao atualizar músico comum:", e); // Imprime aviso técnico no console.
+      console.error("Erro ao atualizar músico comum:", e); // Imprime log técnico no console.
       throw new Error("Erro ao salvar alterações."); // Dispara aviso para a tela do smartphone.
     } // Encerra o tratamento.
   }, // Explicação: Fecha a função updateMusicoComum.
