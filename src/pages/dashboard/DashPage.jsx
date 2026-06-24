@@ -1,459 +1,381 @@
-import React, { useState, useEffect, useMemo } from 'react';
-// PRESERVAÇÃO: Importações originais mantidas
-import { db, collection, onSnapshot, query, where, collectionGroup } from '../../config/firebase';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, Cell, LabelList
-} from 'recharts';
+import React, { useState, useEffect } from 'react'; // [Funcionamento]: Traz o núcleo do React e as ferramentas de gerenciamento de memória (estados) e sensores (efeitos).
+// PRESERVAÇÃO: Canais de comunicação em tempo real com o banco de dados Firebase mantidos e otimizados para corte de custos
+import { db, collection, onSnapshot, query, where } from '../../config/firebase'; // Conectores oficiais do banco Firestore para escutas macro.
+import { useDashAnalytics } from '../../hooks/useDashAnalytics'; // A calculadora matemática isolada do painel de dados.
+
+// BLINDAGEM DE DEPENDÊNCIAS: Ícones unificados para abas, botões, localização e fechamento
 import { 
-  Filter, Music, Star, BarChart3, ChevronLeft,
-  CheckCircle2, Building2, Users, ShieldCheck, PieChart, ChevronRight, LayoutGrid, MapPin, ChevronDown, Home
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+  MapPin, 
+  Building2, 
+  ChevronDown, 
+  LayoutGrid, 
+  BarChart3, 
+  Users,
+  Search,
+  X,
+  SlidersHorizontal,
+  CheckCircle
+} from 'lucide-react'; // Desenhos vetorizados de alta qualidade para a interface móvel.
+import { AnimatePresence, motion } from 'framer-motion'; // Motor de animações físicas fluidas para o ambiente mobile.
 
-const DashPage = ({ userData }) => {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [topLimit, setTopLimit] = useState(5);
+// Importação dos componentes desmembrados e modulares da nossa esteira de desenvolvimento
+import MetricCardsGroup from './components/MetricCardsGroup'; // Central dos cartões Big Numbers com Drill-down integrado.
+import AnalyticsCarousel from './components/AnalyticsCarousel'; // Carrossel secundário com gráficos de linha e área.
+import VisitsRegistry from './components/VisitsRegistry'; // Central de listagem nominal e rankings de visitantes.
+import LocalAttendanceList from './components/LocalAttendanceList'; // Lista de chamadas nominais dos músicos da comum.
 
-  const [presencaSlide, setPresencaSlide] = useState(0);
-  const [equiSlide, setEquiSlide] = useState(0);
-  const [hinosSlide, setHinosSlide] = useState(0);
-  const [visitaOrigemSlide, setVisitaOrigemSlide] = useState(0);
-
-  const [filterType, setFilterType] = useState('year');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [subFilter, setSubFilter] = useState(new Date().getMonth().toString());
-
-  const [listCityFilter, setListCityFilter] = useState('all');
-  const [listMinFilter, setListMinFilter] = useState('all');
-
-  // --- LÓGICA DE JURISDIÇÃO v2.1 (MATRIZ DE COMPETÊNCIAS) ---
-  const level = userData?.accessLevel;
-  const isMaster = level === 'master';
-  const isComissao = isMaster || level === 'comissao';
-  const isRegionalCidade = isComissao || level === 'regional_cidade'; 
-  const isGemLocal = level === 'gem_local';
-  const isBasico = level === 'basico';
-
-  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId;
-  const isLocalViewOnly = isBasico || isGemLocal;
-
-  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || 'all');
-  const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || userData?.comumId || 'consolidated');
+const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard recebendo o Crachá Eletrônico do usuário.
+  const [events, setEvents] = useState([]); // Caixa de memória para guardar a lista de relatórios de ensaios encontrados.
+  const [subCollectionAttendance, setSubCollectionAttendance] = useState([]); // Armazena os dados nominais das subcoleções escutadas de forma reativa.
+  const [loading, setLoading] = useState(true); // Caixa de memória para ligar ou desligar o sinal de carregamento na tela.
   
-  const [listaCidades, setListaCidades] = useState([]);
-  const [listaIgrejas, setListaIgrejas] = useState([]);
+  // Controle da Aba Ativa de Assuntos no topo (Resumos, Gráficos, Chamada ou Visitas)
+  const [activeTab, setActiveTab] = useState('resumo'); 
+  
+  // Controle do Modal Centralizado da Lupa (Filtros Simultâneos)
+  const [isFilterOpen, setIsFilterOpen] = useState(false); 
 
+  // Estados de controle interno e paginação dos componentes filhos (Preservados estritamente)
+  const [topLimit, setTopLimit] = useState(5); // Limite de linhas no ranking de hinos.
+  const [presencaSlide, setPresencaSlide] = useState(0); // Controle de página do carrossel de presença.
+  const [equiSlide, setEquiSlide] = useState(0); // Controle de página do carrossel de equilíbrio.
+  const [hinosSlide, setHinosSlide] = useState(0); // Controle de página do carrossel de hinos chamados.
+  const [visitaOrigemSlide, setVisitaOrigemSlide] = useState(0); // Controle de página do carrossel de geolocalização.
+
+  // Estados dos seletores de filtros cronológicos e de busca
+  const [filterType, setFilterType] = useState('year'); // Tipo de agrupamento de tempo (padrão Anual).
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // Ano corrente extraído da máquina do usuário.
+  const [subFilter, setSubFilter] = useState(new Date().getMonth().toString()); // Fração menor de tempo (Mês corrente).
+  const [listCityFilter, setListCityFilter] = useState('all'); // Filtro de cidade de origem para a listagem.
+  const [listMinFilter, setListMinFilter] = useState('all'); // Filtro de ministério para a listagem.
+
+  const [listaCidades, setListaCidades] = useState([]); // Armazena a lista de cidades pertencentes à regional.
+  const [listaIgrejas, setListaIgrejas] = useState([]); // Armazena a lista de comuns/igrejas mapeadas.
+  
+  // MATRIZ DE PODER: Transforma os seletores estáticos em Estados Reativos controlados pelos menus da Lupa
+  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || 'all'); // Estado reativo da cidade selecionada.
+  const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || userData?.comumId || 'consolidated'); // Estado reativo da localidade selecionada.
+
+  const level = (userData?.accessLevel || 'basico').toLowerCase().trim(); // Captura o nível de autoridade e força letras minúsculas para checagem segura.
+  const isComissao = level === 'master' || level === 'comissao' || level === 'regional'; // Valida se o usuário tem poderes de gerenciamento macro ou regional.
+  const activeRegionalId = userData?.activeRegionalId || userData?.regionalId; // Captura o ID da Regional do usuário.
+
+  // Conexão com a máquina matemática unificada (useMemo interno protegido contra loops)
+  const analytics = useDashAnalytics(events, filterType, selectedYear, subFilter); 
+
+  // Sensor 1: Monitora em tempo real a lista de Igrejas e Cidades da Regional (Com higiene de memória)
   useEffect(() => {
-    if (userData?.activeCityId) setSelectedCityId(userData.activeCityId);
-    if (userData?.activeComumId) setActiveComumId(userData.activeComumId);
-  }, [userData?.activeCityId, userData?.activeComumId]);
+    if (!activeRegionalId) return; // Se o usuário não tiver uma regional no crachá, aborta o sensor para evitar vazamento de dados.
 
-  // FAXINA DE MEMÓRIA v4.2: Listeners independentes com limpeza obrigatória para evitar aquecimento do dispositivo
-  useEffect(() => {
-    if (!activeRegionalId) return;
-
-    // 1. Definição do Listener de Igrejas
     const qIgr = (isComissao)
-      ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId))
-      : query(collection(db, 'comuns'), where('cidadeId', '==', userData?.cidadeId));
+      ? query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId)) // Administradores leem a regional inteira.
+      : query(collection(db, 'comuns'), where('cidadeId', '==', userData?.cidadeId)); // Músicos locais leem estritamente sua cidade.
     
     const unsubIgr = onSnapshot(qIgr, (sIgs) => {
-      const igs = sIgs.docs.map(d => ({ id: d.id, nome: d.data().comum, cidadeId: d.data().cidadeId }));
-      setListaIgrejas(igs.sort((a, b) => a.nome.localeCompare(b.nome)));
+      const igs = sIgs.docs.map(d => ({ id: d.id, ...d.data() }));
+      setListaIgrejas(igs.sort((a, b) => (a.comum || "").localeCompare(b.comum || ""))); // Ordena as comuns em ordem alfabética e guarda na memória.
     });
 
-    // 2. Definição do Listener de Cidades (Removido do aninhamento para evitar leak)
     const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId));
     const unsubCid = onSnapshot(qCid, (sCids) => {
       const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome }));
-      if (isComissao) {
-        setListaCidades(todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)));
-      } else {
-        const filtradas = todasCidades.filter(c => c.id === userData?.cidadeId);
-        setListaCidades(filtradas);
-        setSelectedCityId(userData?.cidadeId);
-      }
+      setListaCidades(isComissao ? todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)) : todasCidades.filter(c => c.id === userData?.cidadeId));
     });
 
-    // LIMPEZA CRÍTICA: Desliga os sensores ao desmontar o componente
-    return () => {
-      unsubIgr();
-      unsubCid();
-    };
+    return () => { unsubIgr(); unsubCid(); }; // Desliga os canais de escuta ao fechar a tela para economizar cota de leitura.
   }, [activeRegionalId, isComissao, userData?.cidadeId]);
 
-  // 2. BUSCA DE EVENTOS (MOTOR UNIFICADO v3.0 - COLEÇÃO GLOBAL)
+  // Sensor 2: Motor de Busca unificado da coleção `events_global` (Filtro Severo na Origem para Corte de Custos)
   useEffect(() => {
     if (!activeRegionalId) return;
     setLoading(true);
 
-    const qEvents = query(
-      collection(db, 'events_global'), 
-      where('regionalId', '==', activeRegionalId)
-    );
+    // Constrói os critérios de consulta baseados nas restrições de poder do crachá do usuário
+    let constraints = [where('regionalId', '==', activeRegionalId)];
+
+    if (!isComissao) {
+      constraints.push(where('comumId', '==', activeComumId));
+    } else {
+      if (activeComumId !== 'consolidated') {
+        constraints.push(where('comumId', '==', activeComumId));
+      } else if (selectedCityId !== 'all') {
+        constraints.push(where('cidadeId', '==', selectedCityId));
+      }
+    }
+
+    const qEvents = query(collection(db, 'events_global'), ...constraints);
 
     const unsubEvents = onSnapshot(qEvents, (snap) => {
-      let data = snap.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data() 
-      }));
-
-      // Filtros de interface respeitando a Matriz de Competências
-      if (isComissao) {
-        if (activeComumId !== 'consolidated') {
-          data = data.filter(e => e.comumId === activeComumId);
-        } else if (selectedCityId !== 'all') {
-          data = data.filter(e => e.cidadeId === selectedCityId);
-        }
-      } else if (isRegionalCidade) {
-        data = data.filter(e => e.cidadeId === userData?.cidadeId);
-        if (activeComumId !== 'consolidated') {
-          data = data.filter(e => e.comumId === activeComumId);
-        }
-      } else {
-        data = data.filter(e => e.comumId === (userData?.activeComumId || userData?.comumId));
-      }
-
-      setEvents(data);
-      setLoading(false);
-    }, (err) => {
-      console.error("Erro no motor do Dashboard:", err);
-      setLoading(false);
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })); // Converte em lista JavaScript pura
+      setEvents(data); // Entrega para a caixa de memória central
+      setLoading(false); // Libera o esqueleto visual dos gráficos.
     });
-    return () => unsubEvents();
-  }, [activeRegionalId, activeComumId, selectedCityId, isComissao, isRegionalCidade, isLocalViewOnly, userData]);
+
+    return () => unsubEvents(); // Garante o encerramento do canal ao desmontar o componente.
+  }, [activeRegionalId, activeComumId, selectedCityId, isComissao]);
+
+  // Sensor 3: Escuta e acopla a chamada nominal das subcoleções na RAM de forma reativa
+  useEffect(() => {
+    if (events.length === 0) {
+      setSubCollectionAttendance([]);
+      return;
+    }
+
+    const unsubs = [];
+    const allAttendanceData = {};
+
+    events.forEach(ev => {
+      const qSub = collection(db, 'events_global', ev.id, 'chamada_musicos');
+      
+      const unsub = onSnapshot(qSub, (snap) => {
+        const rows = snap.docs.map(doc => ({
+          id: doc.id,
+          eventId: ev.id,
+          ...doc.data()
+        }));
+
+        allAttendanceData[ev.id] = rows;
+        const flatList = Object.values(allAttendanceData).flat();
+        setSubCollectionAttendance(flatList);
+      }, (err) => {
+        console.log("Subcoleção vazia ou restrita para o evento:", ev.id, err);
+      });
+
+      unsubs.push(unsub);
+    });
+
+    return () => unsubs.forEach(fn => fn());
+  }, [events]);
+
+  // INTERSEÇÃO EM FILA DE MEMÓRIA (DATA INTERSECTION): Mescla os dados nominais da subcoleção na RAM antes de enviar ao Heatmap
+  const eventsWithAttendanceInjected = React.useMemo(() => {
+    return events.map(ev => {
+      const matchRows = subCollectionAttendance.filter(row => row.eventId === ev.id);
+      return {
+        ...ev,
+        ata: {
+          ...ev.ata,
+          presencaLocalFull: matchRows 
+        }
+      };
+    });
+  }, [events, subCollectionAttendance]);
 
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-  const processedData = useMemo(() => {
-    const legacyMap = {
-      'vln': 'violino', 'vla': 'viola', 'vcl': 'violoncelo',
-      'flt': 'flauta', 'clt': 'clarinete', 'acd': 'acordeon', 'org': 'orgao'
-    };
-
-    const filtered = events.filter(ev => {
-      if (!ev.date) return false;
-      const [y, m] = ev.date.split('-').map(Number);
-      if (filterType === 'all') return true;
-      if (y !== parseInt(selectedYear)) return false;
-      const mIdx = m - 1;
-      if (filterType === 'month') return mIdx === parseInt(subFilter);
-      if (filterType === 'semester') return subFilter === '0' ? mIdx < 6 : mIdx >= 6;
-      if (filterType === 'quarter') return Math.floor(mIdx / 3) === parseInt(subFilter);
-      return true;
-    });
-
-    const groups = {};
-    const hinosMap = {};
-    const cityMap = {};
-    const bairroMap = {};
-    const minMap = {};
-    const nominal = [];
-    let tM = 0, tO = 0, tI = 0, tH = 0, tEnc = 0;
-
-    filtered.forEach(ev => {
-      const mIdx = parseInt(ev.date.split('-')[1]) - 1;
-      const key = mesesRef[mIdx];
-      if (!groups[key]) groups[key] = { label: key, monthIdx: mIdx, cordas: 0, cordasV: 0, madeiras: 0, madeirasV: 0, metais: 0, metaisV: 0, teclas: 0, teclasV: 0, organistas: 0, irmandade: 0, h1: 0, h2: 0, hTotal: 0 };
-      const g = groups[key];
-
-      Object.entries(ev.counts || {}).forEach(([id, data]) => {
-        if (id.startsWith('meta_')) return;
-        const tot = Number(data.total) || 0;
-        const com = Number(data.comum) || 0;
-        const sec = (data.section || "").toUpperCase();
-        const vis = Math.max(0, tot - com);
-        const saneId = legacyMap[id] || id.toLowerCase();
-
-        if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { 
-          const soma = (Number(data.irmaos) || 0) + (Number(data.irmas) || 0) || tot;
-          g.irmandade += soma; tI += soma; 
-        } 
-        else if (sec === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { 
-          g.organistas += tot; tO += tot; 
-        } 
-        else {
-          tM += tot;
-          if (sec === 'CORDAS' || ['violino', 'viola', 'violoncelo'].includes(saneId)) { 
-            g.cordas += com; g.cordasV += vis; 
-          }
-          else if (sec.includes('MADEIRA') || sec.includes('SAX') || ['flauta', 'clarinete', 'oboe', 'fagote', 'claronealto', 'claronebaixo', 'corneingles', 'saxalto', 'saxtenor', 'saxsoprano', 'saxbaritono'].includes(saneId)) { 
-            g.madeiras += com; g.madeirasV += vis; 
-          }
-          else if (sec.includes('METAI') || ['trompete', 'trombone', 'trompa', 'eufonio', 'tuba', 'flugelhorn'].includes(saneId)) { 
-            g.metais += com; g.metaisV += vis; 
-          }
-          else if (sec === 'TECLAS' || saneId === 'acordeon') { 
-            g.teclas += com; g.teclasV += vis; 
-          }
-        }
-      });
-
-      ev.ata?.partes?.forEach((p, idx) => {
-        p.hinos?.forEach(h => {
-          if (h && h.trim() !== "") {
-            const hNum = h.trim();
-            hinosMap[hNum] = (hinosMap[hNum] || 0) + 1;
-            tH++; g.hTotal++;
-            if (idx === 0) g.h1++; else if (idx === 1) g.h2++;
-          }
-        });
-      });
-
-      ev.ata?.visitantes?.forEach(v => {
-        const cargo = (v.min || "Músico").toUpperCase();
-        minMap[cargo] = (minMap[cargo] || 0) + 1;
-        cityMap[(v.cidadeUf || "N/I").toUpperCase()] = (cityMap[(v.cidadeUf || "N/I").toUpperCase()] || 0) + 1;
-        bairroMap[(v.bairro || "N/I").toUpperCase()] = (bairroMap[(v.bairro || "N/I").toUpperCase()] || 0) + 1;
-        if (cargo.includes('REGIONAL') || cargo.includes('LOCAL')) tEnc++;
-        nominal.push({ ...v, eventDate: ev.date });
-      });
-      ev.ata?.presencaLocalFull?.forEach(p => { if((p.role||"").toUpperCase().includes('ENCARREGADO')) tEnc++; });
-    });
-
-    const chartArray = Object.values(groups).sort((a, b) => a.monthIdx - b.monthIdx).map(g => ({
-      ...g,
-      totalOrq: g.cordas + g.cordasV + g.madeiras + g.madeirasV + g.metais + g.metaisV + g.teclas + g.teclasV + g.organistas
-    }));
-
-    return {
-      chartArray, tM, tO, tI, tH, tEnc, totalMeses: chartArray.length || 1,
-      topHinos: Object.entries(hinosMap).map(([num, count]) => ({ num, count })).sort((a, b) => b.count - a.count),
-      origemVisitas: {
-        cargos: Object.entries(minMap).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
-        cidades: Object.entries(cityMap).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
-        bairros: Object.entries(bairroMap).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
-      },
-      nominalFinal: nominal.sort((a,b) => b.eventDate.localeCompare(a.eventDate)),
-      filterOptions: { cities: [...new Set(nominal.map(v => (v.cidadeUf||"").toUpperCase()))].sort(), mins: [...new Set(nominal.map(v => (v.min||"").toUpperCase()))].sort() }
-    };
-  }, [events, filterType, selectedYear, subFilter]);
-
-  const { chartArray, tM, tO, tI, tH, tEnc, totalMeses, topHinos, nominalFinal, filterOptions, origemVisitas } = processedData;
-
-  const handlePrev = (curr, set, max) => set(curr === 0 ? max - 1 : curr - 1);
-  const handleNext = (curr, set, max) => set((curr + 1) % max);
-
-  if (loading && events.length === 0) return <div className="h-screen flex items-center justify-center font-black text-slate-400 animate-pulse uppercase text-[10px]">Sincronizando Dash...</div>;
+  if (loading && events.length === 0) return <div className="h-screen flex items-center justify-center font-black text-slate-500 animate-pulse uppercase text-xs tracking-wider">Sincronizando Painel...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans pb-32 overflow-x-hidden text-left">
-      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm space-y-3 rounded-b-[2.2rem]">
-        <div className="flex items-center gap-2 px-1">
-          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2 rounded-2xl border border-slate-200 shadow-sm transition-all overflow-hidden ${!isComissao ? 'opacity-50 pointer-events-none' : ''}`}>
-            <MapPin size={10} className="text-blue-600 shrink-0" />
-            <select 
-              disabled={!isComissao}
-              value={!isComissao ? userData?.cidadeId : selectedCityId} 
-              onChange={(e) => { setSelectedCityId(e.target.value); setActiveComumId('consolidated'); }} 
-              className="bg-transparent text-slate-950 font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
-            >
-              {!isComissao ? (
-                <option value={userData?.cidadeId}>{userData?.cidadeNome || "SUA CIDADE"}</option>
-              ) : (
-                <>
-                  <option value="all">Todas as Cidades</option>
-                  {listaCidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </>
-              )}
-            </select>
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col pb-32">
+      
+      {/* CABEÇALHO COMPACTO: REESTRUTURAÇÃO EM MATRIZ FIXA 2X2 SEM SCROLL */}
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm rounded-b-[2.2rem]">
+        <div className="flex items-center gap-3 w-full">
+          
+          {/* GRID MATRIZ 2X2: Navegação em malha estável de alta usabilidade */}
+          <div className="grid grid-cols-2 gap-2 flex-1">
+            <GridTabButton active={activeTab === 'resumo'} label="Resumos" icon={<LayoutGrid size={15} />} onClick={() => setActiveTab('resumo')} />
+            <GridTabButton active={activeTab === 'graficos'} label="Gráficos" icon={<BarChart3 size={15} />} onClick={() => setActiveTab('graficos')} />
+            <GridTabButton active={activeTab === 'chamada'} label="Chamada" icon={<CheckCircle size={15} />} onClick={() => setActiveTab('chamada')} />
+            <GridTabButton active={activeTab === 'visitas'} label="Visitas" icon={<Users size={15} />} onClick={() => setActiveTab('visitas')} />
           </div>
-
-          <div className={`flex-[1_1_0px] flex items-center gap-2 bg-slate-950 p-2 rounded-2xl shadow-xl border border-white/10 overflow-hidden ${isLocalViewOnly ? 'opacity-80 pointer-events-none' : ''}`}>
-            <Building2 size={10} className="text-blue-400 shrink-0" />
-            <select 
-              disabled={isLocalViewOnly}
-              value={isLocalViewOnly ? userData?.comumId : activeComumId} 
-              onChange={(e) => setActiveComumId(e.target.value)} 
-              className="bg-transparent text-white font-[900] text-[8px] uppercase outline-none w-full truncate italic appearance-none cursor-pointer"
-            >
-              {isLocalViewOnly ? (
-                <option value={userData?.comumId} className="text-slate-900 bg-white">{userData?.comum || "SUA LOCALIDADE"}</option>
-              ) : (
-                <>
-                  <option value="consolidated" className="text-slate-900 bg-white">
-                    {selectedCityId === 'all' ? 'Resumo Regional' : 'Consolidado'}
-                  </option>
-                  {listaIgrejas.filter(i => selectedCityId === 'all' || i.cidadeId === selectedCityId).map(ig => (
-                    <option key={ig.id} value={ig.id} className="text-slate-900 bg-white">{ig.nome}</option>
-                  ))}
-                </>
-              )}
-            </select>
-            {!isLocalViewOnly && <ChevronDown size={10} className="text-white/20 shrink-0" />}
-          </div>
+          
+          {/* Botão da Lupa Expandível */}
+          <button 
+            onClick={() => setIsFilterOpen(true)} 
+            className="w-12 h-12 flex items-center justify-center bg-blue-600 rounded-2xl text-white shadow-md active:scale-95 transition-all shrink-0 cursor-pointer self-center"
+          >
+            <Search size={18} />
+          </button>
         </div>
+      </div>
 
-        <div className="flex items-center gap-2 px-1">
-          <div className="flex-1">
-            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full bg-blue-600 text-white font-black text-[9px] uppercase px-4 py-2.5 rounded-2xl outline-none italic shadow-md appearance-none cursor-pointer">
-                <option value="year">Anual</option>
-                <option value="semester">Semestral</option>
-                <option value="quarter">Trimestral</option>
-                <option value="month">Mensal</option>
-                <option value="all">Total</option>
-            </select>
-          </div>
-          {filterType !== 'all' && (
-            <div className="w-24 flex items-center bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200">
-              <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-full bg-transparent font-black text-[9px] text-slate-950 outline-none appearance-none cursor-pointer text-center">
-                {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+      {/* PALCO CENTRAL DE APRESENTAÇÃO */}
+      <div className="p-4 flex-1 max-w-md mx-auto w-full">
+        <AnimatePresence mode="wait">
+          {activeTab === 'resumo' && (
+            <motion.div key="resumo" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} transition={{ duration: 0.12 }} className="w-full">
+              {/* 🚀 FIAÇÃO CONECTADA: Injetado o topHinos para alimentar as barras douradas litúrgicas na aba Resumos */}
+              <MetricCardsGroup 
+                tM={analytics.tM} tO={analytics.tO} tI={analytics.tI} 
+                tH={analytics.tH} tEnc={analytics.tEnc} totalMeses={analytics.totalMeses} 
+                chartArray={analytics.chartArray} 
+                topHinos={analytics.topHinos} 
+              />
+            </motion.div>
           )}
-        </div>
 
-        {filterType !== 'all' && filterType !== 'year' && (
-          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="px-1">
-            <select value={subFilter} onChange={(e) => setSubFilter(e.target.value)} className="w-full bg-white border border-slate-100 p-2.5 rounded-2xl font-black text-[9px] uppercase italic text-blue-600 outline-none shadow-sm appearance-none cursor-pointer text-center">
-                {filterType === 'semester' && <><option value="0">1º Semestre</option><option value="1">2º Semestre</option></>}
-                {filterType === 'quarter' && <><option value="0">1º Trimestre</option><option value="1">2º Trimestre</option><option value="2">3º Trimestre</option><option value="3">4º Trimestre</option></>}
-                {filterType === 'month' && mesesRef.map((m, i) => <option key={m} value={i}>{m}</option>)}
-            </select>
-          </motion.div>
-        )}
+          {activeTab === 'graficos' && (
+            <motion.div key="graficos" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} transition={{ duration: 0.12 }} className="w-full">
+              <AnalyticsCarousel 
+                chartArray={analytics.chartArray}
+                presencaSlide={presencaSlide} setPresencaSlide={setPresencaSlide}
+                equiSlide={equiSlide} setEquiSlide={setEquiSlide}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'chamada' && (
+            <motion.div key="chamada" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} transition={{ duration: 0.12 }} className="w-full">
+              <LocalAttendanceList events={eventsWithAttendanceInjected} userLevel={level} />
+            </motion.div>
+          )}
+
+          {activeTab === 'visitas' && (
+            <motion.div key="visitas" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} transition={{ duration: 0.12 }} className="w-full">
+              <VisitsRegistry 
+                listMinFilter={listMinFilter} setListMinFilter={setListMinFilter}
+                listCityFilter={listCityFilter} setListCityFilter={setListCityFilter}
+                filterOptions={analytics.filterOptions}
+                nominalFinal={analytics.nominalFinal}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <div className="p-4 space-y-6 max-w-md mx-auto w-full">
-        <div className="space-y-3">
-          <BigNumberGroup label="Músicos" total={tM} avg={(tM/totalMeses).toFixed(1)} icon={<Music size={14}/>} color="blue" />
-          <BigNumberGroup label="Organistas" total={tO} avg={(tO/totalMeses).toFixed(1)} icon={<PieChart size={14}/>} color="violet" />
-          <BigNumberGroup label="Irmandade" total={tI} avg={(tI/totalMeses).toFixed(1)} icon={<Users size={14}/>} color="emerald" />
-          <BigNumberGroup label="Encarregados" total={tEnc} avg={(tEnc/totalMeses).toFixed(1)} icon={<ShieldCheck size={14}/>} color="indigo" />
-          <BigNumberGroup label="Hinos" total={tH} avg={(tH/totalMeses).toFixed(1)} icon={<CheckCircle2 size={14}/>} color="amber" />
-        </div>
+      {/* MODAL DA LUPA CENTRALIZADO NA TELA (POP-UP PREMIUM) */}
+      <AnimatePresence>
+        {isFilterOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 0.5 }} exit={{ opacity: 0 }} 
+              onClick={() => setIsFilterOpen(false)} className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.92 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: "spring", damping: 24, stiffness: 350 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative z-10 border border-slate-100 flex flex-col gap-4 text-left"
+            >
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal size={16} className="text-blue-600" />
+                  <h3 className="text-sm font-black uppercase text-slate-900 tracking-tight italic">Refinar Pesquisa</h3>
+                </div>
+                <button 
+                  onClick={() => setIsFilterOpen(false)} 
+                  className="w-10 h-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-xl text-slate-500 cursor-pointer active:scale-90 transition-all"
+                >
+                  <X size={16} />
+                </button>
+              </div>
 
-        <CarouselBox title={presencaSlide === 0 ? "Frequência Total" : "Equilíbrio Orquestral (Qtd)"} onPrev={() => handlePrev(presencaSlide, setPresencaSlide, 2)} onNext={() => handleNext(presencaSlide, setPresencaSlide, 2)}>
-            <BarChart data={chartArray}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 900}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9}} />
-              <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '1rem', border:'none', fontWeight: 900, fontSize: 10}} />
-              <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{fontSize: 8, fontWeight: 900, paddingTop: 10}} />
-              {presencaSlide === 0 ? (
-                <><Bar name="Orquestra" dataKey="totalOrq" stackId="a" fill="#3b82f6" radius={[0,0,0,0]} /><Bar name="Irmandade" dataKey="irmandade" stackId="a" fill="#0f172a" radius={[4,4,0,0]} /></>
-              ) : (
-                <><Bar name="Cordas" dataKey="cordas" stackId="b" fill="#fbbf24" /><Bar name="Madeiras/Sax" dataKey="madeiras" stackId="b" fill="#10b981" /><Bar name="Metais" dataKey="metais" stackId="b" fill="#ef4444" /><Bar name="Teclas" dataKey="teclas" stackId="b" fill="#64748b" /><Bar name="Órgão" dataKey="organistas" stackId="b" fill="#8b5cf6" radius={[4,4,0,0]} /></>
-              )}
-            </BarChart>
-        </CarouselBox>
+              <div className={`w-full flex items-center h-14 gap-3 bg-slate-50 px-4 rounded-2xl border border-slate-200 ${!isComissao ? 'opacity-60 pointer-events-none' : ''}`}>
+                <MapPin size={18} className="text-blue-600 shrink-0" />
+                <div className="flex-1 flex flex-col">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Filtro por Cidade</span>
+                  <select 
+                    disabled={!isComissao}
+                    value={!isComissao ? userData?.cidadeId : selectedCityId} 
+                    onChange={(e) => setSelectedCityId(e.target.value)} 
+                    className="bg-transparent text-slate-900 font-black text-sm uppercase outline-none w-full appearance-none cursor-pointer"
+                  >
+                    {!isComissao ? (
+                      <option value={userData?.cidadeId}>{userData?.cidadeNome || "SUA CIDADE"}</option>
+                    ) : (
+                      <>
+                        <option value="all">Todas as Cidades</option>
+                        {listaCidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </>
+                    )}
+                  </select>
+                </div>
+                {isComissao && <ChevronDown size={14} className="text-slate-400 shrink-0" />}
+              </div>
 
-        <CarouselBox title={equiSlide === 0 ? "Soberania: Cordas" : equiSlide === 1 ? "Soberania: Madeiras" : "Soberania: Metais"} onPrev={() => handlePrev(equiSlide, setEquiSlide, 3)} onNext={() => handleNext(equiSlide, setEquiSlide, 3)}>
-            <BarChart data={chartArray}>
-              <CartesianGrid vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize: 8}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 8}} />
-              <Tooltip cursor={{fill: '#f8fafc'}} />
-              {equiSlide === 0 && <><Bar name="Local" dataKey="cordas" stackId="s" fill="#fbbf24" /><Bar name="Visita" dataKey="cordasV" stackId="s" fill="#e2e8f0" radius={[3,3,0,0]} /></>}
-              {equiSlide === 1 && <><Bar name="Local" dataKey="madeiras" stackId="s" fill="#10b981" /><Bar name="Visita" dataKey="madeirasV" stackId="s" fill="#e2e8f0" radius={[3,3,0,0]} /></>}
-              {equiSlide === 2 && <><Bar name="Local" dataKey="metais" stackId="s" fill="#ef4444" /><Bar name="Visita" dataKey="metaisV" stackId="s" fill="#e2e8f0" radius={[3,3,0,0]} /></>}
-            </BarChart>
-        </CarouselBox>
+              <div className="w-full flex items-center h-14 gap-3 bg-slate-950 px-4 rounded-2xl border border-slate-800 shadow-inner">
+                <Building2 size={18} className="text-blue-400 shrink-0" />
+                <div className="flex-1 flex flex-col">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-0.5">Filtro por Localidade</span>
+                  <select 
+                    value={activeComumId} 
+                    onChange={(e) => setActiveComumId(e.target.value)} 
+                    className="bg-transparent text-white font-black text-sm uppercase outline-none w-full appearance-none cursor-pointer"
+                  >
+                    {!isComissao ? (
+                      <option value={userData?.comumId}>{userData?.comumNome || "SUA COMUM"}</option>
+                    ) : (
+                      <>
+                        <option value="consolidated">
+                          {selectedCityId === 'all' ? 'Resumo da Regional' : 'Consolidado da Cidade'}
+                        </option>
+                        {listaIgrejas.filter(i => selectedCityId === 'all' || i.cidadeId === selectedCityId).map(ig => (
+                          <option key={ig.id} value={ig.id} className="text-slate-900 bg-white">{ig.comum || ig.nome}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
+                <ChevronDown size={14} className="text-white/40 shrink-0" />
+              </div>
 
-        <CarouselBox title={hinosSlide === 0 ? "Musicalidade: Qtd Hinos" : "Hinos Empilhados por Parte"} onPrev={() => handlePrev(hinosSlide, setHinosSlide, 2)} onNext={() => handleNext(hinosSlide, setHinosSlide, 2)}>
-            <BarChart data={chartArray}>
-              <CartesianGrid vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize: 9}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9}} />
-              <Tooltip cursor={{fill: '#f8fafc'}} />
-              <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{fontSize: 8, fontWeight: 900}} />
-              {hinosSlide === 0 ? (
-                <Bar name="Total Hinos" dataKey="hTotal" fill="#6366f1" radius={[4,4,0,0]} />
-              ) : (
-                <><Bar name="1ª Parte" dataKey="h1" stackId="h" fill="#3b82f6" /><Bar name="2ª Parte" dataKey="h2" stackId="h" fill="#fbbf24" radius={[4,4,0,0]} /></>
-              )}
-            </BarChart>
-        </CarouselBox>
+              <div className="h-14 bg-blue-50 border border-blue-100 rounded-2xl flex items-center px-4">
+                <div className="flex-1 flex flex-col">
+                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-wider mb-0.5">Período de Agrupamento</span>
+                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full bg-transparent text-blue-700 font-black text-sm uppercase outline-none appearance-none cursor-pointer">
+                    <option value="year" className="text-slate-900">Visão Anual Completa</option>
+                    <option value="semester" className="text-slate-900">Visão Semestral Cronológica</option>
+                    <option value="quarter" className="text-slate-900">Visão Trimestral Agrupada</option>
+                    <option value="month" className="text-slate-900">Visão Mensal Individual</option>
+                    <option value="all" className="text-slate-900">Histórico Total Acumulado</option>
+                  </select>
+                </div>
+                <ChevronDown size={14} className="text-blue-500 shrink-0" />
+              </div>
 
-        <section className="bg-slate-950 p-6 rounded-[2.5rem] shadow-xl text-white">
-          <div className="flex justify-between items-center mb-6">
-              <div className="text-left"><p className="text-[7px] font-black text-amber-500 uppercase tracking-widest italic leading-none">Ranking Musical</p><h3 className="text-lg font-black uppercase italic leading-none">Hinos mais Chamados</h3></div>
-              <div className="flex gap-1">{[3, 5, 10, 15].map(n => <button key={n} onClick={() => setTopLimit(n)} className={`px-2 py-1 rounded-lg text-[8px] font-black ${topLimit === n ? 'bg-amber-500 text-slate-950' : 'bg-white/10 text-white/40'}`}>{n}</button>)}</div>
-          </div>
-          <div style={{ height: topLimit * 40 }}>
-            <ResponsiveContainer width="100%" height="100%" minHeight={220}>
-              <BarChart layout="vertical" data={topHinos.slice(0, topLimit)} margin={{ left: -25, right: 45 }}>
-                <XAxis type="number" hide />
-                <YAxis dataKey="num" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontStyle: 'italic', fontWeight: '900', fill: '#fff' }} width={45} />
-                <Bar dataKey="count" fill="#F59E0B" radius={[0, 4, 4, 0]} barSize={16}>
-                   {topHinos.map((entry, index) => <Cell key={`c-${index}`} fillOpacity={1 - (index * 0.05)} />)}
-                   <LabelList dataKey="count" position="right" fill="#F59E0B" style={{fontSize: 10, fontWeight: 900}} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+              {filterType !== 'all' && (
+                <div className="flex gap-3 w-full">
+                  <div className="h-14 bg-slate-50 border border-slate-200 rounded-2xl flex-1 flex flex-col justify-center px-4">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Ano</span>
+                    <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-full bg-transparent font-black text-sm text-slate-800 outline-none appearance-none cursor-pointer">
+                      {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
 
-        <CarouselBox title={visitaOrigemSlide === 0 ? "Cargos Visitantes" : visitaOrigemSlide === 1 ? "Bairros Visitantes" : "Cidades Visitantes"} onPrev={() => handlePrev(visitaOrigemSlide, setVisitaOrigemSlide, 3)} onNext={() => handleNext(visitaOrigemSlide, setVisitaOrigemSlide, 3)} dark>
-            <BarChart layout="vertical" data={visitaOrigemSlide === 0 ? origemVisitas.cargos.slice(0,6) : visitaOrigemSlide === 1 ? origemVisitas.bairros.slice(0,6) : origemVisitas.cidades.slice(0,6)} margin={{left: -20, right: 30}}>
-              <XAxis type="number" hide /><YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 7, fontWeight: '900', fill: '#64748b' }} width={70} />
-              <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={12}><LabelList dataKey="value" position="right" style={{fontSize: 8, fontWeight: 900}} /></Bar>
-          </BarChart>
-        </CarouselBox>
-
-        <section className="space-y-4 pb-20">
-            <h3 className="text-[11px] font-black text-slate-950 uppercase italic tracking-widest px-2 leading-none">Detalhamento de Visitas</h3>
-            <div className="flex gap-2">
-                <select value={listMinFilter} onChange={e => setListMinFilter(e.target.value)} className="flex-1 bg-white border border-slate-100 p-3 rounded-2xl text-[9px] font-black uppercase text-slate-900 outline-none shadow-sm appearance-none cursor-pointer"><option value="all">Ministério</option>{filterOptions.mins.map(m => <option key={m} value={m}>{m}</option>)}</select>
-                <select value={listCityFilter} onChange={e => setListCityFilter(e.target.value)} className="flex-1 bg-white border border-slate-100 p-3 rounded-2xl text-[9px] font-black uppercase text-slate-900 outline-none shadow-sm appearance-none cursor-pointer"><option value="all">Cidade</option>{filterOptions.cities.map(c => <option key={c} value={c}>{c}</option>)}</select>
-            </div>
-            <div className="space-y-2">
-                {nominalFinal.filter(v => (listCityFilter === 'all' || v.cidadeUf?.toUpperCase() === listCityFilter) && (listMinFilter === 'all' || v.min?.toUpperCase() === listMinFilter)).slice(0, 20).map((v, i) => (
-                    <div key={i} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center active:scale-95 transition-all">
-                        <div className="text-left leading-tight">
-                            <p className="text-[11px] font-black text-slate-950 uppercase italic mb-1">{v.nome}</p>
-                            <p className="text-[8px] font-bold text-blue-600 uppercase mb-1">{v.min || 'Músico'}</p>
-                            <p className="text-[7px] font-bold text-slate-400 uppercase">{v.bairro || 'Comum'} - {v.cidadeUf || 'UF'}</p>
-                            <p className="text-[6px] font-black text-slate-300 uppercase italic mt-1">Ens. Origem: {v.dataEnsaio || "---"}</p>
-                        </div>
-                        <div className="p-1.5 bg-slate-50 rounded-lg text-[7px] font-black text-slate-400 border border-slate-100 h-fit self-start">{v.eventDate.split('-').reverse().join('/')}</div>
+                  {filterType !== 'year' && (
+                    <div className="h-14 bg-slate-50 border border-slate-200 rounded-2xl flex-[2_2_0px] flex flex-col justify-center px-4">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Fração / Mês</span>
+                      <select value={subFilter} onChange={(e) => setSubFilter(e.target.value)} className="w-full bg-transparent font-black text-sm uppercase text-slate-800 outline-none appearance-none cursor-pointer">
+                        {filterType === 'semester' && <><option value="0">1º Semestre</option><option value="1">2º Semestre</option></>}
+                        {filterType === 'quarter' && <><option value="0">1º Trimestre</option><option value="1">2º Trimestre</option><option value="2">3º Trimestre</option><option value="3">4º Trimestre</option></>}
+                        {filterType === 'month' && mesesRef.map((m, i) => <option key={m} value={i}>{m}</option>)}
+                      </select>
                     </div>
-                ))}
-            </div>
-        </section>
-      </div>
+                  )}
+                </div>
+              )}
+
+              <button 
+                onClick={() => setIsFilterOpen(false)}
+                className="w-full h-12 bg-blue-600 rounded-2xl text-white font-black text-xs uppercase tracking-widest italic shadow-lg active:scale-[0.98] transition-all cursor-pointer mt-2 flex items-center justify-center"
+              >
+                Aplicar Filtros Simultâneos
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-const BigNumberGroup = ({ label, total, avg, icon, color }) => (
-  <div className="flex gap-2 w-full">
-    <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center">
-      <div className="flex items-center gap-2 mb-1 opacity-40">
-        <span className={color === 'blue' ? 'text-blue-600' : color === 'violet' ? 'text-violet-600' : color === 'emerald' ? 'text-emerald-600' : color === 'indigo' ? 'text-indigo-600' : 'text-amber-600'}>
-          {icon}
-        </span>
-        <p className="text-[7px] font-black uppercase tracking-widest">{label}</p>
-      </div>
-      <p className="text-2xl font-black text-slate-950 italic leading-none">{total}</p>
-      <p className="text-[6px] font-bold text-slate-300 uppercase italic mt-1">Acumulado</p>
-    </div>
-    <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center border-l-4" style={{borderColor: color === 'blue' ? '#3b82f6' : color === 'violet' ? '#8b5cf6' : color === 'emerald' ? '#10b981' : color === 'indigo' ? '#6366f1' : '#f59e0b'}}>
-      <p className="text-2xl font-black text-slate-950 italic leading-none">{avg}</p>
-      <p className="text-[6px] font-bold text-slate-400 uppercase italic mt-1">Média / Mês</p>
-    </div>
-  </div>
-);
-
-const CarouselBox = ({ title, children, onPrev, onNext, dark }) => (
-  <motion.section 
-    drag="x" dragConstraints={{ left: 0, right: 0 }} 
-    onDragEnd={(e, { offset }) => offset.x < -50 ? onNext() : offset.x > 50 ? onPrev() : null} 
-    className={`p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden w-full h-[320px] ${dark ? 'bg-slate-50' : 'bg-white'}`}
+const GridTabButton = ({ active, label, icon, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-2 h-11 px-3 rounded-xl font-black text-xs uppercase tracking-tight transition-all border cursor-pointer ${
+      active 
+        ? 'bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-100 opacity-100' 
+        : 'bg-slate-50 border-slate-100 text-slate-500 opacity-80 hover:bg-slate-100'
+    }`}
   >
-    <div className="flex justify-between items-center mb-6 px-1">
-        <button onClick={onPrev} className="p-1.5 bg-slate-50 rounded-lg text-slate-300 active:text-blue-600 transition-colors"><ChevronLeft size={14} /></button>
-        <h3 className="text-[10px] font-black text-slate-950 uppercase italic tracking-widest leading-none">{title}</h3>
-        <button onClick={onNext} className="p-1.5 bg-slate-50 rounded-lg text-slate-300 active:text-blue-600 transition-colors"><ChevronRight size={14} /></button>
+    <div className={`shrink-0 ${active ? 'text-white' : 'text-slate-400'}`}>
+      {icon}
     </div>
-    <div className="h-56 w-full">
-      <ResponsiveContainer width="99%" height="99%">
-        {children}
-      </ResponsiveContainer>
-    </div>
-  </motion.section>
+    <span className="truncate">{label}</span>
+  </button>
 );
 
 export default DashPage;

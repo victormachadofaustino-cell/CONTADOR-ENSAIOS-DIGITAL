@@ -23,8 +23,8 @@ const ScreenResumo = ({ stats, canExport, handleShareEstatistico }) => { // 💡
         {/* 🎛️ CABEÇALHO SOCIAL DA ABA */}
         <div className="flex justify-between items-center pb-4 mb-4 border-b border-slate-100"> {/* 💡 Alinha o título e a ação de disparo na mesma linha. */}
           <div>
-            <h3 className="text-[11px] font-black uppercase italic text-slate-950 tracking-tight">Fechamento Estatístico</h3> {/* 💡 Título institucional da ata. */}
-            <p className="text-[9px] font-medium text-slate-400 mt-0.5">Relatório resumido para as regionais</p> {/* 💡 Legenda de apoio. */}
+            <h3 className="text-[11px] font-black uppercase italic text-slate-950 tracking-tight">Estatísticas Orquestrais</h3> {/* 💡 Título institucional da ata. */}
+            <p className="text-[9px] font-medium text-slate-400 mt-0.5">Relatório resumido do evento local</p> {/* 💡 Legenda de apoio. */}
           </div>
           
           {/* 🛡️ TRAVA DE EXPORTAÇÃO EXCLUSIVA PARA WHATSAPP */}
@@ -41,9 +41,9 @@ const ScreenResumo = ({ stats, canExport, handleShareEstatistico }) => { // 💡
         
         {/* 📋 DISRIBUIÇÃO SANEADA DOS DADOS COLETADOS EM MEMÓRIA LOCAL */}
         <div className="space-y-0.5"> {/* 💡 Agrupamento de linhas sem divisores pesados para evitar poluição visual. */}
-          <AdminRow label="Músicos Presentes" value={stats.musicos} highlight /> {/* 💡 Exibe os músicos de naipes calculados no ensaio. */}
-          <AdminRow label="Organistas Coletadas" value={stats.organistas} highlight /> {/* 💡 Exibe as organistas sentadas nas bancadas de órgãos. */}
-          <AdminRow label="Irmandade no Coral" value={stats.irmandade} highlight /> {/* 💡 Exibe a somatória absoluta das vozes masculinas e femininas. */}
+          <AdminRow label="Músicos" value={stats.musicos} highlight /> {/* 💡 Exibe os músicos de naipes calculados no ensaio. */}
+          <AdminRow label="Organistas" value={stats.organistas} highlight /> {/* 💡 Exibe as organistas sentadas nas bancadas de órgãos. */}
+          <AdminRow label="Irmandade" value={stats.irmandade} highlight /> {/* 💡 Exibe a somatória absoluta das vozes masculinas e femininas. */}
           
           <div className="py-2 flex items-center justify-center select-none"> {/* 💡 Linha pontilhada minimalista de separação de blocos. */}
             <div className="w-full border-t border-dashed border-slate-200" />
@@ -52,14 +52,14 @@ const ScreenResumo = ({ stats, canExport, handleShareEstatistico }) => { // 💡
           <AdminRow label="Encarregados Regionais" value={stats.encRegionalComum + stats.encRegionalVisita} /> {/* 💡 Soma reativa de encarregados da regional (casa + visitantes). */}
           <AdminRow label="Encarregados Locais" value={stats.encLocalComum + stats.encLocalVisita} /> {/* 💡 Soma reativa de encarregados locais (casa + visitantes). */}
           <AdminRow label="Examinadoras" value={stats.examinadorasTotal} /> {/* 💡 Exibe as examinadoras de partituras computadas na ata. */}
-          <AdminRow label="Ministério de Ofício" value={stats.ministerio_oficio} /> {/* 💡 Exibe anciães, diáconos e cooperadores de mesa. */}
+          <AdminRow label="Ministério" value={stats.ministerio_oficio} /> {/* 💡 Exibe anciães, diáconos e cooperadores de mesa. */}
         </div>
 
         {/* 🏆 PLACAR ABSOLUTO GERAL DA ATA (ESTILO REGISTRO CONTÁBIL) */}
         <div className="pt-5 mt-5 border-t-2 border-slate-950 flex justify-between items-end"> {/* 💡 Traço duplo contábil preto de auditoria. */}
           <div>
             <span className="text-[12px] font-black uppercase italic text-slate-950 tracking-tight block leading-none">Total Geral</span> {/* 💡 Identificador do fechamento final. */}
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 block leading-none">Público Absoluto</span> {/* 💡 Rótulo secundário descritivo. */}
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 block leading-none">Público</span> {/* 💡 Rótulo secundário descritivo. */}
           </div>
           <span className="text-5xl font-[1000] text-slate-950 tracking-tighter italic leading-none">{stats.geral}</span> {/* 💡 O número master final do ensaio renderizado com destaque máximo de BI. */}
         </div>
