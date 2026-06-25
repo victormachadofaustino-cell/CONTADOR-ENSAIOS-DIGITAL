@@ -5,7 +5,7 @@ import InstrumentCard from './InstrumentCard'; // Explicação: Importa o compon
 
 /**
  * Componente que agrupa instrumentos por seção (Naipe).
- * v3.0 - STABILIZED PERMISSION FLOW WITH UNIFIED HOUSE LIBERATION
+ * v3.3 - FIXED CORAL CASING AND RECONECTED ORCHESTRA PIPELINE
  */
 const CounterSection = ({ 
   sec, // Explicação: Nome da seção (ex: CORDAS).
@@ -40,19 +40,30 @@ const CounterSection = ({
   // Explicação: O GEM só pode "Assumir" ou "Trocar" se o evento for LOCAL. Se for Regional, ele só vê se for convidado ou se for da Comissão.
   const canChangeOwnership = !isRegionalEvent || isHigherHierarchy;
 
+  // 🚀 CAIXA DE MEMÓRIA ANTI-DUPLICIDADE: Conjunto temporário na RAM para registrar o que já foi impresso na tela durante o loop
+  const renderedSpecialSections = new Set(); // Explicação: Guarda as tags dos cartões especiais já renderizados para evitar repetição visual.
+
   // JUSTIFICATIVA: Ajuste na soma para contemplar o mapa enxuto de instrumentos comuns vs especial do Coral
   const sectionTotal = allInstruments // Explicação: Calcula o número total que aparece na barra preta do grupo.
     .filter(i => (i.section || "GERAL").toUpperCase() === sec) // Explicação: Filtra apenas os instrumentos pertencentes a este naipe.
     .reduce((acc, inst) => { // Explicação: Acumula a soma matemática passando de instrumento em instrumento.
-      const targetId = (sec?.toUpperCase() === 'IRMANDADE') ? 'Coral' : (sec?.toUpperCase() === 'ORGANISTAS') ? 'orgao' : inst.id; // Explicação: Redireciona a busca para a chave correta baseando-se no nosso plano lean.
+      // 🚀 FIX DE CAIXA DE TEXTO: Alterado para 'coral' minúsculo para casar perfeitamente com a gaveta física do Firestore
+      const targetId = (sec?.toUpperCase() === 'IRMANDADE') ? 'coral' : (sec?.toUpperCase() === 'ORGANISTAS') ? 'orgao' : inst.id; // Explicação: Redireciona a busca para a chave correta em minúsculo.
       const c = localCounts?.[targetId]; // Explicação: Puxa o bloco de contagem daquele instrumento de dentro della memória.
-      const isCoral = inst.id.toLowerCase() === 'coral'; // Explicação: Checa se o identificador em análise é o Coral oficial.
+      const isCoral = inst.id.toLowerCase() === 'coral' || inst.id.toLowerCase() === 'irmas' || inst.id.toLowerCase() === 'irmaos'; // Explicação: Ampara qualquer ramificação de ID do nó do coral.
       
       if (isCoral) { // Explicação: Se for o Coral, aplica a matemática de gênero de relatórios obrigatórios.
-        return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0); // Explicação: Soma Irmãs + Irmãos para o grupo unificado de Irmandade.
-      } // Explicação: Fim da condicional do Coral.
+        // PREVENÇÃO DE DUPLICIDADE EM SOMA: Se o loop rodar para irmas e irmaos, soma as chaves uma única vez usando um Set de controle interno
+        const uniqueKey = `total_coral_sum`; // Explicação: Identificador da trava matemática.
+        if (renderedSpecialSections.has(uniqueKey)) return acc; // Explicação: Se já somou o bloco completo neste clique, retorna o acumulador intacto sem duplicar.
+        renderedSpecialSections.add(uniqueKey); // Explicação: Registra que a matemática de soma do coral foi efetuada.
+        return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0); // Explicação: Soma Irmãs + Irmãos para o grupo unificado de Irmandade e calcula o Total correto (ex: 11).
+      } // Explicação: Fim della condicional do Coral.
       return acc + (parseInt(c?.total) || 0); // Explicação: Para os instrumentos normais enxutos, puxa e soma diretamente o campo 'total'.
     }, 0); // Explicação: Inicia o acumulador matemático do reduce com o valor zero.
+
+  // RESET DO CONJUNTO DE TELA: Reseta a caixa de controle para iniciar o processo de desenho visual limpo na tela do smartphone
+  renderedSpecialSections.clear(); // Explicação: Esvazia o conjunto de controle antes de abrir o laço do map visual.
 
   const isLastIrmandade = sec === 'IRMANDADE' || sec === 'CORAL'; // Explicação: Identifica se é o grupo do Coral.
   const isOrganistas = sec === 'ORGANISTAS'; // Explicação: Identifica se é o grupo das Organistas.
@@ -127,7 +138,7 @@ const CounterSection = ({
             className="flex items-center gap-2 cursor-pointer outline-none" // Explicação: Alinha o quadrado preto e a seta cinza lado a lado.
           >
             <div className="bg-slate-950 text-white min-w-[38px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-sm border border-white/10 px-2 leading-none"> {/* Explicação: Quadrado de alta densidade preto prêmio contendo o número total somado em tempo real. */}
-              {sectionTotal} {/* Explicação: Exibe a soma real e enxuta processada no topo pelo nosso reduce. */}
+              {sectionTotal} {/* Explicação: Exibe a soma real e enxuta processada no topo. */}
             </div>
             <ChevronDown 
               size={16} 
@@ -142,8 +153,17 @@ const CounterSection = ({
           {allInstruments // Explicação: Pega a listagem unificada de orquestra organizada e filtra pelo naipe atual.
             .filter(i => (i.section || "GERAL").toUpperCase() === sec) // Explicação: Garante o agrupamento correto na visualização.
             .map(inst => { // Explicação: Varre cada instrumento pertencente gerando o cartão de contagem na tela.
+              
+              const isCoral = inst.id.toLowerCase() === 'coral' || inst.id.toLowerCase() === 'irmas' || inst.id.toLowerCase() === 'irmaos'; // Explicação: Identifica as variações de chamada do nó do Coral.
+
+              // OPERAÇÃO ANTI-DUPLICIDADE VISUAL: Se já renderizamos o card unificado do Coral neste ciclo, pula as repetições do banco
+              if (isCoral) { // Explicação: Se cair na linha de leitura do Coral.
+                if (renderedSpecialSections.has('coral_card_printed')) return null; // Explicação: Se o card mestre de Irmãs + Irmãos já foi impresso, aborta o map e retorna nulo para ignorar a duplicata do banco!
+                renderedSpecialSections.add('coral_card_printed'); // Explicação: Registra a carimbagem do card impresso com sucesso para blindar as próximas linhas.
+              }
+
               // Explicação: REQUISITO LEAN: Mapeia os dados de contagem injetando o fallback numérico padrão zerado para as 3 variáveis essenciais do modelo enxuto.
-              const targetId = (sec?.toUpperCase() === 'IRMANDADE') ? 'Coral' : (sec?.toUpperCase() === 'ORGANISTAS') ? 'orgao' : inst.id;
+              const targetId = (sec?.toUpperCase() === 'IRMANDADE') ? 'coral' : (sec?.toUpperCase() === 'ORGANISTAS') ? 'orgao' : inst.id;
               const instrumentData = {
                 total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0, // Explicação: Inicializa propriedades padrão limpas de segurança.
                 ...(localCounts?.[targetId] || {}), // Explicação: Substitui e dumps os valores reais enxutos que estão guardados na memória do banco.
@@ -151,7 +171,7 @@ const CounterSection = ({
                 responsibleName: responsibleName // Vincula o nome do dono para exibição interna.
               };
 
-              // 🚀 GARGALO DE CONTROLE VISUAL RESOLVIDO: Inverte o motor de verificação para libertar e acender os botões.
+              // GARGALO DE CONTROLE VISUAL RESOLVIDO: Inverte o motor de verificação para libertar e acender os botões.
               const deEdicaoTrancada = !isEditingEnabled(sec, inst.id); // Explicação: Aciona a checagem reativa unificada da mãe passando a rota de identificação mapeada.
 
               return ( // Explicação: Renderiza o cartão físico do instrumento processado.
@@ -159,8 +179,9 @@ const CounterSection = ({
                   key={inst.id} // Explicação: Chave identificadora única exigida pelo React para controle de renderização rápida.
                   inst={inst} // Explicação: Passa os dados de cadastro e nome do instrumento.
                   data={instrumentData} // Explicação: Passa o pacote numérico enxuto estruturado por nós.
-                  onUpdate={(id, f, v) => handleUpdateInstrument(id, f, v, sec)} // Explicação: Aciona a função de clique repassando as coordenadas do naipe.
-                  isClosed={deEdicaoTrancada} // 🚀 ALINHAMENTO DE FIÇÃO: O cartão agora obedece rigorosamente ao motor central reativo, acendendo os botões para GEM/Básico.
+                  // 🚀 CANO HÍBRIDO BLINDADO: Se for Coral, envia o id original (irmas/irmaos) para salvar individual; se for Orquestra, força o targetId por extenso contra bugs visuais
+                  onUpdate={(id, f, v) => handleUpdateInstrument(isCoral ? id : targetId, f, v, sec)} 
+                  isClosed={deEdicaoTrancada} // Explicação: O cartão obedece ao motor central reativo, acendendo os botões para GEM/Básico.
                   onToggleOwnership={() => handleToggleGroup(sec)} // Explicação: Atalho interno para disparar troca de zeladoria.
                   isRegional={isRegionalEvent} // Explicação: Repassa a flag se o evento ativo é regional ou local.
                   userData={{uid: myUID}} // Explicação: Entrega as credenciais do usuário para o cartão.

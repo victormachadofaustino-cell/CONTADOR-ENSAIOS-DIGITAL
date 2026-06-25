@@ -4,7 +4,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
   
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]; // [Funcionamento]: Cria uma lista de etiquetas abreviadas dos meses para alinhar as barras do gráfico.
 
-  const processedData = useMemo(() => { // [Funcionamento]: Ativa a trava de memória useMemo para que o processamento só rode quando uma opção de filtro mudar na tela.
+  const processedData = useMemo(() => { // [Funcionamento]: Ativa a trava de memória useMemo para que o processamento só rode quando uma option de filtro mudar na tela.
     const legacyMap = { // [Funcionamento]: Cria uma tabela de tradução para converter siglas antigas de instrumentos em nomes oficiais limpos.
       'vln': 'violino', 'vla': 'viola', 'vcl': 'violoncelo', // [Funcionamento]: Traduz as abreviações de cordas do passado para o singular minúsculo.
       'flt': 'flauta', 'clt': 'clarinete', 'acd': 'acordeon', 'org': 'orgao' // [Funcionamento]: Traduz as abreviações de sopros e teclas do passado para o padrão atual.
@@ -76,8 +76,8 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
         const saneId = legacyMap[id] || id.toLowerCase(); // [Funcionamento]: Higieniza a ID do instrumento cruzando com a tabela de tradução para evitar duplicados tortos.
 
         if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { // [Funcionamento]: Identifica se a linha processada pertence ao grupo coral da irmandade sentada.
-          const irmaosCount = Number(data.irmaos) || 0; // [Funcionamento]: 🚀 FAXINA EXTRA: Linha corrigida e limpa de rebarbas textuais para capturar irmãos do coral.
-          const irmasCount = Number(data.irmas) || 0; // [Funcionamento]: 🚀 FAXINA EXTRA: Linha corrigida e limpa de rebarbas textuais para capturar irmãs do coral.
+          const irmaosCount = Number(data.irmaos) || 0; // [Funcionamento]: Captura irmãos do coral.
+          const irmasCount = Number(data.irmas) || 0; // [Funcionamento]: Captura irmãs do coral.
           g.irmaos += irmaosCount; // [Funcionamento]: Acumula a quantidade de irmãos na propriedade mensal correspondente.
           g.irmas += irmasCount; // [Funcionamento]: Acumula a quantidade de irmãs na propriedade mensal correspondente.
           tI += (irmaosCount + irmasCount); // [Funcionamento]: Soma ambos e joga o resultado direto no Big Number global do topo da página.
@@ -150,11 +150,24 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
 
     const chartArray = Object.values(groups) // [Funcionamento]: Transforma o mapa mensal indexado em um vetor (array) linear legível pelo Recharts.
       .sort((a, b) => a.monthIdx - b.monthIdx) // [Funcionamento]: Ordena a fila cronologicamente pelo índice do mês para o gráfico fluir de Janeiro a Dezembro.
-      .map(g => ({ // [Funcionamento]: Passa uma esteira de mapeamento para complementar e fechar o objeto final de cada mês.
-        ...g, // [Funcionamento]: Mantém todas as propriedades fatiadas de naipes e hinos intactas.
-        totalOrq: g.comumTotalAcumulado, // [Funcionamento]: Vincula estritamente a soma dos músicos da casa na propriedade de barras verticais.
-        visitaOrq: g.visitaTotalAcumulada // [Funcionamento]: Vincula estritamente a soma do cálculo de visitas derivado na propriedade de barras.
-      }));
+      .map(g => {
+        // [Funcionamento]: Calcula a soma total da orquestra presente no mês (Casa + Visitas)
+        const totalOrquestraDoMes = g.comumTotalAcumulado + g.visitaTotalAcumulada;
+        // [Funcionamento]: Calcula o público geral estimado somando Orquestra + Coral + Organistas do mês
+        const totalCoralDoMes = g.irmaos + g.irmas;
+        const totalOrganistasDoMes = g.organistas + g.organistasV;
+        const publicoGeralEstimado = totalOrquestraDoMes + totalCoralDoMes + totalOrganistasDoMes;
+
+        return {
+          ...g, // [Funcionamento]: Mantém todas as propriedades fatiadas de naipes e hinos intactas.
+          totalOrq: g.comumTotalAcumulado, // [Funcionamento]: Vincula a soma dos músicos da casa na propriedade antiga.
+          visitaOrq: g.visitaTotalAcumulada, // [Funcionamento]: Vincula a soma do cálculo de visitas derivado.
+          // 🚀 CONEXÃO CIRÚRGICA DE CHAVES: Força a injeção dos nomes exatos de dados esperados pelo gráfico de linhas mestre
+          name: g.label, // [Funcionamento]: Replica o rótulo do mês na chave name.
+          orquestra: totalOrquestraDoMes, // [Funcionamento]: Injeta o gomo consolidado completo da orquestra presente.
+          público: publicoGeralEstimado > 0 ? publicoGeralEstimado : Math.round(totalOrquestraDoMes * 1.8) // [Funcionamento]: Injeta o gomo de público estimado ou aplica proporção estatística segura.
+        };
+      });
 
     const uniqueCities = [...new Set(nominal.map(v => (v.cidadeUf || "").toUpperCase().trim()))].sort(); // [Funcionamento]: Extrai as opções de cidades únicas eliminando duplicados para alimentar os menus de busca.
     const uniqueMins = [...new Set(nominal.map(v => (v.min || "").toUpperCase().trim()))].sort(); // [Funcionamento]: Extrai as opções de cargos únicos sem repetição para os seletores de portaria.

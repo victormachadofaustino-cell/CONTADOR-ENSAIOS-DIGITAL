@@ -1,10 +1,10 @@
-import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch, or } from '../config/firebase'; 
-import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore"; 
-import { getAuth } from "firebase/auth"; 
-import { PERMISSIONS_MAP, ROLES } from '../config/permissions'; 
+import { db, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, getDoc, query, orderBy, where, getDocs, writeBatch, or } from '../config/firebase'; // [Funcionamento]: Mantém a importação de todos os conectores e métodos oficiais do SDK do Firebase Firestore.
+import { deleteField, arrayUnion, arrayRemove, increment } from "firebase/firestore"; // [Funcionamento]: Ferramental para manipulação de campos complexos e contadores atômicos na nuvem.
+import { getAuth } from "firebase/auth"; // [Funcionamento]: Puxa o módulo de autenticação para validar quem é o operador logado no dispositivo.
+import { PERMISSIONS_MAP, ROLES } from '../config/permissions'; // [Funcionamento]: Mantém o dicionário de permissões rígidas e níveis de autoridade da comissão.
 
-let debounceTimers = {}; 
-let updateBuffers = {}; 
+let debounceTimers = {}; // [Funcionamento]: Buffer de temporizadores locais para agrupar batidas rápidas de teclado antes de enviar à internet.
+let updateBuffers = {}; // [Funcionamento]: Armazém temporário na memória RAM para reter os valores intermediários digitados no input.
 
 // DICIONÁRIO DE SANITIZAÇÃO ESTÁTICA
 const INSTRUMENT_ID_MAP = {
@@ -133,8 +133,9 @@ export const eventService = {
               initialCounts[id].responsibleName_irmas = null; 
             } 
           } else { 
+            // 🚀 payload enxuto mantido para evitar duplicidades no dashboard na hora de listar
             initialCounts[id] = { 
-              total: 0, comum: 0, enc: 0, irmaos: 0, irmas: 0, 
+              total: 0, irmaos: 0, irmas: 0, 
               name: id === 'coral' ? 'CORAL' : 'ÓRGÃO', 
               section: sectionName, 
               evalType: inst.evalType || 'Sem', 
@@ -184,10 +185,8 @@ export const eventService = {
         dbVersion: "12.6-serial_fixed" 
       }; 
 
-      // ETAPA 1: Salva o documento Pai primeiro para que ele passe a existir no banco físico
       const docNovoCriado = await addDoc(collection(db, 'events_global'), payload); 
 
-      // ETAPA 2: Agora que o Pai já existe e está salvo, as subcoleções nominais não vão sofrer ponto cego
       if (finalScope !== 'regional') { 
         const batchChamada = writeBatch(db); 
 
@@ -196,8 +195,12 @@ export const eventService = {
         
         musicosSnap.docs.forEach(musicoDoc => { 
           const mData = musicoDoc.data(); 
-          const llamadaRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_musicos'), musicoDoc.id); 
           const saneInstId = INSTRUMENT_ID_MAP[mData.instrumentoId?.toLowerCase().trim()] || mData.instrumentoId;
+
+          // 🚀 Mantém a trava de isolamento: Coral não cria subcoleção nominal
+          if (saneInstId === 'coral') return;
+
+          const llamadaRef = doc(collection(db, 'events_global', docNovoCriado.id, 'chamada_musicos'), musicoDoc.id); 
 
           batchChamada.set(llamadaRef, { 
             nome: (mData.nome || mData.name || 'IRMÃO(Ã)').toUpperCase().trim(), 
@@ -274,6 +277,7 @@ export const eventService = {
     } 
   }, 
 
+  // 🚀 RESTAURADO TOTALMENTE: Volta à fiação original de buffer estável do Firebase que grava na hora
   updateInstrumentCount: async (comumId, eventId, { instId, field, value, userData, section, customName }) => { 
     if (!eventId || !instId) return; 
 
@@ -297,14 +301,6 @@ export const eventService = {
       delete debounceTimers[timerKey]; 
 
       try { 
-        const sectionKey = (section || '').toUpperCase(); 
-        
-        if (targetId === 'irmas' || targetId === 'irmaos' || sectionKey === 'IRMANDADE') { 
-          targetId = 'coral'; 
-        } else if (targetId === 'orgao' || sectionKey === 'ORGANISTAS') { 
-          targetId = 'orgao'; 
-        } 
-
         const finalUpdates = {}; 
         const baseKey = `counts.${targetId}`; 
 

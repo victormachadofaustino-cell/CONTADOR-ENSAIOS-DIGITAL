@@ -166,7 +166,7 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
   if (loading && events.length === 0) return <div className="h-screen flex items-center justify-center font-black text-slate-500 animate-pulse uppercase text-xs tracking-wider">Sincronizando Painel...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col pb-32">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col pb-32 text-left">
       
       {/* CABEÇALHO COMPACTO: REESTRUTURAÇÃO EM MATRIZ FIXA 2X2 SEM SCROLL */}
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm rounded-b-[2.2rem]">
@@ -195,7 +195,6 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
         <AnimatePresence mode="wait">
           {activeTab === 'resumo' && (
             <motion.div key="resumo" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} transition={{ duration: 0.12 }} className="w-full">
-              {/* 🚀 FIAÇÃO CONECTADA: Injetado o topHinos para alimentar as barras douradas litúrgicas na aba Resumos */}
               <MetricCardsGroup 
                 tM={analytics.tM} tO={analytics.tO} tI={analytics.tI} 
                 tH={analytics.tH} tEnc={analytics.tEnc} totalMeses={analytics.totalMeses} 
@@ -237,7 +236,8 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
       {/* MODAL DA LUPA CENTRALIZADO NA TELA (POP-UP PREMIUM) */}
       <AnimatePresence>
         {isFilterOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          /* 🚀 TIMING VISUAL ALINHADO: Trava o desfoque escuro exatamente acima da barra preta do Footer com bottom-24 */
+          <div className="fixed top-0 left-0 right-0 bottom-24 sm:inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 0.5 }} exit={{ opacity: 0 }} 
               onClick={() => setIsFilterOpen(false)} className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
@@ -248,7 +248,8 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
               animate={{ opacity: 1, scale: 1 }} 
               exit={{ opacity: 0, scale: 0.92 }}
               transition={{ type: "spring", damping: 24, stiffness: 350 }}
-              className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative z-10 border border-slate-100 flex flex-col gap-4 text-left"
+              /* 🚀 ESCUDO CONTRA DEGOLAMENTO: Injetado mb-16 para elevar o botão azul acima do rodapé nativo */
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative z-10 border border-slate-100 flex flex-col gap-4 text-left mb-16 sm:mb-0"
             >
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">

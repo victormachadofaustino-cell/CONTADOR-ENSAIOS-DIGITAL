@@ -1,15 +1,16 @@
 import React from 'react'; // [Funcionamento]: Importa o núcleo do React para estruturação e gerenciamento de componentes na tela.
-// PRESERVAÇÃO DE DEPENDÊNCIAS: Motores gráficos do Recharts e desenhos vetorizados do Lucide mantidos intactos
+// PRESERVAÇÃO DE DEPENDÊNCIAS: Adicionado LineChart e Line para a fusão estável do gráfico de evolução
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  Legend, ResponsiveContainer, PieChart, Pie, Cell, LabelList 
-} from 'recharts'; // [Funcionamento]: Importa os componentes de engenharia visual do Recharts para plotar fatias, colunas e rótulos.
-import { ChevronLeft, ChevronRight } from 'lucide-react'; // [Funcionamento]: Importa as setas táteis com padrão de acessibilidade para navegação móvel.
+  Legend, ResponsiveContainer, PieChart, Pie, Cell, LabelList,
+  LineChart, Line
+} from 'recharts'; // [Funcionamento]: Importa os componentes de engenharia visual do Recharts para plotar fatias, colunas, linhas e rótulos.
+import { ChevronLeft, ChevronRight, BarChart2 } from 'lucide-react'; // [Funcionamento]: Importa as setas táteis e o ícone de BI para navegação móvel.
 import { motion } from 'framer-motion'; // [Funcionamento]: Importa o Framer Motion para acionar o arrastar físico de slides no smartphone.
 
 /**
- * COMPONENTE: AnalyticsCarousel v3.2 (EDITION: ROTULOS EM PORCENTAGEM)
- * Finalidade: Renderizar carrosséis de Pizza, Proporções Mensais (%) com rótulos ativos e Colunas Agrupadas de Comum x Visita com números internos.
+ * COMPONENTE: AnalyticsCarousel v4.0 (MASTER FUSION EDITION)
+ * Finalidade: Renderizar o Gráfico de Evolução de Linhas no topo e os carrosséis analíticos logo abaixo na mesma esteira.
  */
 const AnalyticsCarousel = ({ 
   chartArray = [], 
@@ -36,7 +37,7 @@ const AnalyticsCarousel = ({
     
     // Alinha o Saxofone extraindo os dados da árvore ou aplicando fallback resiliente
     const saxLocal = m.sax !== undefined ? parseInt(m.sax) : Math.floor(madeirasLocal * 0.4);
-    const saxVisita = m.saxV !== undefined ? parseInt(m.saxV) : Math.floor(madeirasVisita * 0.4);
+    const saxVisita = m.saxV !== undefined ? parseInt(m.saxV) : Math.floor(m.saxV || madeirasVisita * 0.4);
 
     const cTot = cordasLocal + cordasVisita;
     const madTot = Math.max(0, madeirasLocal - saxLocal) + Math.max(0, madeirasVisita - saxVisita);
@@ -101,9 +102,36 @@ const AnalyticsCarousel = ({
   const formatPercentLabel = (value) => value > 0 ? `${value}%` : '';
 
   return (
-    <div className="space-y-6 w-full min-w-0">
+    <div className="space-y-6 w-full min-w-0 text-left">
       
-      {/* 1. CARROSSEL DE DISTRIBUIÇÃO E PROPORÇÕES DE NAIPES (PIZZA / COLUNAS EMPILHADAS COM RÓTULOS ATIVOS EM %) */}
+      {/* 🚀 GRÁFICO 1 INJETADO: LINHAS HISTÓRICAS DE EVOLUÇÃO DE ENSAIOS (MÓDULO DE TOPO ESTÁTICO) */}
+      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm text-left">
+        <div className="flex items-center gap-2 mb-4 text-left">
+          <BarChart2 size={13} className="text-indigo-600" /> {/* Desenha o pequeno ícone analítico azul indigo */}
+          <span className="text-[10px] font-black uppercase text-slate-950 tracking-wider italic">Evolução de Ensaios 2026</span>
+        </div>
+        <div className="h-56 w-full mt-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartArray} margin={{ top: 20, right: 15, left: -25, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="name" tick={{ fontSize: 9, fontWeight: 900, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 9, fontWeight: 900, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background: '#0f172a', borderRadius: '1rem', color: '#fff', fontSize: '10px', fontWeight: 'bold', border: 'none' }} />
+              <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '10px' }} />
+
+              <Line name="Público Geral" type="monotone" dataKey="público" stroke="#4f46e5" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}>
+                <LabelList dataKey="público" position="top" style={{ fill: '#4f46e5', fontSize: 10, fontWeight: 900 }} />
+              </Line>
+
+              <Line name="Orquestra" type="monotone" dataKey="orquestra" stroke="#10b981" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}>
+                <LabelList dataKey="orquestra" position="bottom" style={{ fill: '#10b981', fontSize: 10, fontWeight: 900 }} />
+              </Line>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 2. CARROSSEL DE DISTRIBUIÇÃO E PROPORÇÕES DE NAIPES (PIZZA / COLUNAS EMPILHADAS COM RÓTULOS ATIVOS EM %) */}
       <CarouselBox 
         title={presencaSlide === 0 ? "Distribuição Geral de Naipes (%)" : "Proporções dos Naipes por Mês (%)"} 
         onPrev={() => handlePrev(presencaSlide, setPresencaSlide, 2)} 
@@ -150,7 +178,7 @@ const AnalyticsCarousel = ({
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} unit="%" domain={[0, 100]} />
               <Tooltip contentStyle={{ borderRadius: '1.2rem', border: 'none', fontWeight: 800, fontSize: 11 }} formatter={(value) => [`${value}%`]} />
               <Legend verticalAlign="bottom" iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 9, fontWeight: 700, paddingTop: 15 }} />
-              {/* 🚀 CORREÇÃO SINTONIZADA: Injeção do LabelList formatado em % no centro de cada fatia empilhada */}
+              
               <Bar name="Cordas" dataKey="Cordas" fill="#F59E0B" stackId="a">
                 <LabelList dataKey="Cordas" position="center" formatter={formatPercentLabel} style={{ fontSize: 9, fontWeight: 900, fill: '#ffffff' }} />
               </Bar>
@@ -171,7 +199,7 @@ const AnalyticsCarousel = ({
         )}
       </CarouselBox>
 
-      {/* 2. CARROSSEL DE EQUILÍBRIO SEGREGADO (UMA COLUNA ÚNICA EMPILHADA LOCAL X VISITA COM RÓTULOS ABSORVIDOS NO CENTRO) */}
+      {/* 3. CARROSSEL DE EQUILÍBRIO SEGREGADO (UMA COLUNA ÚNICA EMPILHADA LOCAL X VISITA COM RÓTULOS ABSORVIDOS NO CENTRO) */}
       <CarouselBox 
         title={equiSlide === 0 ? "Cordas (Local x Visita)" : equiSlide === 1 ? "Madeiras (Local x Visita)" : equiSlide === 2 ? "Saxofones (Local x Visita)" : "Metais (Local x Visita)"} 
         onPrev={() => handlePrev(equiSlide, setEquiSlide, 4)} 
@@ -248,7 +276,7 @@ const CarouselBox = ({ title, children, onPrev, onNext, hideButtons, dark }) => 
     }} 
     className={`p-5 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden w-full h-[350px] flex flex-col justify-between ${dark ? 'bg-slate-50' : 'bg-white'}`}
   >
-    <div className="flex justify-between items-center px-1 h-11 mb-2 shrink-0">
+    <div className="flex justify-between items-center px-1 h-11 mb-2 shrink-0 text-center">
       {!hideButtons && onPrev ? (
         <button 
           onClick={onPrev} 
