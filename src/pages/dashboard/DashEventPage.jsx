@@ -4,7 +4,7 @@ import { hasPermission } from '../../config/permissions'; // 💡 Importa a tabe
 import { pdfEventService } from '../../services/pdfEventService'; // 💡 Importa o serviço responsável por construir o documento impresso em PDF.
 import { whatsappService } from '../../services/whatsappService'; // 💡 Importa o formatador automatizado de mensagens para o WhatsApp.
 import { db } from '../../config/firebase'; // 💡 Conexão cirúrgica com o banco de dados sem requisições redundantes.
-import { collection, onSnapshot } from 'firebase/firestore'; // 💡 Importa o escutador em tempo real e o direcionador de coleções do Firebase.
+import { collection, doc, onSnapshot } from 'firebase/firestore'; // 💡 Importa o escutador em tempo real e o direcionador de coleções do Firebase.
 import toast from 'react-hot-toast'; // 💡 Importa o sistema de balões de aviso flutuantes para a interface.
 import { LayoutGrid, ClipboardList, Scale, PieChart, FileText, Share2 } from 'lucide-react'; // 💡 Importa os ícones do menu de navegação do carrossel, o ícone de arquivo e o ícone de compartilhar.
 import { AnimatePresence, motion } from 'framer-motion'; // 💡 Motor de animação para transições suaves de deslize entre as telas.
@@ -23,6 +23,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
 
   const [currentScreen, setCurrentScreen] = useState('geral'); // 💡 Estado que controla qual aba do carrossel está ativa.
   const [activeModal, setActiveModal] = useState(null); // 💡 Estado global que gerencia qual modal de Drilldown está aberto centralizado na tela.
+  const [comumFullData, setComumFullData] = useState(null); // 💡 Estado local criado para reter as informações completas de endereço físico e horários da comum.
 
   const isBasico = userData?.isBasico; // 💡 Verifica se é um usuário com acesso básico de consulta.
 
@@ -54,6 +55,23 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
 
     return () => unsubscribe(); // 💡 Desliga a escuta ao fechar o painel para proteger a bateria e a cota de dados.
   }, [eventId]); // 💡 Monitora re-atualizações baseadas estritamente se o ID do ensaio mudar.
+
+  // 📡 PONTE REATIVA DE ENDEREÇO DA COMUM (BUSCA AS INFORMAÇÕES DE CADASTRO DA LOCALIDADE EM SEGUNDO PLANO)
+  useEffect(() => {
+    const comumTargetId = ataData?.comumId || userData?.activeComumId || userData?.comumId; // 💡 Isola o identificador da igreja comum de forma segura.
+    if (!comumTargetId) return; // 💡 Aborta se não houver ponteiro GPS territorial disponível na RAM.
+
+    // 🏎️ Escuta em tempo real conectada na raiz da comum para capturar mapas de ruas e horários de cultos
+    const unsubComum = onSnapshot(doc(db, 'comuns', comumTargetId), (docSnap) => {
+      if (docSnap.exists()) { // 💡 Se a ficha cadastral da igreja existir no servidor.
+        setComumFullData({ id: docSnap.id, ...docSnap.data() }); // 💡 Despeja o endereço, CEP, rua e número salvos na RAM.
+      }
+    }, (err) => {
+      console.error("Erro ao escutar dados da comum:", err); // 💡 Registra bloqueios de portaria nas regras de segurança do Firebase.
+    });
+
+    return () => unsubComum(); // 💡 Desliga o elo de escuta geográfica ao sair do painel.
+  }, [ataData?.comumId, userData]); // 💡 Monitora as chaves de isolamento territorial do usuário ativo.
 
   // ⚡ COMPILADOR MATEMÁTICO INTEGRADO (PROCESSA TUDO EM MEMÓRIA LOCAL SEM CUSTO DE COTA - DENORMALIZADO)
   const stats = useMemo(() => { // 💡 useMemo retém os cálculos em cache e só reprocessa se os dados mudarem fisicamente.
@@ -271,7 +289,8 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
   const handleGeneratePDF = async () => {
     try {
       if (pdfEventService && typeof pdfEventService.generateAtaEnsaio === 'function') { // 💡 Valida o nome exato do método da classe.
-        await pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, ataData); // 🚀 Invoca passando os 5 barramentos de dados estruturados exigidos.
+        // 🚀 CORREÇÃO CIRÚRGICA DA ADEQUAÇÃO REATIVA: Passamos o estado 'comumFullData' como o 5º argumento para injetar o endereço correto (rua, número e bairro) no rodapé do PDF, contornando strings vazias antigas.
+        await pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, comumFullData || ataData); 
         toast.success('PDF gerado com sucesso!'); // 💡 Balão informativo de sucesso.
       } else {
         toast.error('Serviço de PDF pendente de carregamento'); // 💡 Alerta caso a função falte.

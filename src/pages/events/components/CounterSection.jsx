@@ -5,7 +5,7 @@ import InstrumentCard from './InstrumentCard'; // Explicação: Importa o compon
 
 /**
  * Componente que agrupa instrumentos por seção (Naipe).
- * v3.3 - FIXED CORAL CASING AND RECONECTED ORCHESTRA PIPELINE
+ * v3.4 - FIXED RE-RENDER ACCORDION CONCURRENCY IN COMPLEX PAYLOADS
  */
 const CounterSection = ({ 
   sec, // Explicação: Nome da seção (ex: CORDAS).
@@ -23,7 +23,7 @@ const CounterSection = ({
   userData, // Explicação: Recebe os dados do usuário para checar o nível de acesso (GEM/Comissão).
   onOpenChecklistNominal, // Explicação: NOVA CONEXÃO: Recebe o gatilho da mãe para abrir a listagem de presença do instrumento.
   comumId // Explicação: AMARRAÇÃO CIRÚRGICA: Recebe a ID da localidade ativa do ensaio repassada pela página mãe superior.
-}) => { // Explicação: Inicia a estrutura da seção de contagem.
+}) => { // Explicação: Inicia a estrutura della seção de contagem.
   // JUSTIFICATIVA: Estado local para garantir Accordion independente por dispositivo
   const [isOpen, setIsOpen] = useState(false); // Explicação: Controla se a sanfona do grupo está aberta ou fechada no celular.
 
@@ -33,15 +33,15 @@ const CounterSection = ({
   const isOwner = responsibleId === myUID; // Explicação: Checa se você é o dono desta seção agora.
   const hasResponsible = !!responsibleId; // Explicação: Checa se já existe alguém contando este grupo.
 
-  // v2.6.2: Lógica de permissão de posse (Quem pode ver o botão de Assumir/Trocar)
+  // w2.6.2: Lógica de permissão de posse (Quem pode ver o botão de Assumir/Trocar)
   const isRegionalEvent = ataData?.scope === 'regional'; // Explicação: Checa se o evento é de nível Regional.
   const isHigherHierarchy = userData?.isComissao || userData?.isMaster; // Explicação: Checa se o usuário é da Comissão ou Master.
   
   // Explicação: O GEM só pode "Assumir" ou "Trocar" se o evento for LOCAL. Se for Regional, ele só vê se for convidado ou se for da Comissão.
   const canChangeOwnership = !isRegionalEvent || isHigherHierarchy;
 
-  // 🚀 CAIXA DE MEMÓRIA ANTI-DUPLICIDADE: Conjunto temporário na RAM para registrar o que já foi impresso na tela durante o loop
-  const renderedSpecialSections = new Set(); // Explicação: Guarda as tags dos cartões especiais já renderizados para evitar repetição visual.
+  // 🚀 CAIXA DE MEMÓRIA DA SOMA: Conjunto temporário isolado para não conflitar com a renderização da tela
+  const sumSpecialSections = new Set(); // Explicação: Guarda as tags calculadas no cabeçalho para evitar duplicidade de contagem de gênero.
 
   // JUSTIFICATIVA: Ajuste na soma para contemplar o mapa enxuto de instrumentos comuns vs especial do Coral
   const sectionTotal = allInstruments // Explicação: Calcula o número total que aparece na barra preta do grupo.
@@ -53,17 +53,17 @@ const CounterSection = ({
       const isCoral = inst.id.toLowerCase() === 'coral' || inst.id.toLowerCase() === 'irmas' || inst.id.toLowerCase() === 'irmaos'; // Explicação: Ampara qualquer ramificação de ID do nó do coral.
       
       if (isCoral) { // Explicação: Se for o Coral, aplica a matemática de gênero de relatórios obrigatórios.
-        // PREVENÇÃO DE DUPLICIDADE EM SOMA: Se o loop rodar para irmas e irmaos, soma as chaves uma única vez usando um Set de controle interno
+        // PREVENÇÃO DE DUPLICIDADE EM SOMA: Confere a trava de soma usando o conjunto isolado do cabeçalho
         const uniqueKey = `total_coral_sum`; // Explicação: Identificador da trava matemática.
-        if (renderedSpecialSections.has(uniqueKey)) return acc; // Explicação: Se já somou o bloco completo neste clique, retorna o acumulador intacto sem duplicar.
-        renderedSpecialSections.add(uniqueKey); // Explicação: Registra que a matemática de soma do coral foi efetuada.
+        if (sumSpecialSections.has(uniqueKey)) return acc; // Explicação: Se já somou o bloco completo neste clique, retorna o acumulador intacto sem duplicar.
+        sumSpecialSections.add(uniqueKey); // Explicação: Registra que a matemática de soma do coral foi efetuada no cabeçalho.
         return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0); // Explicação: Soma Irmãs + Irmãos para o grupo unificado de Irmandade e calcula o Total correto (ex: 11).
       } // Explicação: Fim della condicional do Coral.
       return acc + (parseInt(c?.total) || 0); // Explicação: Para os instrumentos normais enxutos, puxa e soma diretamente o campo 'total'.
     }, 0); // Explicação: Inicia o acumulador matemático do reduce com o valor zero.
 
-  // RESET DO CONJUNTO DE TELA: Reseta a caixa de controle para iniciar o processo de desenho visual limpo na tela do smartphone
-  renderedSpecialSections.clear(); // Explicação: Esvazia o conjunto de controle antes de abrir o laço do map visual.
+  // 🚀 CAIXA DE MEMÓRIA DOS CARDS: Conjunto temporário isolado na RAM exclusivo para o mapeamento visual de tela
+  const cardSpecialSections = new Set(); // Explicação: Guarda as tags dos cartões já impressos na tela para evitar repetição visual.
 
   const isLastIrmandade = sec === 'IRMANDADE' || sec === 'CORAL'; // Explicação: Identifica se é o grupo do Coral.
   const isOrganistas = sec === 'ORGANISTAS'; // Explicação: Identifica se é o grupo das Organistas.
@@ -79,9 +79,9 @@ const CounterSection = ({
   // JUSTIFICATIVA: Alterna entre abrir a seção para visualização
   const handleHeaderClick = () => { // Explicação: Abre ou fecha a lista de instrumentos ao clicar no nome.
     setIsOpen(!isOpen); // Explicação: Alterna a memória booleana invertendo o valor atual de aberto/fechado.
-  }; // Explicação: Fim da função handleHeaderClick.
+  }; // Explicação: Fim della função handleHeaderClick.
 
-  return ( // Explicação: Desenha a caixa da seção na tela.
+  return ( // Explicação: Desenha a caixa della seção na tela.
     <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing} text-left`}> {/* Explicação: Container prêmio com cantos arredondados, fundo branco e espaçamento ergonômico. */}
       <div className="w-full p-5 flex justify-between items-center transition-all text-left"> {/* Explicação: Barra do cabeçalho alinhando títulos e botões horizontalmente com preenchimento interno confortável. */}
         
@@ -92,7 +92,7 @@ const CounterSection = ({
           className="flex flex-col items-start text-left leading-none gap-1 flex-1 min-w-0 cursor-pointer outline-none" // Explicação: Alinha os textos à esquerda empilhados sem espaçamento de linha bruto.
         >
           <span className="font-[900] uppercase italic text-[12px] text-slate-950 tracking-tight truncate w-full text-left"> {/* Explicação: Estiliza o nome do naipe em destaque preto negrito de alta densidade visual. */}
-            {sec} {/* Explicação: Renderiza o nome textual da seção (ex: 'MADEIRAS'). */}
+            {sec} {/* Explicação: Renderiza o nome textual della seção (ex: 'MADEIRAS'). */}
           </span>
           {hasResponsible && ( // Explicação: Mostra quem está cuidando desta contagem no momento se houver zelador.
             <div className="flex items-center gap-1 text-left"> {/* Explicação: Agrupa horizontalmente o ponto de pulsação e o texto. */}
@@ -156,10 +156,10 @@ const CounterSection = ({
               
               const isCoral = inst.id.toLowerCase() === 'coral' || inst.id.toLowerCase() === 'irmas' || inst.id.toLowerCase() === 'irmaos'; // Explicação: Identifica as variações de chamada do nó do Coral.
 
-              // OPERAÇÃO ANTI-DUPLICIDADE VISUAL: Se já renderizamos o card unificado do Coral neste ciclo, pula as repetições do banco
+              // OPERAÇÃO ANTI-DUPLICIDADE VISUAL: Usa o conjunto exclusivo dos cartões para pular repetições na tela
               if (isCoral) { // Explicação: Se cair na linha de leitura do Coral.
-                if (renderedSpecialSections.has('coral_card_printed')) return null; // Explicação: Se o card mestre de Irmãs + Irmãos já foi impresso, aborta o map e retorna nulo para ignorar a duplicata do banco!
-                renderedSpecialSections.add('coral_card_printed'); // Explicação: Registra a carimbagem do card impresso com sucesso para blindar as próximas linhas.
+                if (cardSpecialSections.has('coral_card_printed')) return null; // Explicação: Se o card mestre de Irmãs + Irmãos já foi impresso, aborta o map e retorna nulo para ignorar a duplicata do banco!
+                cardSpecialSections.add('coral_card_printed'); // Explicação: Registra a carimbagem do card impresso com sucesso para blindar as próximas linhas.
               }
 
               // Explicação: REQUISITO LEAN: Mapeia os dados de contagem injetando o fallback numérico padrão zerado para as 3 variáveis essenciais do modelo enxuto.
@@ -192,7 +192,7 @@ const CounterSection = ({
                   onOpenChecklistNominal={onOpenChecklistNominal} // Explicação: NOVO PLUGUE: Repassa o método reativo para o InstrumentCard desenhar o atalho da chamada nominal.
                   comumId={comumId} // Explicação: PLUGUE CONTEXTUAL: Repassa a ID da igreja comuns ativa de forma direta para o InstrumentCard validar o poder do GEM Local.
                 />
-              ); // Explicação: Fim da renderização do InstrumentCard.
+              ); // Explicação: Fim della renderização do InstrumentCard.
             })} {/* Explicação: Fim do mapeamento de instrumentos. */}
           
           {/* BOTÃO ADICIONAR EXTRA: Só aparece se a edição estiver liberada e não for seção protegida */}

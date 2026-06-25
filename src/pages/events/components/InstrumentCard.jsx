@@ -1,10 +1,10 @@
-import React, { useMemo } from 'react'; // Explicação: Importa a base do React e a ferramenta de cache useMemo para evitar reprocessamentos caros em tela.
+import React, { useMemo, useState, useEffect } from 'react'; // Explicação: Importa a base do React, os ganchos de estado local, escutas de efeitos e cache de memória RAM.
 // PRESERVAÇÃO: Importações originais mantidas e adicionada a dependência Users do Lucide
 import { Minus, Plus, Lock, User, UserCheck, ShieldCheck, UserPlus, Users } from 'lucide-react'; // Explicação: Importa os ícones de botões e escudos.
 
 /**
- * InstrumentCard v11.2 - RECONEXÃO TOTAL E FIXAÇÃO DE CONTADORES LITÚRGICOS
- * v11.2 - Restaura o barramento original de gravação direta em tempo real para as setas do Coral
+ * InstrumentCard v11.3 - PROFESSIONAL PRECISION INPUT SHIELD EDITION
+ * v11.3 - Acopla estados locais espelhos com travas de foco ativo para extinguir as piscadas de digitação manual.
  */
 const InstrumentCard = ({ 
   inst, // Explicação: Dados fixos do instrumento (nome, id, section).
@@ -59,7 +59,7 @@ const InstrumentCard = ({
     // 🚀 CORREÇÃO DA MATRIZ TERRITORIAL: Valida o privilégio local cruzando com o ID carimbado direto no corpo do evento.
     if (level === 'gem_local' || level === 'basico') { // Explicação: Secretários locais ou auxiliares da própria igreja comum.
       const minhaIgreja = userData?.comumId || userData?.activeComumId; // Explicação: Descobre o código da igreja de origem do obreiro.
-      const igrejaDoEvento = comumId || data?.comumId; // Explicação: Captura a identificação da igreja dona do ensaio.
+      const igrejaDoEvento = comumId || data?.comumId; // Explicação: Captura a classificação da igreja dona do ensaio.
       return minhaIgreja === 'hsfjhZ3KNx7SsCM8EFpu' || minhaIgreja === igrejaDoEvento; // Explicação: Retorna verdadeiro se as igrejas forem idênticas.
     }
     return false; // Explicação: Bloqueia acessos não cadastrados por padrão.
@@ -98,7 +98,7 @@ const InstrumentCard = ({
    */
   const handleUpdate = (field, value) => {
     if (!canEdit) return; // Explicação: Se não tiver poder de edição, ignora a ação.
-    let finalValue = Math.max(0, parseInt(value) || 0); // Explicação: Bloqueia números negativos.
+    let finalValue = Math.max(0, parseInt(value) || 0); // [Funcionamento]: Bloqueia números negativos.
     
     // REGRA DE OURO: Comum e Liderança nunca podem ultrapassar o valor Total.
     if ((field === 'comum' || field === 'enc') && finalValue > total) {
@@ -159,7 +159,7 @@ const InstrumentCard = ({
           {(isOtherTurn || isMyTurn) && ( // Explicação: Exibe quem é o responsável pela contagem deste instrumento.
             <div className="flex items-center gap-1.5 mt-1 text-left"> {/* Explicação: Caixa horizontal de alfinete de alinhamento do ponto luminoso e nome. */}
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isMyTurn ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'}`} /> {/* Explicação: Ponto luminoso reativo de controle de dono da aba. */}
-              <span className={`text-[7px] font-black uppercase italic tracking-wider whitespace-normal text-left ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Rótulo com o nome do obreiro zelador atual do painel exibido inteiro. */}
+              <span className={`text-[7px] font-black uppercase italic tracking-wider whitespace-normal text-left ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Rótulo com o nome do obreiro zelador atual do painel em formato estendido. */}
                 {isMyTurn ? 'No seu comando' : `Com: ${data?.[`responsibleName_${subId}`] || data?.responsibleName || 'Colaborador'}`} {/* // Explicação: Imprime dinamicamente a assinatura de posse. */}
               </span>
             </div>
@@ -292,49 +292,68 @@ const InstrumentCard = ({
   );
 };
 
-// Componente da Caixinha de Número com Setas (Peça mestre isolada para o campo TOTAL e REGIONAIS)
-const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, maxLimit = null, onFocus, onBlur }) => (
-  <div className={`flex-1 rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden min-w-[65px] h-full ${
-    disabled ? 'bg-slate-50 border-slate-100 shadow-inner' : 
-    color === 'slate' ? 'bg-slate-950 text-white border-slate-800 shadow-lg' : 
-    'bg-white border-slate-100 shadow-sm'
-  }`}>
-    <p className={`absolute top-2 text-[6px] font-black uppercase tracking-[0.2em] ${color === 'slate' ? 'text-white/30' : 'text-slate-400'}`}>{label}</p>
-    
-    <div className="flex items-center w-full h-full pt-3 justify-between">
-        <button 
-          disabled={disabled}
-          type="button"
-          onClick={() => onChange(val - 1)}
-          className={`w-8 h-full flex items-center justify-center transition-all shrink-0 ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
-        >
-          <Minus size={isMain ? 14 : 11} strokeWidth={4} className={color === 'slate' ? 'text-white/20' : 'text-slate-300'}/>
-        </button>
+// Componente da Caixinha de Número com Setas (🚀 FIX PROFESSIONAL: Injetado estado local isolado contra piscadas de digitação)
+const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, maxLimit = null, onFocus, onBlur }) => {
+  const [localVal, setLocalVal] = useState(val); // Explicação: Cria uma variável de estado local espelho para reter o número digitado na tela de forma independente.
 
-        <div className="flex-1 flex flex-col items-center justify-center min-w-0">
-          <input 
+  // 📡 PROTETOR DE CONCORRÊNCIA: Sincroniza o visor apenas quando a nuvem mudar de verdade lá fora
+  useEffect(() => {
+    // 💥 REGRA DE PROTOCOLO SÊNIOR: Se o cursor do teclado do irmão estiver pescando dentro deste campo de texto, proíbe o Firestore de apagar a digitação ativa!
+    if (document.activeElement !== document.getElementById(`input-${label}`)) {
+      setLocalVal(val); // Explicação: Sincroniza pacificamente se o campo estiver ocioso.
+    }
+  }, [val, label]); // Explicação: Monitora as trocas numéricas do barramento global.
+
+  const triggerChange = (novoValor) => { // Explicação: Função intermediária que unifica a resposta da tela e do banco.
+    const valorLimpo = Math.max(0, parseInt(novoValor) || 0); // Explicação: Evita números quebrados ou negativos.
+    setLocalVal(valorLimpo); // Explicação: Atualiza o visor local na mesma hora (efeito de clique imediato).
+    onChange(valorLimpo); // Explicação: Despacha o dado para a represa do motor de debounce.
+  };
+
+  return (
+    <div className={`flex-1 rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden min-w-[65px] h-full ${
+      disabled ? 'bg-slate-50 border-slate-100 shadow-inner' : 
+      color === 'slate' ? 'bg-slate-950 text-white border-slate-800 shadow-lg' : 
+      'bg-white border-slate-100 shadow-sm'
+    }`}>
+      <p className={`absolute top-2 text-[6px] font-black uppercase tracking-[0.2em] ${color === 'slate' ? 'text-white/30' : 'text-slate-400'}`}>{label}</p>
+      
+      <div className="flex items-center w-full h-full pt-3 justify-between">
+          <button 
             disabled={disabled}
-            type="number"
-            inputMode="numeric"
-            className={`bg-transparent w-full text-center font-[900] outline-none italic tracking-tighter leading-none px-1 ${isMain ? 'text-4xl' : 'text-2xl'} ${disabled ? 'text-slate-200' : 'text-inherit'}`}
-            value={val}
-            onFocus={(e) => { e.target.select(); onFocus && onFocus(); }}
-            onBlur={() => onBlur && onBlur()}
-            onChange={(e) => onChange(parseInt(e.target.value) || 0)}
-          />
-        </div>
+            type="button"
+            onClick={() => triggerChange(localVal - 1)} // Explicação: Deduz um valor usando o gatilho local instantâneo.
+            className={`w-8 h-full flex items-center justify-center transition-all shrink-0 ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
+          >
+            <Minus size={isMain ? 14 : 11} strokeWidth={4} className={color === 'slate' ? 'text-white/20' : 'text-slate-300'}/>
+          </button>
 
-        <button 
-          disabled={disabled || (maxLimit !== null && val >= maxLimit)}
-          type="button"
-          onClick={() => onChange(val + 1)}
-          className={`w-8 h-full flex items-center justify-center transition-all shrink-0 ${(disabled || (maxLimit !== null && maxLimit !== undefined && val >= maxLimit)) ? 'opacity-10 pointer-events-none' : 'active:bg-black/10'}`}
-        >
-          <Plus size={isMain ? 14 : 11} strokeWidth={4} className={color === 'slate' ? 'text-white/80' : 'text-slate-950'}/>
-        </button>
+          <div className="flex-1 flex flex-col items-center justify-center min-w-0">
+            <input 
+              id={`input-${label}`} // Explicação: Carimba uma identificação única para a trava de foco do cursor funcionar.
+              disabled={disabled}
+              type="number"
+              inputMode="numeric"
+              className={`bg-transparent w-full text-center font-[900] outline-none italic tracking-tighter leading-none px-1 ${isMain ? 'text-4xl' : 'text-2xl'} ${disabled ? 'text-slate-200' : 'text-inherit'}`}
+              value={localVal} // 🚀 BLINDAGEM DE UI: O campo agora lê a RAM local estável, destruindo qualquer possibilidade de "piscada".
+              onFocus={(e) => { e.target.select(); onFocus && onFocus(); }} // Explicação: Seleciona o texto inteiro ao clicar para agilizar a re-digitação.
+              onBlur={() => { onBlur && onBlur(); onChange(localVal); }} // Explicação: Ao clicar fora, garante a consolidação final do valor represado no banco.
+              onChange={(e) => triggerChange(e.target.value)} // Explicação: Dispara a troca imediata de digitação manual.
+            />
+          </div>
+
+          <button 
+            disabled={disabled || (maxLimit !== null && localVal >= maxLimit)}
+            type="button"
+            onClick={() => triggerChange(localVal + 1)} // Explicação: Soma um valor usando o gatilho local instantâneo.
+            className={`w-8 h-full flex items-center justify-center transition-all shrink-0 ${(disabled || (maxLimit !== null && maxLimit !== undefined && localVal >= maxLimit)) ? 'opacity-10 pointer-events-none' : 'active:bg-black/10'}`}
+          >
+            <Plus size={isMain ? 14 : 11} strokeWidth={4} className={color === 'slate' ? 'text-white/80' : 'text-slate-950'}/>
+          </button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Componente: Transforma a pílula do campo COMUM em um botão limpo e expansível estilo Ata
 const CounterBoxButton = ({ label, val, color, activeMode = false, disabled = false }) => (
