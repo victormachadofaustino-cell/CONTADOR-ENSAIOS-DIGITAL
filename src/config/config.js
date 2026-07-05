@@ -19,7 +19,7 @@ export const LOCALIDADE_PADRAO = "Selecionar Localidade...";
 export const DEFAULT_INSTRUMENTS = {
     'Orquestra': [
         // IRMANDADE (CORAL) - ESSENCIAL PARA O COUNTER v2.1
-        { id: 'Coral', name: 'CORAL', section: 'IRMANDADE' },
+        { id: 'coral', name: 'CORAL', section: 'IRMANDADE' },
 
         // CORDAS
         { id: 'violino', name: 'Violinos', section: 'Cordas' },

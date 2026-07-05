@@ -4,7 +4,7 @@ import { Minus, Plus, Lock, User, UserCheck, ShieldCheck, UserPlus, Users } from
 
 /**
  * InstrumentCard v11.3 - PROFESSIONAL PRECISION INPUT SHIELD EDITION
- * v11.3 - Acopla estados locais espelhos com travas de foco ativo para extinguir as piscadas de digitação manual.
+ * v11.3 - Acopla estados locais espelhos com travas de foco active para extinguir as piscadas de digitação manual.
  */
 const InstrumentCard = ({ 
   inst, // Explicação: Dados fixos do instrumento (nome, id, section).
@@ -40,15 +40,15 @@ const InstrumentCard = ({
   // LÓGICA DE POSSE INDIVIDUALIZED: Identifica quem é o "dono da caneta" agora.
   const myUID = userData?.uid || userData?.id; // Explicação: Captura o ID único do usuário atual.
   
-  // Explicação: Checa se "Eu" sou o responsável por este instrumento neste momento.
+  // 🚀 REFAZIMENTO DA TRAVA DE TURNO REGIONAL: Se você assumir o naipe inteiro ou a sub-chave, ganha o direito de contar na hora!
   const isMyTurn = (subId === 'irmas' || subId === 'irmaos') 
-    ? data?.[`responsibleId_${subId}`] === myUID
-    : data?.responsibleId === myUID;
+    ? (data?.[`responsibleId_${subId}`] === myUID || data?.responsibleId === myUID) // 🚀 CORRIGIDO: Valida se você é dono da ala ou da zeladoria macro regional.
+    : data?.responsibleId === myUID; // Explicação: Caso contrário, segue a regra padrão de ID de responsável do instrumento comum.
 
-  // Explicação: Checa se "Outra Pessoa" já assumiu este instrumento, para desativar visualmente.
+  // 🚀 REFAZIMENTO DA TRAVA DE TURNO CONCORRENTE: Detecta se outro irmão possui a caneta dessa linha no ecrã.
   const isOtherTurn = (subId === 'irmas' || subId === 'irmaos')
-    ? data?.[`responsibleId_${subId}`] && data?.[`responsibleId_${subId}`] !== myUID
-    : data?.responsibleId && data?.responsibleId !== myUID;
+    ? (data?.[`responsibleId_${subId}`] && data?.[`responsibleId_${subId}`] !== myUID) || (data?.responsibleId && data?.responsibleId !== myUID && data?.[`responsibleId_${subId}`] !== myUID) // 🚀 CORRIGIDO: Protege contra concorrência macro.
+    : data?.responsibleId && data?.responsibleId !== myUID; // Explicação: Regra de barreira de concorrência comum.
 
   // --- 🚀 INTEGRAÇÃO DA REGRA DE OURO VISUAL: LIBERAÇÃO DO ACESSO GEM/LOCAL ---
   const podeModificarAqui = useMemo(() => { // Explicação: Desata o nó de privilégios validando se o crachá do usuário dá poder sobre esta localidade comuns.
@@ -86,61 +86,52 @@ const InstrumentCard = ({
   // VERIFICAÇÃO DE MODO DE OPERAÇÃO: Detecta se o número comum veio de gravação de chamadas nominais anteriores.
   const isModoNominalAtivo = data?.modoContagem === 'nominal'; // Explicação: Sinaliza se o instrumento está travado operando via lista nominal de presenças.
 
-  // 🚀 DICIONÁRIO REVERSO DE MIGRACÃO: Converte IDs longos para siglas curtas legadas para fazer a chamada buscar o ID certo.
-  const mapaTradutorInverso = {
-    'acordeon': 'acd', 'clarinete': 'clt', 'eufonio': 'euf', 'fagote': 'fgt',
-    'flauta': 'flt', 'orgao': 'org', 'trombone': 'tbn', 'trompete': 'tpt', 'trompa': 'trp',
-    'tuba': 'tub', 'violoncelo': 'vcl', 'viola': 'vla', 'violino': 'vln'
-  };
-
   /**
    * handleUpdate v3.16 - Lógica de Saneamento Hierárquico
    */
   const handleUpdate = (field, value) => {
     if (!canEdit) return; // Explicação: Se não tiver poder de edição, ignora a ação.
-    let finalValue = Math.max(0, parseInt(value) || 0); // [Funcionamento]: Bloqueia números negativos.
+    let finalValue = Math.max(0, parseInt(value) || 0); // Explicação: Bloqueia números negativos.
     
     // REGRA DE OURO: Comum e Liderança nunca podem ultrapassar o valor Total.
     if ((field === 'comum' || field === 'enc') && finalValue > total) {
-      finalValue = total;
+      finalValue = total; // Explicação: Limita o valor ao teto total presente.
     }
 
     // REGRA DE CASCATA: Se o Total diminuir, o sistema reduz Comum e Encarregado para manter a lógica.
     if (field === 'total') {
-      if (comuneVal > finalValue) onUpdate(inst.id, 'comum', finalValue, sectionName);
-      if (enc > finalValue) onUpdate(inst.id, 'enc', finalValue, sectionName);
+      if (comuneVal > finalValue) onUpdate(inst.id, 'comum', finalValue, sectionName); // Explicação: Updates em cascata o teto da casa.
+      if (enc > finalValue) onUpdate(inst.id, 'enc', finalValue, sectionName); // Explicação: Updates em cascata o teto de liderança.
     }
 
     // REGRA DE SOBRESCRITA SEGURO: Se o usuário mexer diretamente nas setas do Total, avisa e zera o modo nominal para numérico comum.
-    const payloadAdicional = field === 'total' && isModoNominalAtivo ? { modoContagem: 'numerico' } : {};
+    const payloadAdicional = field === 'total' && isModoNominalAtivo ? { modoContagem: 'numerico' } : {}; // Explicação: Desativa o modo nominal se reajustar setas físicas.
 
     onUpdate(inst.id, field, finalValue, sectionName, payloadAdicional); // Explicação: Envia o valor higienizado para o banco de dados.
   };
 
-  // 🚀 LOGICA DE INTERCEPTAÇÃO DO CORAL NUMÉRICO STABILIZED: Conecta o clique à propriedade 'coral' original em minúsculo com recálculo atômico de total na hora
+  // 🚀 LÓGICA DE INTERCEPTAÇÃO DO CORAL NUMÉRICO STABILIZED: Conecta o clique à propriedade 'coral' original em minúsculo com recálculo atômico de total na hora
   const handleUpdateCoralDireto = (genero, novoValor) => {
     if (!canEdit) return; // Explicação: Ignora cliques se o painel estiver bloqueado.
     const valorLimpo = Math.max(0, parseInt(novoValor) || 0); // Explicação: Limpa o input forçando inteiros positivos.
     
     const novoIrmas = genero === 'irmas' ? valorLimpo : irmas; // Explicação: Computa o valor reativo das irmãs.
     const novoIrmaos = genero === 'irmaos' ? valorLimpo : irmaos; // Explicação: Computa o valor reativo dos irmãos.
-    const novoTotalAbsoluto = novoIrmas + novoIrmaos; // Explicação: Força a soma real das duas frações.
+    const novoTotalAbsoluto = novoIrmas + novoIrmaos; // Explicação: Força a soma real das duas fractions.
 
     // 🚀 RECONEXÃO DE CANOS: Dispara o onUpdate mirando no ID 'coral' oficial em minúsculo do Firestore, injetando o total somado
     onUpdate('coral', genero, valorLimpo, sectionName, {
       total: novoTotalAbsoluto,
-      comum: novoTotalAbsoluto, // Contadores de coral espelham o total na casa por padrão
+      comum: novoTotalAbsoluto, // Explicação: Contadores de coral espelham o total na casa por padrão.
       modoContagem: 'numerico'
     });
   };
 
-  // 🚀 INTERCEPTADOR DE CHAMADA NOMINAL NOMES VS SIGLAS
+  // 🚀 INTERCEPTADOR DE CHAMADA NOMINAL DINÂMICO (CAMINHO 2 SANNEADO)
   const handleOpenChecklistSaneado = () => {
     if (!onOpenChecklistNominal) return; // Explicação: Aborta se o atalho reativo não foi injetado.
-    const saneatedId = mapaTradutorInverso[inst.id] || inst.id; // Explicação: Converte o ID longo (ex: 'violino') para a sigla antiga ('vln') para bater com os músicos clonados no lote.
     onOpenChecklistNominal({
-      ...inst,
-      id: saneatedId // Explicação: Envia o cadastro com a assinatura de ID pioneira mapeada.
+      ...inst // 🚀 UNIFICAÇÃO DE CHAVES: Repassa a ID extensa original do card diretamente para casar com a malha dinâmica de ordenação.
     });
   };
 
@@ -158,9 +149,9 @@ const InstrumentCard = ({
           
           {(isOtherTurn || isMyTurn) && ( // Explicação: Exibe quem é o responsável pela contagem deste instrumento.
             <div className="flex items-center gap-1.5 mt-1 text-left"> {/* Explicação: Caixa horizontal de alfinete de alinhamento do ponto luminoso e nome. */}
-              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isMyTurn ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'}`} /> {/* Explicação: Ponto luminoso reativo de controle de dono da aba. */}
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isMyTurn ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'}`} /> {/* Explicação: Punto luminoso reativo de controle de dono da aba. */}
               <span className={`text-[7px] font-black uppercase italic tracking-wider whitespace-normal text-left ${isMyTurn ? 'text-blue-600' : 'text-slate-400'}`}> {/* Explicação: Rótulo com o nome do obreiro zelador atual do painel em formato estendido. */}
-                {isMyTurn ? 'No seu comando' : `Com: ${data?.[`responsibleName_${subId}`] || data?.responsibleName || 'Colaborador'}`} {/* // Explicação: Imprime dinamicamente a assinatura de posse. */}
+                {isMyTurn ? 'No seu comando' : `Com: ${data?.[`responsibleName_${subId}`] || data?.responsibleName || 'Colaborador'}`} {/* Explicação: Imprime dinamicamente a assinatura de posse. */}
               </span>
             </div>
           )}
@@ -171,14 +162,14 @@ const InstrumentCard = ({
             type="button" // Explicação: Marca o elemento como botão padrão de controle.
             disabled={!podeModificarAqui} // Explicação: Bloqueia o clique se o usuário for de fora da jurisdição.
             onClick={(e) => { e.stopPropagation(); onToggleOwnership(); }} // Explicação: Dispara a troca de posse individualizada.
-            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shrink-0 ${
+            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 shrink-0 cursor-pointer ${
               isMyTurn 
                 ? 'bg-blue-600 text-white shadow-md' 
                 : 'bg-slate-100 text-slate-500 border border-slate-200'
             }`} // Explicação: Estiliza reativamente o botão de acordo com a posse de tela impedido de esmagar.
           >
             <UserPlus size={10} strokeWidth={3} /> {/* Explicação: Desenha o ícone de boneco com sinal de mais de adição. */}
-            <span className="text-[8px] font-black uppercase italic">{isMyTurn ? 'LOGADO' : 'ASSUMIR'}</span> {/* // Explicação: Etiqueta textual em caixa alta micro. */}
+            <span className="text-[8px] font-black uppercase italic">{isMyTurn ? 'LOGADO' : 'ASSUMIR'}</span> {/* Explicação: Etiqueta textual em caixa alta micro. */}
           </button>
         )}
       </div>
@@ -195,7 +186,7 @@ const InstrumentCard = ({
               disabled={!canEdit} 
               isMain={true} 
               onFocus={() => onFocus && onFocus('coral', 'irmas')} 
-              onBlur={() => onBlur && onBlur()} 
+              onOriginalBlur={() => onBlur && onBlur()} 
             />
             <CounterBox 
               label="IRMÃOS" 
@@ -205,7 +196,7 @@ const InstrumentCard = ({
               disabled={!canEdit} 
               isMain={true} 
               onFocus={() => onFocus && onFocus('coral', 'irmaos')} 
-              onBlur={() => onBlur && onBlur()} 
+              onOriginalBlur={() => onBlur && onBlur()} 
             />
           </div>
         ) : isIrmandade && isRegional ? ( // Explicação: Desenha layout simples para Irmandade no Regional.
@@ -213,12 +204,12 @@ const InstrumentCard = ({
             <CounterBox 
               label={inst.label || inst.id.toUpperCase()} // Explicação: Rótulo da pílula numérica.
               color={isMyTurn ? "slate" : "white"} // Explicação: Define se a caixa acende em preto ou branco.
-              val={displayVal} // Explicação: Entrega o valor numérico atualizado.
-              onChange={v => handleUpdate(subId, v)} // Conecta o clique de somar ao método traduzido.
+              val={displayVal} // Explicação: Entrega o valor numérico updated.
+              onChange={v => handleUpdate(subId, v)} // Explicação: Conecta o clique de somar ao método traduzido.
               disabled={!isMyTurn} // Explicação: Desativa os botões se a aba não for sua.
               isMain={true} // Explicação: Ativa fontes grandes de destaque de clique.
               onFocus={() => onFocus && onFocus(inst.id, subId)} // Explicação: Ativa proteção de digitação [v10.0].
-              onBlur={() => onBlur && onBlur()} // Libera proteção [v10.0].
+              onOriginalBlur={() => onBlur && onBlur()} // Explicação: Libera proteção [v10.0].
             />
           </div>
         ) : ( // Explicação: Caso contrário, se for um instrumento comum de orquestra (Flauta, Violino, etc.).
@@ -228,31 +219,31 @@ const InstrumentCard = ({
                 label="TOTAL" // Explicação: Etiqueta superior da caixinha mestre.
                 color={isMyTurn && isRegional ? "slate" : isRegional ? "white" : "slate"} // Explicação: Decide a cor de contraste da caixa mestre de totalização.
                 val={displayVal} // Explicação: Passa o valor do total de músicos.
-                onChange={v => handleUpdate('total', v)} // Dispara a atualização do campo total.
-                disabled={!canEdit} // As caixas numéricas agora obedecem rigorosamente ao canEdit limpo do crachá.
-                isMain={true} // Força fontes grandes de alta visibilidade.
+                onChange={v => handleUpdate('total', v)} // Explicação: Dispara a atualização do campo total.
+                disabled={!canEdit} // Explicação: As caixas numéricas agora obedecem rigorosamente ao canEdit limpo do crachá.
+                isMain={true} // Explicação: Força fontes grandes de alta visibilidade.
                 onFocus={() => onFocus && onFocus(inst.id, 'total')} // Explicação: Ativa proteção no campo Total [v10.0].
-                onBlur={() => onBlur && onBlur()} // Desativa proteção [v10.0].
+                onOriginalBlur={() => onBlur && onBlur()} // Explicação: Desativa proteção [v10.0].
               />
               
               {!isRegional && !isGovernance && ( // Explicação: Campos detalhados de visitas exclusivos para Ensaios Locais comuns.
                 <>
                   <div
                     onClick={() => !isSubFieldDisabled && handleOpenChecklistSaneado()} // Explicação: Dispara o modal nominal convertendo a chave para carregar os músicos da garagem.
-                    className="flex-1 text-left outline-none min-w-[65px] h-full" // Limita larguras de segurança mobile.
+                    className="flex-1 text-left outline-none min-w-[65px] h-full" // Explicação: Limita larguras de segurança mobile.
                   >
                     <CounterBoxButton 
-                      label="COMUM" // Rótulo do campo.
-                      val={comuneVal} // Número atual gravado.
-                      color="white" // Fundo padrão.
-                      activeMode={isModoNominalAtivo} // Injeta a flag se o instrumento está rodando no modo automatizado.
+                      label="COMUM" // Explicação: Rótulo do campo.
+                      val={comuneVal} // Explicação: Número atual gravado.
+                      color="white" // Explicação: Fundo padrão.
+                      activeMode={isModoNominalAtivo} // Explicação: Injeta a flag se o instrumento está rodando no modo automatizado.
                       disabled={isSubFieldDisabled}
                     />
                   </div>
 
                   <div className={`flex-[0.5] flex flex-col items-center justify-center rounded-[1.5rem] border transition-colors min-w-[50px] ${total === 0 ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}> {/* Explicação: Aplica uma largura mínima de segurança para o bloco matemático de visitas não sumir. */}
-                    <span className={`text-[7px] font-black uppercase tracking-widest mb-1 italic ${total === 0 ? 'text-slate-300' : 'text-blue-400'}`}>Visitas</span> {/* Etiqueta cinza ou azul. */}
-                    <span className={`text-2xl font-[900] italic leading-none ${total === 0 ? 'text-slate-200' : 'text-blue-600'}`}>{visitas}</span> {/* Resultado automático della subtração Total - Comum. */}
+                    <span className={`text-[7px] font-black uppercase tracking-widest mb-1 italic ${total === 0 ? 'text-slate-300' : 'text-blue-400'}`}>Visitas</span> {/* Explicação: Etiqueta cinza ou azul. */}
+                    <span className={`text-2xl font-[900] italic leading-none ${total === 0 ? 'text-slate-200' : 'text-blue-600'}`}>{visitas}</span> {/* Explicação: Resultado automático della subtração Total - Comum. */}
                   </div>
                 </>
               )}
@@ -261,26 +252,26 @@ const InstrumentCard = ({
             {!isRegional && !isGovernance && ( // Explicação: Barra inferior de controle de Liderança (Encarregados Locais presentes).
               <div className={`mt-0.5 rounded-xl p-2 flex items-center justify-between border transition-all w-full ${isSubFieldDisabled ? 'bg-slate-50 border-slate-100' : 'bg-slate-100/50 border-slate-200/50'}`}> {/* Explicação: Barra horizontal compacta cinza ergonômica ocupando largura total. */}
                 <div className="flex items-center gap-2 min-w-0 flex-1 text-left"> {/* Explicação: Agrupamento do ícone protegendo contra esmagamento de texto. */}
-                  <div className={`p-1.5 rounded-lg text-white shrink-0 ${isSubFieldDisabled ? 'bg-slate-300' : 'bg-slate-950'}`}> {/* Ícone quadrado escuro. */}
+                  <div className={`p-1.5 rounded-lg text-white shrink-0 ${isSubFieldDisabled ? 'bg-slate-300' : 'bg-slate-950'}`}> {/* Explicação: Ícone quadrado escuro. */}
                     <UserCheck size={10} strokeWidth={3} /> {/* Explicação: Ícone de verificação de obreiro. */}
                   </div>
-                  <span className="text-[8px] font-black text-slate-500 uppercase italic tracking-widest leading-none truncate text-left"> {/* Texto descritivo truncado para segurança visual. */}
-                    {labelLideranca || "Liderança"} {/* Exibe 'Encarregado' ou 'Examinadora' dinamicamente. */}
+                  <span className="text-[8px] font-black text-slate-500 uppercase italic tracking-widest leading-none truncate text-left"> {/* Explicação: Texto descritivo truncado para segurança visual. */}
+                    {labelLideranca || "Liderança"} {/* Explicação: Exibe 'Encarregado' ou 'Examinadora' dinamicamente. */}
                   </span>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0"> {/* Agrupa os botões impedindo-os de quebrar de tamanho. */}
-                  <button type="button" disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc - 1)} className={`p-1.5 ${isSubFieldDisabled ? 'opacity-0' : 'text-slate-400'}`}> {/* Botão de diminuir encarregado. */}
-                    <Minus size={14} strokeWidth={4}/> {/* Desenha o traço do menos grosso. */}
+                <div className="flex items-center gap-2 shrink-0"> {/* Explicação: Agrupa os botões impedindo-os de quebrar de tamanho. */}
+                  <button type="button" disabled={isSubFieldDisabled} onClick={() => handleUpdate('enc', enc - 1)} className={`p-1.5 cursor-pointer ${isSubFieldDisabled ? 'opacity-0' : 'text-slate-400'}`}> {/* Explicação: Botão de diminuir encarregado. */}
+                    <Minus size={14} strokeWidth={4}/> {/* Explicação: Desenha o traço del menos grosso. */}
                   </button>
-                  <span className={`text-lg font-[900] italic w-6 text-center ${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-950'}`}>{enc}</span> {/* Exibe o número de encarregados ativos salvos. */}
+                  <span className={`text-lg font-[900] italic w-6 text-center ${isSubFieldDisabled ? 'text-slate-200' : 'text-slate-950'}`}>{enc}</span> {/* Explicação: Exibe o número de encarregados ativos salvos. */}
                   <button 
-                    type="button" // Tipo de ação de botão comum.
-                    disabled={isSubFieldDisabled || enc >= total} // Bloqueia se o total for zero ou se o encarregado atingir o limite do total de músicos.
-                    onClick={() => handleUpdate('enc', enc + 1)} // Dispara a soma de mais um encarregado.
-                    className={`p-1.5 ${(isSubFieldDisabled || enc >= total) ? 'opacity-20' : 'text-slate-950'} transition-opacity`} // Efeito de esmaecido se atingir a trava limite.
+                    type="button" // Explicação: Tipo de ação de botão comum.
+                    disabled={isSubFieldDisabled || enc >= total} // Explicação: Bloqueia se o total for zero ou se o encarregado atingir o limite do total de músicos.
+                    onClick={() => handleUpdate('enc', enc + 1)} // Explicação: Dispara a soma de mais um encarregado.
+                    className={`p-1.5 cursor-pointer ${(isSubFieldDisabled || enc >= total) ? 'opacity-20 pointer-events-none' : 'text-slate-950'} transition-opacity`} // Explicação: Efeito de esmaecido se atingir a trava limite.
                   >
-                    <Plus size={14} strokeWidth={4}/> {/* Desenha o sinal de mais grosso. */}
+                    <Plus size={14} strokeWidth={4}/> {/* Explicação: Desenha o sinal de mais grosso. */}
                   </button>
                 </div>
               </div>
@@ -293,7 +284,7 @@ const InstrumentCard = ({
 };
 
 // Componente da Caixinha de Número com Setas (🚀 FIX PROFESSIONAL: Injetado estado local isolado contra piscadas de digitação)
-const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, maxLimit = null, onFocus, onBlur }) => {
+const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, maxLimit = null, onFocus, onOriginalBlur }) => {
   const [localVal, setLocalVal] = useState(val); // Explicação: Cria uma variável de estado local espelho para reter o número digitado na tela de forma independente.
 
   // 📡 PROTETOR DE CONCORRÊNCIA: Sincroniza o visor apenas quando a nuvem mudar de verdade lá fora
@@ -322,8 +313,8 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, max
           <button 
             disabled={disabled}
             type="button"
-            onClick={() => triggerChange(localVal - 1)} // Explicação: Deduz um valor usando o gatilho local instantâneo.
-            className={`w-8 h-full flex items-center justify-center transition-all shrink-0 ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
+            onClick={() => triggerChange(localVal - 1)} // Explicação: Deduz um value usando o gatilho local instantâneo.
+            className={`w-8 h-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${disabled ? 'opacity-20 pointer-events-none' : 'active:bg-black/10'}`}
           >
             <Minus size={isMain ? 14 : 11} strokeWidth={4} className={color === 'slate' ? 'text-white/20' : 'text-slate-300'}/>
           </button>
@@ -337,7 +328,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, max
               className={`bg-transparent w-full text-center font-[900] outline-none italic tracking-tighter leading-none px-1 ${isMain ? 'text-4xl' : 'text-2xl'} ${disabled ? 'text-slate-200' : 'text-inherit'}`}
               value={localVal} // 🚀 BLINDAGEM DE UI: O campo agora lê a RAM local estável, destruindo qualquer possibilidade de "piscada".
               onFocus={(e) => { e.target.select(); onFocus && onFocus(); }} // Explicação: Seleciona o texto inteiro ao clicar para agilizar a re-digitação.
-              onBlur={() => { onBlur && onBlur(); onChange(localVal); }} // Explicação: Ao clicar fora, garante a consolidação final do valor represado no banco.
+              onBlur={() => { onOriginalBlur && onOriginalBlur(); onChange(localVal); }} // Explicação: Ao clicar fora, garante a consolidação final do valor represado no banco.
               onChange={(e) => triggerChange(e.target.value)} // Explicação: Dispara a troca imediata de digitação manual.
             />
           </div>
@@ -346,7 +337,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, max
             disabled={disabled || (maxLimit !== null && localVal >= maxLimit)}
             type="button"
             onClick={() => triggerChange(localVal + 1)} // Explicação: Soma um valor usando o gatilho local instantâneo.
-            className={`w-8 h-full flex items-center justify-center transition-all shrink-0 ${(disabled || (maxLimit !== null && maxLimit !== undefined && localVal >= maxLimit)) ? 'opacity-10 pointer-events-none' : 'active:bg-black/10'}`}
+            className={`w-8 h-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${(disabled || (maxLimit !== null && maxLimit !== undefined && localVal >= maxLimit)) ? 'opacity-10 pointer-events-none' : 'active:bg-black/10'}`}
           >
             <Plus size={isMain ? 14 : 11} strokeWidth={4} className={color === 'slate' ? 'text-white/80' : 'text-slate-950'}/>
           </button>
@@ -357,7 +348,7 @@ const CounterBox = ({ label, color, val, onChange, disabled, isMain = false, max
 
 // Componente: Transforma a pílula do campo COMUM em um botão limpo e expansível estilo Ata
 const CounterBoxButton = ({ label, val, color, activeMode = false, disabled = false }) => (
-  <div className={`w-full h-full rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden p-4 shadow-3xs border-dashed text-center active:scale-98 ${
+  <div className={`w-full h-full rounded-[1.5rem] border transition-all relative flex flex-col items-center justify-center overflow-hidden p-4 shadow-3xs border-dashed text-center active:scale-98 cursor-pointer ${
     disabled
       ? 'bg-slate-50 border-slate-100 text-slate-200'
       : activeMode 

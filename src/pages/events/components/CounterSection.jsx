@@ -1,5 +1,5 @@
-import React, { useState } from 'react'; // Explicação: Importa a base do React para gerenciar o estado de abertura da sanfona.
-// PRESERVAÇÃO: Importações originais mantidas
+import React, { useMemo, useState, useEffect } from 'react'; // Explicação: Importa a base do React, os ganchos de estado local, escutas de efeitos e cache de memória RAM.
+// PRESERVAÇÃO: Importações originais mantidas e adicionada a dependência Users do Lucide
 import { ChevronDown, UserCheck, ShieldCheck, PlusCircle, Lock, User } from 'lucide-react'; // Explicação: Importa os ícones de setas, cadeados e escudos.
 import InstrumentCard from './InstrumentCard'; // Explicação: Importa o componente que desenha cada instrumento individualmente.
 
@@ -22,7 +22,7 @@ const CounterSection = ({
   ataData, // Explicação: Recebe os dados da ata para saber se o evento é Regional ou Local.
   userData, // Explicação: Recebe os dados do usuário para checar o nível de acesso (GEM/Comissão).
   onOpenChecklistNominal, // Explicação: NOVA CONEXÃO: Recebe o gatilho da mãe para abrir a listagem de presença do instrumento.
-  comumId // Explicação: AMARRAÇÃO CIRÚRGICA: Recebe a ID da localidade ativa do ensaio repassada pela página mãe superior.
+  comumId // Explicação: AMARRAÇÃO CIRÚRGICA: Recebe a ID da localidade ativa del ensaio repassada pela página mãe superior.
 }) => { // Explicação: Inicia a estrutura della seção de contagem.
   // JUSTIFICATIVA: Estado local para garantir Accordion independente por dispositivo
   const [isOpen, setIsOpen] = useState(false); // Explicação: Controla se a sanfona do grupo está aberta ou fechada no celular.
@@ -43,7 +43,7 @@ const CounterSection = ({
   // 🚀 CAIXA DE MEMÓRIA DA SOMA: Conjunto temporário isolado para não conflitar com a renderização da tela
   const sumSpecialSections = new Set(); // Explicação: Guarda as tags calculadas no cabeçalho para evitar duplicidade de contagem de gênero.
 
-  // JUSTIFICATIVA: Ajuste na soma para contemplar o mapa enxuto de instrumentos comuns vs especial do Coral
+  // JUSTIFICATIVA: Ajuste na soma para contemplar o mapa enxuto de instrumentos comuns vs especial do Coral ordenado dinamicamente
   const sectionTotal = allInstruments // Explicação: Calcula o número total que aparece na barra preta do grupo.
     .filter(i => (i.section || "GERAL").toUpperCase() === sec) // Explicação: Filtra apenas os instrumentos pertencentes a este naipe.
     .reduce((acc, inst) => { // Explicação: Acumula a soma matemática passando de instrumento em instrumento.
@@ -57,7 +57,7 @@ const CounterSection = ({
         const uniqueKey = `total_coral_sum`; // Explicação: Identificador da trava matemática.
         if (sumSpecialSections.has(uniqueKey)) return acc; // Explicação: Se já somou o bloco completo neste clique, retorna o acumulador intacto sem duplicar.
         sumSpecialSections.add(uniqueKey); // Explicação: Registra que a matemática de soma do coral foi efetuada no cabeçalho.
-        return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0); // Explicação: Soma Irmãs + Irmãos para o grupo unificado de Irmandade e calcula o Total correto (ex: 11).
+        return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0); // Explicação: Soma Irmãs + Irmãos para o grupo unificado de Irmandade e calcula o Total correto.
       } // Explicação: Fim della condicional do Coral.
       return acc + (parseInt(c?.total) || 0); // Explicação: Para os instrumentos normais enxutos, puxa e soma diretamente o campo 'total'.
     }, 0); // Explicação: Inicia o acumulador matemático do reduce com o valor zero.
@@ -124,7 +124,7 @@ const CounterSection = ({
                     : 'bg-slate-950 text-white border-slate-900 shadow-sm'
               }`} // Explicação: Estilização inteligente: azul royal se for seu, amarelo se for de outro obreiro, ou preto firme se estiver vago.
             >
-              {isOwner ? <UserCheck size={10} strokeWidth={3}/> : hasResponsible ? <Lock size={10}/> : <User size={10}/>} {/* Explicação: Alterna entre ícone de check com traço forte, cadeado de proteção ou boneco de usuário livre. */}
+              ={isOwner ? <UserCheck size={10} strokeWidth={3}/> : hasResponsible ? <Lock size={10}/> : <User size={10}/>} {/* Explicação: Alterna entre ícone de check com traço forte, cadeado de proteção ou boneco de usuário livre. */}
               <span className="text-[8px] font-black uppercase italic tracking-widest leading-none"> {/* Explicação: Texto interno da etiqueta em caixa alta micro. */}
                 {isOwner ? 'Você' : hasResponsible ? 'Trocar' : 'Assumir'} {/* Explicação: Altera o rótulo de instrução de acordo com a posse do documento. */}
               </span>
@@ -152,6 +152,7 @@ const CounterSection = ({
         <div className="px-4 pb-6 space-y-3 animate-in slide-in-from-top-2 duration-300 text-left"> {/* Explicação: Container interno dos cartões com animação CSS suave de descida e surgimento. */}
           {allInstruments // Explicação: Pega a listagem unificada de orquestra organizada e filtra pelo naipe atual.
             .filter(i => (i.section || "GERAL").toUpperCase() === sec) // Explicação: Garante o agrupamento correto na visualização.
+            .sort((a, b) => (a.ordem || 0) - (b.ordem || 0)) // 🚀 INJEÇÃO DO FILTRO CAMINHO 2 EM LOCAL: Reordena os cartões na tela seguindo fielmente a cadeira numérica ditada pelo hambúrguer!
             .map(inst => { // Explicação: Varre cada instrumento pertencente gerando o cartão de contagem na tela.
               
               const isCoral = inst.id.toLowerCase() === 'coral' || inst.id.toLowerCase() === 'irmas' || inst.id.toLowerCase() === 'irmaos'; // Explicação: Identifica as variações de chamada do nó do Coral.

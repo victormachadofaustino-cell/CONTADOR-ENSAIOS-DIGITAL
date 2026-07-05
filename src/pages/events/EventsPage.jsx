@@ -15,7 +15,7 @@ import EventModals from './components/EventModals'; // Explicação: Componente 
 import { hasPermission } from '../../config/permissions'; // Explicação: Importa a Regra de Ouro do sistema.
 
 const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchChange }) => { // Explicação: Inicia a estrutura da página de gestão de eventos.
-  const { setContext, user } = useAuth(); // Explicação: Puxa as funções de posicionamento de GPS e sessão do cérebro de autenticação.
+  const { setContext, user } = useAuth(); // Explicação: Puxa as funções de positioning de GPS e sessão do cérebro de autenticação.
   
   // ESTADOS DE CONTROLE DE INTERFACE
   const [events, setEvents] = useState([]); // Explicação: Guarda a lista de eventos históricos e ao vivo carregados do banco de dados.
@@ -41,11 +41,11 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
 
   // --- MATRIZ DE PODER v10.13 ---
   const level = userData?.accessLevel; // Explicação: Captura a string de permissão contida no crachá eletrônico de Claims.
-  const isMaster = level === 'master'; // Explicação: Verifica se o operador é o Administrador Supremo do ecossistema.
+  const isMaster = level === 'master'; // Explicação: Verifica se o operador é o Administrator Supremo do ecossistema.
   const isComissao = level === 'comissao'; // Explicação: Verifica se o operador atua como supervisor da comissão regional.
   const isRegionalCidade = isMaster || isComissao || level === 'regional_cidade'; // Explicação: Define se o usuário administra regiões ou comarcas inteiras.
   const isGemLocal = level === 'gem_local'; // Explicação: Verifica se o cargo é estritamente o de secretário GEM de igreja local.
-  const isBasico = level === 'basico'; // Explicação: Identifica se é um músico comum com permissões de apenas leitura.
+  const isBasico = level === 'basico'; // Explicação: Identifica se é um musician comum com permissões de apenas leitura.
 
   // v10.13: Normalização de IDs para evitar erro de Hook (Changed size)
   const selectedCityId = userData?.activeCityId || ''; // Explicação: Mantém uma string estável vazia em caso de carregamento nulo, blindando o React contra quebras.
@@ -84,7 +84,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
     const qCid = query(collection(db, 'config_cidades'), where('regionalId', '==', activeRegionalId)); // Cria a busca de comarcas na nuvem.
     const unsubCid = onSnapshot(qCid, (sCids) => { // Abre o canal de escuta em tempo real.
       if (!isMounted) return; // Aborta a colagem na tela se o usuário já tiver navegado para outra página.
-      const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome })); // Transforma os dados em objetos legíveis.
+      const todasCidades = sCids.docs.map(d => ({ id: d.id, nome: d.data().nome })); // Transforma os dados em objetos levíveis.
       if (isComissao || isMaster) { // Explicação: Se for supervisor alto.
         const sorted = todasCidades.sort((a, b) => a.nome.localeCompare(b.nome)); // Organiza a lista de cidades por ordem alfabética de A a Z.
         setCidades(sorted); // Despeja no menu.
@@ -103,7 +103,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
     const q = query(collection(db, 'comuns'), where('cidadeId', '==', selectedCityId)); // Monta a consulta filtrada por cidade no Firestore.
     const unsub = onSnapshot(q, (s) => { // Liga o elo reativo.
       if (!isMounted) return; // Corta se a página foi fechada.
-      const list = s.docs.map(d => ({ id: d.id, nome: d.data().comum || "Sem Nome", cidadeId: d.data().cidadeId })); // Mapeia os dados denormalizados.
+      const list = s.docs.map(d => ({ id: d.id, nome: d.data().comum || "Sem Nome", cidadeId: d.data().cidadeId, regionalNome: d.data().regionalNome })); // Mapeia os dados denormalizados incluindo a regional da comum.
       const sortedList = list.sort((a, b) => a.nome.localeCompare(b.nome)); // Ordena as igrejas por ordem alfabética.
       const filteredList = isRegionalCidade ? sortedList : sortedList.filter(c => permitidasIds.includes(c.id)); // Explicação: Filtra as igrejas do GEM Local exibindo apenas a dele, ou deixa tudo visível se for comissão técnica.
       setComuns(filteredList); // Despeja no menu de pílula preta superior.
@@ -115,7 +115,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
       } else { // Explicação: Caso existam igrejas comuns válidas na lista retornada do servidor.
         const comumValida = filteredList.some(c => c.id === selectedChurchId); // Confere se a igreja comum que estava marcada ainda é válida nesta nova lista.
         if (!comumValida && selectedChurchId) { // Explicação: Se a igreja comum anterior sumiu porque mudou a comarca da cidade.
-          const primeira = filteredList[0]; // Isola a primeira igreja comum legítima da nova lista.
+          const primeira = filteredList[0]; // Isola a primeira igreja comum legítima della nova lista.
           setContext('comum', primeira.id); // Força o encaixe automático do GPS nela.
           if (onChurchChange) onChurchChange(primeira.id, primeira.nome); // Avisa o app superior.
         } // Encerra o reposicionamento automático.
@@ -128,7 +128,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
   const groupedEvents = useMemo(() => { // Explicação: Re-organiza a sacola de ensaios transformando-a em blocos separados por ano em memória RAM (Custo Zero).
     if (events.length === 0) return {}; // Retorna objeto vazio se não houver histórico de agendas salvas.
     const combined = [...events]; // Clona a lista de ensaios viva do Firebase.
-    combined.sort((a, b) => new Date(b.date) - new Date(a.date)); // Ordena as datas colocando as mais atuais na frente.
+    combined.sort((a, b) => new Date(b.date) - new Date(a.date)); // Organiza as datas colocando as mais atuais na frente.
     return combined.reduce((acc, event) => { // Agrupa os registros passando de ensaio em ensaio.
       const year = event.date ? event.date.split('-')[0] : 'Sem Data'; // Recorta os 4 dígitos iniciais do ano (ex: '2026').
       if (!acc[year]) acc[year] = []; // Se for a primeira ocorrência desse ano na varredura, cria uma gaveta vazia para ele.
@@ -143,22 +143,30 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
   }, []); // Explicação: Roda uma única vez na inicialização da página.
 
   const handleCreate = async (extendedData = {}) => { // Explicação: Disparada quando o obreiro preenche o formulário e clica em "Confirmar Criação".
-    if (!selectedChurchId) return toast.error("Selecione uma comum"); // Impede gravações órfãs se não houver igreja comum amarrada no GPS.
-    const comumSelecionada = comuns.find(c => c.id === selectedChurchId); // Localiza os metadados da igreja na memória da página.
+    // 🚀 BLINDAGEM SÊNIOR ANTI-PONTO-CEGO: Se o estado local estiver nulo ou vazio no Ensaio Regional da comum de origem, ancora no ID fixo do crachá do usuário logado!
+    const finalComumId = selectedChurchId || userData?.comumId || ''; // Explicação: Isola e garante o preenchimento absoluto da chave da igreja para evitar envio de dados vazios.
+    if (!finalComumId) return toast.error("Selecione uma comum"); // Impede gravações órfãs se não houver igreja comum amarrada no GPS.
+    
+    const comumSelecionada = comuns.find(c => c.id === finalComumId); // Localiza os metadados da igreja na memória da página.
+    const finalCidadeId = selectedCityId || comumSelecionada?.cidadeId || userData?.cidadeId || ''; // Explicação: Saneia preventivamente o ID da comarca municipal.
+    const cidadeSelecionada = cidades.find(c => c.id === finalCidadeId); // Explicação: Localiza o objeto da cidade focada na memória interna RAM para extrair o texto por extenso.
+    
     const finalEventData = { // Prepara o documento mestre higienizado e denormalizado (Payload).
       type: extendedData.scope === 'regional' ? 'Ensaio Regional' : 'Ensaio Local', // Define o título baseado no rádio box.
       date: newEventDate, // Vincula a data selecionada do calendário.
       responsavel: responsavel || 'Pendente', // Vincula o nome do Ancião digitado.
       regionalId: activeRegionalId, // Carimba o ID da Regional administrativa.
-      comumNome: (comumSelecionada?.nome || userData?.comum || "LOCALIDADE").toUpperCase(), // Força caixa alta no nome textual da igreja comuns para economia de cota de leitura.
-      comumId: selectedChurchId, // Carimba a ID estável de propriedade da agenda.
-      cidadeId: selectedCityId, // Carimba a ID da comarca da cidade.
+      regionalNome: (comumSelecionada?.regionalNome || userData?.regional || userData?.activeRegionalName || "").toUpperCase(), // Explicação: Captura o nome da regional por extenso dos metadados da comum ou do crachá do usuário e força caixa alta.
+      comumNome: (comumSelecionada?.nome || comumSelecionada?.comum || userData?.comum || "LOCALIDADE").toUpperCase(), // Força caixa alta no nome textual da igreja comuns para economia de cota de leitura.
+      comumId: finalComumId, // Carimba a ID estável de propriedade da agenda.
+      cidadeId: finalCidadeId, // Carimba a ID da comarca da cidade.
+      cidadeNome: (cidadeSelecionada?.nome || userData?.cidadeNome || "").toUpperCase(), // Explicação: Captura o nome da cidade por extenso direto da memória local e carimba em caixa alta no evento, eliminando o ponto cego.
       accessLevel: level, // Injeta o nível do criador para segurança.
       ...extendedData // Acopla o escopo (local/regional) e convidados extras selecionados na interface.
     }; // Encerra a montagem do documento.
     try { // Tenta enviar a instrução para a nuvem através do service central.
       // 🚀 AMARRAÇÃO CIRÚRGICA DE ENGENHARIA NA LINHA 162: Repassamos o objeto 'userData' completo para o motor disparar a clonagem nominal em lote do Corpo Orquestral!
-      await eventService.createEvent(selectedChurchId, finalEventData, userData);
+      await eventService.createEvent(finalComumId, finalEventData, userData);
       setShowModal(false); // Explicação: Fecha o modal de criação de novo ensaio e limpa o fundo escuro.
       toast.success("Ensaio criado!"); // Dispara a etiqueta verde flutuante de sucesso no topo do celular.
     } catch (error) { // Captura e reporta falhas ocorridas na transação atômica.
@@ -195,7 +203,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
         {/* PÍLULA 1: MENU DE CIDADES (FUNDO BRANCO TRANSLÚCIDO) */}
         <div className={`flex-[1_1_0px] flex items-center gap-2 bg-white/50 backdrop-blur-sm p-2.5 rounded-2xl border border-slate-200 shadow-sm transition-all text-left ${(!isRegionalCidade || cidades.length === 0) ? 'opacity-50 pointer-events-none' : ''}`}> {/* Explicação: Estilização responsiva: se for GEM Local comum, congela em fosco bloqueando a troca de cidade por segurança territorial. */}
           <MapPin size={10} className="text-blue-600 shrink-0" /> {/* Desenha o ícone de alfinete de GPS azul real. */}
-          <select disabled={!isRegionalCidade || cidades.length === 0} value={selectedCityId} onChange={(e) => setContext('city', e.target.value)} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer text-left"> {/* Explicação: Menu de seleção nativo estilizado em letras maiúsculas micro e formato itálico prêmio. */}
+          <select disabled={!isRegionalCidade || cidades.length === 0} value={selectedCityId} onChange={(e) => setContext('city', e.target.value)} className="bg-transparent text-[9px] font-black uppercase outline-none w-full italic text-slate-950 appearance-none cursor-pointer text-left"> {/* Explicação: Menu de seleção nativo stylized em letras maiúsculas micro e formato itálico prêmio. */}
             <option value="">{cidades.length === 0 ? "NENHUMA CIDADE" : isComissao || isMaster ? "CIDADE..." : (userData?.cidadeNome || "SUA CIDADE")}</option> {/* Linha base padrão informativa. */}
             {cidades.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)} {/* Mapeia as cidades disponíveis baixadas do banco de dados no menu. */}
           </select> {/* Fecha a tag do seletor. */}
@@ -243,6 +251,7 @@ const EventsPage = ({ userData, onSelectEvent, onNavigateToSettings, onChurchCha
         confirmDelete={confirmDelete} // Entrega a subrotina que executa a remoção física no Firebase.
         isRegionalCidade={isRegionalCidade} // Passa as flags hierárquicas de cidade.
         userData={userData} // Entrega o crachá unificado de Claims.
+        selectedChurchId={selectedChurchId} // 🚀 RECONEXÃO ATÔMICA DA FIAÇÃO MOBILE: Conecta e repassa a tomada com o ID da igreja comune selecionada para blindar os modais flutuantes!
       /> {/* Encerra as Modais. */}
     </div> // Encerra a div raiz da página.
   ); // Encerra o return.

@@ -75,7 +75,7 @@ const MetricCardsGroup = ({ tM, tO, tI, tEnc, tH, totalMeses, chartArray, topHin
       <BigNumberCard 
         id="irmandade" label="Irmandade" total={tI} avg={avgI} icon={<Users size={16} />} color="emerald" // [Funcionamento]: Passa os parâmetros estruturais e a cor verde esmeralda para a irmandade do coral.
         isOpen={activeDetail === 'irmandade'} onClose={() => setActiveDetail(null)} onOpen={() => setActiveDetail('irmandade')} // [Funcionamento]: Vincula botões do modal de coral.
-        titleDetail="Frequência da Irmandade" subtitleDetail="Divisão Interna de Irmãos e Irmãs (Coral)" // [Funcionamento]: Títulos internos do Pop-up.
+        titleDetail="Frequência da Irmandade" subtitleDetail="Divisão Interna de Irmãos e Irmãs (coral)" // [Funcionamento]: Títulos internos do Pop-up.
       >
         <ResponsiveContainer width="100%" height="100%"> {/* [Funcionamento]: Invólucro elástico responsivo. */}
           <BarChart data={chartArray} margin={{ top: 20, right: 5, left: -25, bottom: 0 }}> {/* [Funcionamento]: Inicia colunas do coral. */}
@@ -84,10 +84,10 @@ const MetricCardsGroup = ({ tM, tO, tI, tEnc, tH, totalMeses, chartArray, topHin
             <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} /> {/* [Funcionamento]: Escala numérica. */}
             <Tooltip contentStyle={{ borderRadius: '1.2rem', border: 'none', fontWeight: 800, fontSize: 11 }} /> {/* [Funcionamento]: Caixa flutuante reativa. */}
             <Legend verticalAlign="bottom" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10, fontWeight: 700, paddingTop: 15 }} /> {/* [Funcionamento]: Legenda inferior. */}
-            <Bar name="Irmãos (Coral)" dataKey="irmaos" fill="#10b981" stackId="a"> {/* [Funcionamento]: Base da torre conectada diretamente à chave irmaos do cérebro matemático. */}
+            <Bar name="Irmãos (coral)" dataKey="irmaos" fill="#10b981" stackId="a"> {/* [Funcionamento]: Base da torre conectada diretamente à chave irmaos do cérebro matemático. */}
               <LabelList dataKey="irmaos" position="center" style={{ fontSize: 10, fontWeight: 900, fill: '#ffffff' }} /> {/* [Funcionamento]: Texto interno branco. */}
             </Bar>
-            <Bar name="Irmãs (Coral)" dataKey="irmas" fill="#a7f3d0" stackId="a"> {/* [Funcionamento]: Topo da torre conectado diretamente à chave irmas do cérebro matemático. */}
+            <Bar name="Irmãs (coral)" dataKey="irmas" fill="#a7f3d0" stackId="a"> {/* [Funcionamento]: Topo da torre conectado diretamente à chave irmas do cérebro matemático. */}
               <LabelList dataKey="irmas" position="center" style={{ fontSize: 10, fontWeight: 900, fill: '#064e3b' }} /> {/* [Funcionamento]: Texto interno verde escuro. */}
             </Bar>
           </BarChart> {/* [Funcionamento]: Fecha o BarChart de coral. */}

@@ -20,7 +20,7 @@ const AtaOcorrencias = ({ ocorrencias = [], onSave, instruments = [], isClosed, 
   const etapasOption = ["Ensaios", "Reunião de Jovens", "Culto Oficial", "Oficialização"];
 
   // Filtra instrumentos para remover o Coral
-  const filteredInstruments = instruments.filter(i => i.id !== 'Coral' && i.id !== 'Coral_');
+  const filteredInstruments = instruments.filter(i => i.id !== 'coral' && i.id !== 'Coral_');
 
   const handleAdd = () => {
     // LÓGICA REGIONAL: Apenas texto livre

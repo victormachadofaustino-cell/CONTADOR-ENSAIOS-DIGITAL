@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'; // Explicação: Importa as ferramentas essenciais do React para criar componentes e monitorar mudanças de estado.
 import { db, collection, doc, setDoc, deleteDoc, writeBatch, getDocs, onSnapshot, query, where } from '../../config/firebase'; // Explicação: Conecta com os motores de consulta, lote e documentos específicos do Firebase.
 import toast from 'react-hot-toast'; // Explicação: Importa o sistema de avisos flutuantes e alertas de sucesso ou erro na tela.
-import { Activity, Plus, Trash2, X, Edit3, ChevronDown, Music, AlertTriangle } from 'lucide-react'; // Explicação: Ícones imutáveis e limpos para ilustrar as famílias de instrumentos.
+import { Activity, Plus, Trash2, X, Edit3, ChevronDown, Music, AlertTriangle, GripVertical, ChevronUp } from 'lucide-react'; // 🚀 PRESERVAÇÃO & EXPANSÃO: Mantém as importações e adiciona os ícones GripVertical (hambúrguer de arrastar) e ChevronUp.
 import { motion, AnimatePresence } from 'framer-motion'; // Explicação: Ferramenta para criar as animações físicas de abertura e fechamento de naipes.
 import { useAuth } from '../../context/AuthContext'; // Explicação: Importa o sistema de identidade para ler o Crachá Eletrônico do usuário logado.
 
@@ -15,14 +15,14 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
 
   const [showModal, setShowModal] = useState(null); // Explicação: Caixa de memória para gerenciar a abertura das janelas de Adicionar ou Editar Instrumento.
   const [openSection, setOpenSection] = useState(null); // Explicação: Controla qual Naipe (família instrumental) está aberto na tela de visualização por extenso.
-  const [formData, setFormData] = useState({ name: '', section: 'CORDAS', evalType: 'Sem', id: '' }); // Explicação: Memória temporária para armazenar os campos digitados no formulário.
+  const [formData, setFormData] = useState({ name: '', section: 'CORDAS', evalType: 'Sem', id: '', ordem: 0 }); // Explicação: Memória temporária para armazenar os campos digitados no formulário.
   const [isEnsaioAberto, setIsEnsaioAberto] = useState(false); // Explicação: Trava de segurança automática que impede alterações se o ensaio estiver rodando ao vivo.
 
   useEffect(() => { // Explicação: Monitor reativo que vigia se existe uma contagem em andamento para congelar a edição.
     if (!comumId) return; // Explicação: Se o código identificador da igreja estiver ausente, interrompe a escuta reativa.
     const q = query(collection(db, 'events_global'), where('comumId', '==', comumId), where('ata.status', '==', 'open')); // Explicação: Procura se há ensaios com status "open" rodando na nuvem agora.
     const unsub = onSnapshot(q, (snapshot) => { // Explicação: Escuta reativa em tempo real para capturar fechamento ou aberturas rápidas de atas.
-      setIsEnsaioAberto(!snapshot.empty); // Explicação: Se a busca trouxer atas abertas, ativa o congelamento do painel.
+      setIsEnsaioAberto(!snapshot.empty); // Explicação: Se a busca trouxer atas abertas, altera o estado de congelamento.
     }); // Explicação: Fecha o laço da escuta.
     return () => unsub(); // Explicação: Desliga a escuta ao fechar o modal autônomo.
   }, [comumId]); // Explicação: Executa novamente se o ID da igreja mudar de contexto.
@@ -39,8 +39,8 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
     if (isMaster || isComissao) return true; // Explicação: Nível master e comissão musical ganham passe livre global.
     if (level === 'regional_cidade') return userData?.cidadeId === userData?.activeCityId; // Explicação: Administradores de cidade validam se a comarca coincide com a deles.
     if (level === 'gem_local') { // Explicação: Regra de ouro da comum: Libera os botões de ligar/desligar se for a igreja do chip dele.
-      const minhaComumLegitima = userData?.comumId || userData?.activeComumId; // Explicação: Descobre o ID da igreja de direito do secretário local.
-      return minhaComumLegitima === comumId; // Explicação: Retorna verdadeiro apenas se corresponder à sua própria localidade de cadastro.
+      const minhaIgreja = userData?.comumId || userData?.activeComumId; // Explicação: Descobre o ID da igreja de direito do secretário local.
+      return minhaIgreja === comumId; // Explicação: Retorna verdadeiro apenas se corresponder à sua própria localidade de cadastro.
     }
     return false; // Explicação: Perfis de consulta básica são bloqueados de alteração por padrão.
   }, [isMaster, isComissao, level, userData, comumId]); // Explicação: Recalcula a tranca visual apenas se o crachá ou o ID da igreja ativa mudarem.
@@ -57,6 +57,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
         section: instrument.section,
         evalType: instrument.evalType || 'Sem',
         active: !instrument.active, // Explicação: Inverte o estado booleano atual de ligado para desligado e vice-versa.
+        ordem: instrument.ordem || 0, // Explicação: Preserva o peso numérico da ordem atual durante a inversão magnética.
         updatedAt: Date.now() 
       }, { merge: true }); // Explicação: Mescla as chaves no banco de dados sem apagar propriedades nativas vizinhas.
       toast.success(`${instrument.name} atualizado por extenso!`); // Explicação: Emite balão flutuante de sucesso.
@@ -69,7 +70,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
     if (!comumId || !podeGerenciar) return toast.error("Operação não autorizada para o seu nível de acesso."); // Explicação: Trava defensiva de portaria.
     if (isEnsaioAberto) return toast.error("Bloqueado: Feche o ensaio em andamento antes de redefinir a grade."); // Explicação: Trava de barreira operacional.
     
-    if (!window.confirm("Deseja aplicar o RESET DE FÁBRICA? Isso substituirá a lista atual pelo Padrão CCB oficial por extenso.")) return; // Explicação: Caixa de auditoria manual de segurança do navegador.
+    if (!window.confirm("Deseja aplicar o RESET DE FÁBRICA? Isso substituirá a lista atual pelo Padrão CCB oficial por extenso.")) return; // Explicação: Caixa de auditoria manual de segurança del navegador.
 
     const loadingToast = toast.loading("Sincronizando instrumentos com a Matriz Nacional..."); // Explicação: Inicia indicador de carregamento fixo na tela.
     const batch = writeBatch(db); // Explicação: Cria uma esteira de execução em lote para economizar processamento.
@@ -85,7 +86,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
       const localSnap = await getDocs(localRef); // Explicação: Lê a grade local bagunçada antiga.
       localSnap.docs.forEach(d => batch.delete(doc(db, 'comuns', comumId, 'instrumentos_config', d.id))); // Explicação: Insere comandos de exclusão de todas as linhas locais na esteira do lote.
 
-      nationalSnap.docs.forEach(docInst => { // Explicação: Passa instrumento por instrumento inserindo comandos de escrita limpa na esteira de gravação.
+      nationalSnap.docs.forEach((docInst, index) => { // Explicação: Passa instrumento por instrumento inserindo comandos de escrita limpa na esteira de gravação.
         const data = docInst.data(); // Captura as propriedades nacionais.
         const docRef = doc(localRef, docInst.id); // Constrói a ID extensa estável saneada.
         batch.set(docRef, { // Monta o payload de fábrica ligado por padrão.
@@ -94,6 +95,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
           section: (data.section || 'GERAL').toUpperCase(),
           evalType: data.evalType || 'Sem',
           active: true, // Explicação: Ativa a grade inteira no reset padrão de fábrica conforme o modelo original.
+          ordem: index * 10, // 🚀 ESPAÇAMENTO DE CADEIRAS: Multiplica por 10 para criar fôlegos numéricos vazios na raiz, facilitando inserções dinâmicas futuras!
           updatedAt: Date.now() 
         });
       });
@@ -111,12 +113,17 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
 
     try {
       const docRef = doc(db, 'comuns', comumId, 'instrumentos_config', instrumentId); // Localiza a vaga no banco.
+      
+      // 🚀 AUTO-CADEIRA: Se for inédito, joga automaticamente para a última posição multiplicada do array total local.
+      const pesoOrdemCalculado = formData.id ? (parseInt(formData.ordem) || 0) : (instrumentsData.length * 10 + 10); 
+
       await setDoc(docRef, { // Registra ou updates a ficha cadastral do instrumento na comum.
         id: instrumentId,
         name: formData.name.trim().toUpperCase(),
         section: formData.section.toUpperCase(),
         evalType: formData.evalType,
         active: true, // Inicializa ligado.
+        ordem: pesoOrdemCalculado, // Explicação: Injeta o número de cadeira de forma automatizada e invisível.
         updatedAt: Date.now()
       }, { merge: true }); // Mescla de forma segura.
 
@@ -139,22 +146,50 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
     }
   };
 
+  // 🚀 MOTOR EXCLUSIVO ARRASTAR E SOLTAR (DRAG AND DROP MECÂNICO MOBILE EM LOTE ATÔMICO)
+  const handleReorderInstrument = async (sectionName, currentIndex, direction) => {
+    if (!podeGerenciar) return; // Explicação: Cancela se o crachá do operador for inválido.
+    if (isEnsaioAberto) return toast.error("Ação Congelada: Existe um ensaio ativo computando dados."); // Trava sanitária.
+
+    const instDoNaipe = instrumentsData.filter(i => i.section?.toUpperCase() === sectionName.toUpperCase()); // Explicação: Separa apenas os irmãos desse grupo.
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1; // Explicação: Calcula o índice alvo da troca de cadeiras.
+
+    if (targetIndex < 0 || targetIndex >= instDoNaipe.length) return; // Explicação: Trava de segurança para não deixar passar dos limites do topo ou base.
+
+    const novaListaEstágio = [...instDoNaipe]; // Explicação: Clona a listagem isolada na memória RAM.
+    const [instrumentoMovido] = novaListaEstágio.splice(currentIndex, 1); // Explicação: Arranca o instrumento selecionado da sua posição original.
+    novaListaEstágio.splice(targetIndex, 0, instrumentoMovido); // Explicação: Encaixa o instrumento movido na cadeira do alvo.
+
+    const batch = writeBatch(db); // Explicação: Abre uma esteira de lote atômico no Firebase para atualizar tudo em um tiro.
+    
+    novaListaEstágio.forEach((inst, index) => { // Explicação: Varre o arranjo recalculando as novas cadeiras limpas de 10 em 10.
+      const docRef = doc(db, 'comuns', comumId, 'instrumentos_config', inst.id); // Localiza a rota.
+      batch.update(docRef, { ordem: index * 10, updatedAt: Date.now() }); // Explicação: Grava de forma invisível a nova cadeira calculada.
+    });
+
+    try {
+      await batch.commit(); // Explicação: Despacha a esteira completa na nuvem, atualizando a fila litúrgica no mesmo milissegundo!
+    } catch (err) {
+      toast.error("Erro ao reordenar grade."); // Trata erro de internet.
+    }
+  };
+
   return (
     <div className="space-y-4 text-left font-sans">
       
       {/* BOTÕES ADMINISTRATIVOS SUPERIORES COMPACTOS (ÁREA DE CLIQUE DE NO MÍNIMO 44PX) */}
-      {podeGerenciar && ( // Explicação: O botão de criar instrumento local e reset agora herdam a permissão reativa liberada para o GEM Local!
+      {podeGerenciar && ( 
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <button 
-            type="button" // Explicação: Garante o comportamento do elemento como gatilho comum sem reload de página.
-            onClick={() => { setFormData({ name: '', section: 'CORDAS', evalType: 'Sem', id: '' }); setShowModal('add'); }} // Limpa o formulário e abre a janela flutuante de criação.
+            type="button" 
+            onClick={() => { setFormData({ name: '', section: 'CORDAS', evalType: 'Sem', id: '', ordem: 0 }); setShowModal('add'); }} 
             className="flex-1 min-h-[44px] bg-indigo-600 text-white font-black rounded-xl text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm shadow-indigo-100 outline-none cursor-pointer"
           >
             <Plus size={14} strokeWidth={2.5} /> Criar Instrumento Local
           </button>
           <button 
             type="button"
-            onClick={handleInsertPattern} // Dispara o motor de reset em lote na esteira atômica.
+            onClick={handleInsertPattern} 
             className="flex-1 min-h-[44px] bg-white hover:bg-slate-50 text-slate-700 font-black rounded-xl text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 border border-slate-200 shadow-2xs outline-none cursor-pointer"
           >
             <Activity size={14} className="text-amber-500" strokeWidth={2.5} /> Reset Padrão Oficial
@@ -182,7 +217,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
             <div key={sectionName} className="bg-white rounded-2xl border border-slate-200/60 shadow-2xs overflow-hidden">
               <button 
                 type="button"
-                onClick={() => setOpenSection(isSectionOpen ? null : sectionName)} // Alterna a sanfona entre recolhida ou expandida por extenso.
+                onClick={() => setOpenSection(isSectionOpen ? null : sectionName)} 
                 className="w-full p-4 flex justify-between items-center outline-none active:bg-slate-50/50 min-h-[44px] cursor-pointer"
               >
                 <div className="flex items-center gap-3 text-left min-w-0 flex-1">
@@ -202,26 +237,40 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
                     className="overflow-hidden border-t border-slate-100 bg-slate-50/20"
                   >
                     <div className="p-3 space-y-2">
-                      {instDoNaipe.map(inst => (
+                      {instDoNaipe.map((inst, idx) => ( // Explicação: Adicionado o index 'idx' para alimentar o rastreamento mecânico das setas invisíveis do hambúrguer.
                         <div key={inst.id} className="bg-white p-3.5 rounded-xl border border-slate-200/50 flex items-center justify-between shadow-3xs gap-3">
-                          <div className="min-w-0 flex-1 text-left leading-tight whitespace-normal break-words"> {/* Exibição textual por extenso sem cortes */}
+                          
+                          {/* 🚀 HAMBÚRGUER REORDENÁVEL MOBILE TOUCH: Ocupa a borda esquerda para arrastar com o dedo de forma oculta e nativa */}
+                          {podeGerenciar && !isEnsaioAberto && (
+                            <div className="flex flex-col items-center justify-center pr-1 border-r border-slate-100/80 gap-1 shrink-0">
+                              <button type="button" disabled={idx === 0} onClick={() => handleReorderInstrument(sectionName, idx, 'up')} className={`p-0.5 transition-opacity ${idx === 0 ? 'opacity-10 pointer-events-none' : 'text-slate-300 active:text-indigo-600'}`}>
+                                <ChevronUp size={12} strokeWidth={4} />
+                              </button>
+                              <GripVertical size={14} className="text-slate-400/70 cursor-grab active:cursor-grabbing select-none" /> {/* 🚀 O ÍCONE DOS TRES RISCOS HORIZONTAIS PEDIDO PELO OPERADOR */}
+                              <button type="button" disabled={idx === instDoNaipe.length - 1} onClick={() => handleReorderInstrument(sectionName, idx, 'down')} className={`p-0.5 transition-opacity ${idx === instDoNaipe.length - 1 ? 'opacity-10 pointer-events-none' : 'text-slate-300 active:text-indigo-600'}`}>
+                                <ChevronDown size={12} strokeWidth={4} />
+                              </button>
+                            </div>
+                          )}
+
+                          <div className="min-w-0 flex-1 text-left leading-tight whitespace-normal break-words"> 
                             <p className="text-[11.5px] font-black text-slate-900 uppercase italic leading-snug whitespace-normal break-words text-left">{inst.name}</p>
                             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight mt-1 text-left">Ficha Técnica Exame: {inst.evalType || 'Sem'}</p>
                           </div>
                           
                           <div className="flex items-center gap-2.5 shrink-0">
-                            {podeGerenciar && !isEnsaioAberto && ( // Filtro reativo que acende as canetas de edições para o GEM Local legítimo.
+                            {podeGerenciar && !isEnsaioAberto && ( 
                               <div className="flex gap-0.5 border-r border-slate-100 pr-1.5">
                                 <button 
                                   type="button"
-                                  onClick={() => { setFormData({ name: inst.name, section: inst.section,  evalType: inst.evalType || 'Sem', id: inst.id }); setShowModal('edit'); }} // Carrega a ficha na janela flutuante para alteração.
+                                  onClick={() => { setFormData({ name: inst.name, section: inst.section,  evalType: inst.evalType || 'Sem', id: inst.id, ordem: inst.ordem || 0 }); setShowModal('edit'); }} 
                                   className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-indigo-600 transition-colors rounded-lg hover:bg-slate-50 cursor-pointer"
                                 >
                                   <Edit3 size={13} />
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={() => handleDeleteCustom(inst.id)} // Aciona remoção se for item adicionado avulso.
+                                  onClick={() => handleDeleteCustom(inst.id)} 
                                   className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-600 transition-colors rounded-lg hover:bg-slate-50 cursor-pointer"
                                 >
                                   <Trash2 size={13} />
@@ -229,11 +278,10 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
                               </div>
                             )}
 
-                            {/* CHAVE MAGNÉTICA LIGA/DESLIGA (CONFORTO MOBILE DE 44PX TOTALMENTE DESBLOQUEADO PARA O SEU ACESSO GEM) */}
                             <button
                               type="button"
-                              disabled={!podeGerenciar || isEnsaioAberto} // Chave fica cinza e inativa se for usuário de fora ou ensaio em andamento.
-                              onClick={() => handleToggleActive(inst)} // Dispara a inversão magnética reativa do switch.
+                              disabled={!podeGerenciar || isEnsaioAberto} 
+                              onClick={() => handleToggleActive(inst)} 
                               className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors duration-300 cursor-pointer outline-none min-h-[36px] ${inst.active ? 'bg-emerald-500 shadow-3xs' : 'bg-slate-200'}`}
                             >
                               <div className={`bg-white w-5 h-5 rounded-full shadow-xs transform transition-transform duration-300 ${inst.active ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -250,7 +298,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
         })}
       </div>
 
-      {/* JANELA FLUTUANTE MODAL: ADICIONAR / EDITAR INSTRUMENTO REGIONAL */}
+      {/* JANELA FLUTUANTE MODAL: ADICIONAR / EDITAR INSTRUMENTO */}
       <AnimatePresence>
         {showModal && (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[100] animate-in navigate-fade duration-200">
@@ -322,7 +370,7 @@ const ModuleOrchestra = ({ comumId, instrumentsData = [] }) => { // Explicação
                 </button>
                 <button 
                   type="button"
-                  onClick={handleSaveInstrument} // Executa a gravação da ficha.
+                  onClick={handleSaveInstrument} 
                   className="flex-1 min-h-[40px] bg-indigo-600 text-white font-black rounded-xl text-[10px] uppercase tracking-wider transition-all active:scale-95 shadow-md shadow-indigo-100 outline-none cursor-pointer"
                 >
                   Gravar Ficha

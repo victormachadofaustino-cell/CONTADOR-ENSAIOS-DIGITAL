@@ -45,7 +45,7 @@ const CounterRegional = ({
     return 'bg-slate-500'; // Explicação: Cinza para o restante.
   };
 
-  const getSectionTotal = (sectionName) => { // Explicação: Calcula a soma de todos os instrumentos de uma família para mostrar no cabeçalho.
+  const getSectionTotal = (sectionName) => { // Explicação: Calculates a soma de todos os instrumentos de uma família para mostrar no cabeçalho.
     const sName = sectionName.toUpperCase();
     
     // Explicação: Localiza o ID principal para soma correta do cabeçalho.
@@ -57,29 +57,30 @@ const CounterRegional = ({
 
     // Explicação: Se for Irmandade ou Órgão, busca o total consolidado.
     if (sName === 'IRMANDADE' || sName === 'ORGANISTAS') {
-      const mId = masterInst?.id || (sName === 'IRMANDADE' ? 'Coral' : 'orgao');
-      return parseInt(localCounts?.[mId]?.total) || 0;
+      const mId = masterInst?.id || (sName === 'IRMANDADE' ? 'coral' : 'orgao'); // Explicação: Modificado de 'Coral' para 'coral' minúsculo para casar com a malha unificada do Firestore.
+      return parseInt(localCounts?.[mId]?.total) || 0; // Explicação: Extrai o total numérico do nó de dados correspondente.
     }
     
     // Explicação: Soma todos os instrumentos que pertencem a esta família.
     return (instruments || [])
       .filter(i => i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === sName)
-      .reduce((acc, inst) => acc + (parseInt(localCounts?.[inst.id]?.total) || 0), 0);
+      .reduce((acc, inst) => acc + (parseInt(localCounts?.[inst.id]?.total) || 0), 0); // Explicação: Acumula a soma dos subcampos.
   };
 
   return ( // Explicação: Inicia o desenho da lista de famílias no celular.
     <div className="space-y-4 pb-32 animate-premium text-left">
       {sections.map((section) => { // Explicação: Percorre cada grupo (Cordas, Metais, etc).
-        const isIrmandade = section.toUpperCase() === 'IRMANDADE'; 
-        const isOrganistas = section.toUpperCase() === 'ORGANISTAS'; 
+        const isIrmandade = section.toUpperCase() === 'IRMANDADE'; // Explicação: Identifica se o naipe varrido corresponde à Irmandade geral.
+        const isOrganistas = section.toUpperCase() === 'ORGANISTAS'; // Explicação: Identifica se o naipe varrido corresponde às organistas.
         
-        const sectionInstruments = (instruments || []).filter(i => 
-          i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase()
-        );
+        // 🚀 ORDENAÇÃO DINÂMICA REGIONAL (CAMINHO 2): Alinha e filtra as pílulas organizadas pelo peso numérico da propriedade .ordem da Comum!
+        const sectionInstruments = (instruments || [])
+          .filter(i => i && i.id && !i.id.startsWith('meta_') && (i.section || '').toUpperCase() === section.toUpperCase())
+          .sort((a, b) => (a.ordem || 0) - (b.ordem || 0)); // Explicação: Organiza de forma crescente o array pelos pesos numéricos do Firebase, casando com o Front.
 
-        // Explicação: Sincroniza o ID Mestre para controle de posse.
-        const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id || (isIrmandade ? 'Coral' : isOrganistas ? 'orgao' : null);
-        const masterData = localCounts?.[masterId] || {}; 
+        // Explicação: Sincroniza o ID Mestre para controle de posse em caixa baixa.
+        const masterId = sectionInstruments.find(i => !['irmas', 'irmaos'].includes(i.id.toLowerCase()))?.id || (isIrmandade ? 'coral' : isOrganistas ? 'orgao' : null); // Explicação: Sincroniza o ID Mestre para controle de posse em caixa baixa.
+        const masterData = localCounts?.[masterId] || {}; // Explicação: Resgata o mapa de dados e assinaturas do instrumento mestre da RAM.
 
         const totalNaipe = getSectionTotal(section); // Explicação: Pega o total do grupo.
         const isOpen = openSections[section]; // Explicação: Checa se a sanfona está aberta.
@@ -88,14 +89,14 @@ const CounterRegional = ({
           <div key={section} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mx-2 text-left">
             {/* HEADER - Botão de abertura da família */}
             <button 
-              onClick={() => toggleAccordion(section)}
-              className="w-full p-4 flex items-center justify-between active:bg-slate-50 transition-all text-left"
+              onClick={() => toggleAccordion(section)} // Explicação: Abre ou fecha o colapsável correspondente.
+              className="w-full p-4 flex items-center justify-between active:bg-slate-50 transition-all text-left" // Explicação: Layout Tailwind expansível.
             >
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-10 rounded-full ${getSectionColor(section)}`} /> 
-                <div className="leading-none">
+                <div className="leading-none text-left">
                   <p className="text-[13px] font-[900] text-slate-950 uppercase italic tracking-tighter mb-1 leading-none">{section}</p>
-                  <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">
+                  <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none">
                     {isIrmandade ? 'PÚBLICO GERAL' : `${sectionInstruments.length} INSTRUMENTOS`}
                   </p>
                 </div>
@@ -117,37 +118,37 @@ const CounterRegional = ({
 
             {/* CONTEÚDO EXPANSÍVEL */}
             <AnimatePresence>
-              {isOpen && (
+              {isOpen && ( // Explicação: Se a sanfona estiver marcada como aberta, renderiza o bloco interno com animação.
                 <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  initial={{ height: 0, opacity: 0 }} // Explicação: Estado inicial encolhido e transparente.
+                  animate={{ height: 'auto', opacity: 1 }} // Explicação: Expande automaticamente a altura de forma fluida.
+                  exit={{ height: 0, opacity: 0 }} // Explicação: Encolhe suavemente na saída.
+                  transition={{ duration: 0.3, ease: "easeInOut" }} // Explicação: Define o tempo de transição de 300 milissegundos.
                   className="overflow-hidden"
                 >
-                  <div className="px-4 pb-6 space-y-3 pt-2">
+                  <div className="px-4 pb-6 space-y-3 pt-2 text-left">
                     
                     {isIrmandade ? ( // Explicação: Layout para Irmãs e Irmãos.
-                      <div className="space-y-3">
+                      <div className="space-y-3 text-left">
                         <InstrumentCard
                           key="irmas_row"
-                          inst={{ id: 'irmas', nome: 'IRMÃS', label: 'IRMÃS', section: 'IRMANDADE' }}
-                          data={masterData}
-                          onUpdate={onUpdate}
-                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId_irmas === userData?.uid, 'irmas')}
-                          userData={userData}
-                          isClosed={isClosed}
-                          isRegional={true}
-                          sectionName={section}
+                          inst={{ id: 'irmas', nome: 'IRMÃS', label: 'IRMÃS', section: 'IRMANDADE' }} // Explicação: Entrega o objeto fixo de mapeamento.
+                          data={masterData} // Explicação: Passa o mapa de dados e responsáveis do Coral.
+                          onUpdate={onUpdate} // Explicação: Vincula a ação de alteração numérica.
+                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId_irmas === userData?.uid, 'irmas')} // Explicação: Dispara a posse individual da ala feminina.
+                          userData={userData} // Explicação: Repassa o crachá do secretário ativo.
+                          isClosed={isClosed} // Explicação: Trava de encerramento de ata.
+                          isRegional={true} // Explicação: Força a flag de comportamento regional.
+                          sectionName={section} // Explicação: Repassa o nome do naipe.
                           onFocus={onFocus} // Explicação: Protege o campo contra zeragem externa.
-                          onBlur={onBlur}
+                          onBlur={onBlur} // Explicação: Desativa a trava de foco.
                         />
                         <InstrumentCard
                           key="irmaos_row"
                           inst={{ id: 'irmaos', nome: 'IRMÃOS', label: 'IRMÃOS', section: 'IRMANDADE' }}
                           data={masterData}
                           onUpdate={onUpdate}
-                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId_irmaos === userData?.uid, 'irmaos')}
+                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId_irmaos === userData?.uid, 'irmaos')} // Explicação: Dispara a posse individual da ala masculina.
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
@@ -157,13 +158,13 @@ const CounterRegional = ({
                         />
                       </div>
                     ) : isOrganistas ? ( // Explicação: Layout para Órgão.
-                      <div className="space-y-3">
+                      <div className="space-y-3 text-left">
                         <InstrumentCard
                           key="orgao_row"
                           inst={{ id: 'orgao', nome: 'ÓRGÃO', label: 'ÓRGÃO', section: 'ORGANISTAS' }}
                           data={masterData}
                           onUpdate={onUpdate}
-                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId === userData?.uid)}
+                          onToggleOwnership={() => onToggleSection(masterId, masterData?.responsibleId === userData?.uid)} // Explicação: Dispara a posse do teclado do órgão.
                           userData={userData}
                           isClosed={isClosed}
                           isRegional={true}
@@ -173,8 +174,8 @@ const CounterRegional = ({
                         />
                       </div>
                     ) : (
-                      /* LISTAGEM PADRÃO: Violinos, Flautas, etc */
-                      <>
+                      /* LISTAGEM PADRÃO SEGUIDO POR CADEIRAS DINÂMICAS: Violinos, Flautas, etc */
+                      <div className="space-y-3 text-left">
                         {sectionInstruments.length > 0 ? (
                           sectionInstruments.map((inst) => (
                             <InstrumentCard
@@ -182,7 +183,7 @@ const CounterRegional = ({
                               inst={inst}
                               data={localCounts?.[inst.id] || {}}
                               onUpdate={onUpdate}
-                              onToggleOwnership={() => onToggleSection(inst.id, localCounts?.[inst.id]?.responsibleId === userData?.uid)}
+                              onToggleOwnership={() => onToggleSection(inst.id, localCounts?.[inst.id]?.responsibleId === userData?.uid)} // Explicação: Posse individualizada por instrumento linear da orquestra.
                               userData={userData}
                               isClosed={isClosed}
                               isRegional={true}
@@ -194,14 +195,14 @@ const CounterRegional = ({
                         ) : (
                           <p className="text-center py-4 text-[8px] font-bold text-slate-300 uppercase italic">Vazio</p>
                         )}
-                      </>
+                      </div>
                     )}
                     
                     {/* BOTÃO INSTRUMENTO EXTRA */}
                     {!isClosed && !isIrmandade && !isOrganistas && (
                       <button
-                        onClick={() => onAddExtra(section)}
-                        className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all"
+                        onClick={() => onAddExtra(section)} // Explicação: Abre o modal para cadastrar novos itens dinâmicos.
+                        className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all cursor-pointer"
                       >
                         <Plus size={16} strokeWidth={3} />
                         <span className="text-[9px] font-black uppercase italic tracking-widest">Incluir Instrumento Extra</span>

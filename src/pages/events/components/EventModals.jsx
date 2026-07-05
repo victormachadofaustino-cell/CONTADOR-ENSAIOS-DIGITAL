@@ -24,7 +24,8 @@ const EventModals = ({
   onNavigateToSettings, // Explicação: Rota de fuga para redirecionar o GEM Local à tela de configuração da orquestra.
   eventToDelete, // Explicação: Armazena o ID do ensaio enviado para a fila de exclusão.
   setEventToDelete, // Explicação: Função para esvaziar a fila da lixeira.
-  confirmDelete // Explicação: Subrotina que apaga fisicamente os registros e chamadas nominais do banco.
+  confirmDelete, // Explicação: Subrotina que apaga fisicamente os registros e chamadas nominais do banco.
+  selectedChurchId // 🚀 INJEÇÃO DE FLUXO SÊNIOR: Recebe o ID da igreja comum selecionado no cabeçalho do GPS para blindar o contador itinerante de comarcas.
 }) => {
   // ESTADOS PARA CONTROLE DO ENSAIO REGIONAL
   const [scope, setScope] = useState('local'); // Explicação: Controla se o tipo de evento gerado será de escopo local ou regional.
@@ -94,7 +95,7 @@ const EventModals = ({
     setSearchTerm(''); // Explicação: Limpa a caixa de texto da lupa.
   };
 
-  // JUSTIFICATIVA: Implementação de Carimbagem Rica - salva objeto em vez de apenas ID
+  // JUSTIFICATIVA: Implementation de Carimbagem Rica - salva objeto em vez de apenas ID
   const toggleInvitedUser = (user) => {
     setInvitedUsers(prev => {
       const isAlreadyInvited = prev.find(u => u.uid === user.uid); // Explicação: Confere se o irmão já estava marcado no balde.
@@ -113,8 +114,12 @@ const EventModals = ({
 
     const invitedIds = scope === 'regional' ? invitedUsers.map(u => u.uid) : []; // Explicação: Converte a malha de objetos em array simples de strings para as Security Rules lerem.
 
+    // 🚀 BLINDAGEM DE JURISDIÇÃO ABSOLUTA: Substituído o 'userData.comumId' pelo 'selectedChurchId' dinâmico do GPS de cabeçalho, garantindo rotas preenchidas para gestores itinerantes!
     handleCreate({
       scope,
+      comumId: selectedChurchId || userData?.comumId || '', // Explicação: Vincula a Comum ativa no topo do app para anular strings vazias na linha 235 do service.
+      cidadeId: userData?.cidadeId || userData?.activeCityId || '', // Explicação: Garante o preenchimento absoluto do código da cidade.
+      regionalId: userData?.regionalId || userData?.activeRegionalId || '', // Explicação: Garante o preenchimento absoluto do código da regional.
       invitedUsers: invitedIds // Explicação: Despacha o array limpo de IDs para gravação atômica no banco mestre.
     });
 

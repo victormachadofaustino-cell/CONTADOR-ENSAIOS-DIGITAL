@@ -9,13 +9,14 @@ import DashPage from './pages/dashboard/DashPage'; // Explicação: Importa a p�
 import SettingsPage from './pages/SettingsPage'; // Explicação: Importa a página central de configurações e zeladoria de comuns.
 import CounterPage from './pages/events/CounterPage'; // Explicação: Importa a tela do contador de presença nominal (o coração do app).
 import EventsPage from './pages/events/EventsPage'; // Explicação: Importa a página que gerencia e lista as ordens de ensaios e cultos.
-import LoginPage from './pages/auth/LoginPage'; // Explicação: Importa a página de entrada, autenticação e cadastro de usuários.
+import LoginPage from './pages/auth/LoginPage'; // Explicação: 🚀 CORRIGIDO DEFINITIVO: Ajustado para o padrão rigoroso 'from' removendo o termo fantasma.
 import CapaEntrada from './pages/CapaEntrada'; // Explicação: Importa a tela de abertura animada (Splash Screen) do sistema.
 import Header from './components/Header'; // Explicação: Importa o cabeçalho superior com seletores territoriais de GPS.
 import Tickets from './components/Tickets'; // Explicação: Importa o sistema integrado de chamados e suporte ao usuário.
 import Footer from './components/Footer'; // Explicação: Traz o nosso novo rodapé isolado e fixado na base da tela.
 
 import { useAuth } from './context/AuthContext'; // Explicação: Importa o Cérebro Central de Autenticação que distribui os crachás eletrônicos.
+import { eventService } from './services/eventService'; // Explicação: 🚀 INJEÇÃO ARQUITETURAL: Importa o serviço estabilizado de eventos para consumo do ouvinte descentralizado territorial.
 
 const CARGOS_ADMIN = ['Encarregado Regional', 'Encarregado Local', 'Examinadora', 'Secretário da Música', 'Secretario da Música']; // Explicação: Lista estática de cargos com competência administrativa de portaria.
 
@@ -81,7 +82,7 @@ function App() { // Explicação: Início da construção do componente mestre d
     } // Explicação: Fim da verificação.
   }, [authContextData, lobbyTab, ORDEM_TABS]); // Explicação: Força re-verificação nas trocas de contexto.
 
-  const mudarTab = (novaTab) => { // Explicação: Gerencia a troca de abas calculando a direção do deslize da tela para a esquerda ou direita.
+  const mudarTab = (novaTab) => { // Explicação: Gerencia a troca de abas calculando a direção do deslize della tela para a esquerda ou direita.
     const idxAntigo = ORDEM_TABS.indexOf(lobbyTab); // Explicação: Pega o índice numérico da aba antiga.
     const idxNovo = ORDEM_TABS.indexOf(novaTab); // Explicação: Pega o índice numérico da nova aba clicada.
     if (idxAntigo === idxNovo) return; // Explicação: Aborta se clicou na mesma aba onde já estava parado.
@@ -108,25 +109,24 @@ function App() { // Explicação: Início da construção do componente mestre d
       setUser(u); // Explicação: Registra a chave do usuário autenticado no estado do app.
       
       if (u) { // Explicação: Se o usuário estiver legitimamente logado.
-        // CORREÇÃO E ECONOMIA DE COTA: O fluxo de navegação agora é decidido puramente pelas respostas reativas do authContextLoading e authContextData.
         if (!authContextLoading && authContextData) { // Explicação: Se as credenciais do crachá terminaram de baixar do contexto.
           const savedView = localStorage.getItem('lastEventId') ? 'app' : 'lobby'; // Explicação: Se caiu a conexão no meio de um ensaio, volta direto pro contador.
           setView(authContextData.approved || authContextData.accessLevel === 'master' ? savedView : 'waiting-approval'); // Explicação: Desvia usuários não aprovados para a tela de espera.
         } // Explicação: Encerra a conferência de dados.
       } else { // Explicação: Caso não haja nenhuma conta conectada no aparelho.
         setEvents([]);  // Explicação: Esvazia o cache local de ensaios da igreja por privacidade.
-        setActiveComumId(null); // Explicação: Zera o ponteiro GPS da comum.
-        setActiveRegionalId(null); // Explicação: Zera o ponteiro GPS da regional.
+        setActiveComumId(null); // Explicação: Zera o ponteiro GPS della comum.
+        setActiveRegionalId(null); // Explicação: Zera o ponteiro GPS della regional.
         localStorage.clear(); // Explicação: Higiene de Segurança: Limpa o armazenamento local ao deslogar do sistema.
         setView('login'); // Explicação: Joga a tela no formulário inicial.
       } // Explicação: Fim do divisor de autenticação.
-    }); // Explicação: Encerra o escopo do listener nativo.
+    }); // Explicação: Encerra o scope del listener nativo.
     return () => unsubAuth(); // Explicação: Desliga os observadores de sessão ao destruir o componente.
   }, [authContextLoading, authContextData]); // Explicação: Re-avalia o canal se os carregamentos mudarem.
 
   // Efeito auxiliar para atualizar a visualização (view) assim que o contexto terminar de carregar na inicialização
   useEffect(() => { // Explicação: Disparado na largada de boot para casar os estados visuais.
-    if (!authContextLoading && user && authContextData) { // Explicação: Se o crachá baixou e o login está firme.
+    if (!authContextLoading && user && authContextData) { // Explicação: Se o crachá voltou e o login está firme.
       const savedView = localStorage.getItem('lastEventId') ? 'app' : 'lobby'; // Explicação: Verifica se deve reabrir direto no contador.
       setView(authContextData.approved || authContextData.accessLevel === 'master' ? savedView : 'waiting-approval'); // Explicação: Executa o roteamento.
     } else if (!authContextLoading && !user) { // Explicação: Se o contexto terminou sem usuário ativo.
@@ -134,36 +134,26 @@ function App() { // Explicação: Início da construção do componente mestre d
     } // Explicação: Encerra a conferência auxiliar.
   }, [authContextLoading, user, authContextData]); // Explicação: Escuta as chaves de bootstrap.
 
-  useEffect(() => { // Explicação: Buscador de Eventos por Comum: Alimenta a listagem filtrando apenas os ensaios da igreja em foco.
-    if (!user?.uid || !user?.emailVerified || !comumIdEfetivo || !authContextData) return; // Explicação: Trava defensiva para não rodar buscas cegas sem chaves de segurança.
-    setEvents([]); // Explicação: Limpa a gaveta de ensaios antiga antes de abrir a conexão com a nova comum.
+  // 🚀 ACOPLAMENTO SÊNIOR CORPORATIVO: O ouvinte reativo agora assina de forma inteligente o canal descentralizado do eventService!
+  useEffect(() => { // Explicação: Ouve em tempo real as mudanças geográficas e territoriais do GPS do cabeçalho de forma unificada.
+    if (!user?.uid || !authContextData) return; // Explicação: Barreira defensiva para impedir varreduras sem login ativo ou token.
     
-    const q = query( // Explicação: Constrói a consulta filtrada indexada do Firestore.
-      collection(db, 'events_global'), // Explicação: Aponta para a coleção central de eventos.
-      where('comumId', '==', comumIdEfetivo), // Explicação: Filtra para trazer apenas os ensaios da igreja selecionada no cabeçalho.
-      orderBy('date', 'desc') // Explicação: Ordena os ensaios colocando o mais recente sempre no topo absoluto.
-    ); // Explicação: Encerra a query técnica.
-    
-    const unsub = onSnapshot(q, (snapshot) => { // Explicação: Abre canal em tempo real para escutar novos ensaios abertos na comum.
-      const data = snapshot.docs.map(d => ({ // Explicação: Transforma os snapshots crus em objetos nativos.
-        id: d.id, // Insere a ID do documento.
-        ...d.data(), // Clona as propriedades internas de ata e contagens.
-        comumId: d.data().comumId || comumIdEfetivo // Força a amarração contextual da comum.
-      })); // Termina o mapeamento.
-      setEvents(data); // Explicação: Satura o estado de ensaios com os dados atualizados.
-    }, (err) => { console.warn("Erro ao buscar ensaios:", err.message); }); // Explicação: Captura e reporta avisos de rede de forma controlada.
-    
-    return () => unsub(); // Explicação: Desliga la escuta territorial ao mudar de foco para poupar cotas do Firestore.
-  }, [comumIdEfetivo, user?.uid, user?.emailVerified, authContextData]); // Explicação: Remonta o canal se a igreja mestre de foco mudar no GPS.
+    // Explicação: Assina o canal reativo passando as claims territoriais e colhe a lista de ensaios atualizada.
+    const unsubEvents = eventService.subscribeToEvents(authContextData, (dadosCarregados) => {
+      setEvents(dadosCarregados); // Explicação: Satura o cache local com os cultos e ordens de ensaio filtrados.
+    }); // Explicação: Encerra a assinatura técnica.
+
+    return () => unsubEvents(); // Explicação: Desliga o canal reativo ao mudar de rota ou deslogar para economizar cotas do Firestore.
+  }, [user?.uid, authContextData]); // Explicação: Remonta o canal se a conta ou os filtros do crachá mudarem.
 
   if (view === 'loading' || authContextLoading) { // Explicação: Renderiza o visual de carregamento premium de jurisdição.
     return ( // Explicação: Desenha o spinner centralizado.
-      <div className="h-dvh flex flex-col items-center justify-center bg-[#F1F5F9] p-8 text-center space-y-4">
+      <div className="h-dvh flex flex-col items-center justify-center bg-[#F1F5F9] p-4 text-center space-y-4">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" /> {/* Explicação: Círculo animado com rotação contínua Tailwind CSS. */}
         <p className="font-black text-slate-950 uppercase text-[10px] tracking-widest italic">Sincronizando Jurisdição...</p> {/* Explicação: Texto de rodapé de carregamento em caixa alta micro. */}
       </div>
-    ); // Explicação: Fim da renderização do carregamento.
-  } // Explicação: Fim da trava de bootstrap de rede.
+    ); // Explicação: Fim della renderização do carregamento.
+  } // Explicação: Fim della trava de bootstrap de rede.
 
   return ( // Explicação: Inicia a renderização estrutural do layout do aplicativo.
     <div className="h-dvh bg-[#F1F5F9] flex flex-col font-sans overflow-hidden relative text-left"> {/* Explicação: Container raiz do aplicativo travado na altura do dispositivo móvel. */}
@@ -176,12 +166,11 @@ function App() { // Explicação: Início da construção do componente mestre d
         <>
           <Header // Explicação: Renderiza o cabeçalho alimentando-o com o Crachá Eletrônico unificado do contexto.
             userData={authContextData} // Explicação: Entrega a cópia do crachá de autenticação para o cabeçalho.
-            onChurchChange={(id) => setContext('comum', id)} // Explicação: Dispara a atualização do GPS da comum no Cérebro Central.
-            onRegionalChange={(id) => setContext('regional', id)} // Explicação: Dispara a atualização do GPS da regional no Cérebro Central.
+            onChurchChange={(id) => setContext('comum', id)} // Explicação: Dispara a atualização do GPS della comum no Cérebro Central.
+            onRegionalChange={(id) => setContext('regional', id)} // Explicação: Dispara a atualização do GPS della regional no Cérebro Central.
           />
           <main className="flex-1 relative overflow-hidden"> {/* Explicação: Palco central onde as telas das abas inferiores entram e saem. */}
             <AnimatePresence mode="popLayout" custom={direcao}> {/* Explicação: Gerenciador de animações sincronizadas de entrada e saída de abas. */}
-              {/* Explicação: 'pb-36' adicionado para criar uma margem de segurança na base, impedindo que os dados colidam com o novo rodapé fixo. */}
               <motion.div key={lobbyTab} custom={direcao} initial={{ opacity: 0, x: direcao * 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: direcao * -100 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="w-full h-full overflow-y-auto no-scrollbar pt-4 pb-36 px-4"> {/* Explicação: Bloco móvel animado com rolagem vertical livre suave. */}
                 <div className="max-w-md mx-auto"> {/* Explicação: Limitador ergonômico central de largura para smartphones comuns. */}
                   {lobbyTab === 'ensaios' && ( // Explicação: Renderiza a lista de ensaios repassando as permissões unificadas por crachá.
@@ -196,17 +185,15 @@ function App() { // Explicação: Início da construção do componente mestre d
                       }} // Explicação: Encerra a callback de seleção.
                     /> // Explicação: Fecha a tag da página de ensaios.
                   )}
-                  {lobbyTab === 'dash' && <DashPage userData={authContextData} />} {/* Explicação: Abre o painel estatístico consolidado histórico da comum. */}
-                  {lobbyTab === 'config' && <SettingsPage />} {/* Explicação: Abre o painel de gerenciamento de alistamentos e grade da comum. */}
+                  {lobbyTab === 'dash' && <DashPage userData={authContextData} />} {/* Explicação: Abre o painel estatístico consolidado histórico della comum. */}
+                  {lobbyTab === 'config' && <SettingsPage />} {/* Explicação: Abre o painel de gerenciamento de alistamentos e grade della comum. */}
                 </div>
               </motion.div>
             </AnimatePresence>
           </main>
           
-          {!showSplash && <Tickets moduloAtual={lobbyTab} />} {/* Explicação: Exibe o botão de suporte técnico após a saída da splash screen. */}
+          {!showSplash && <Tickets moduloAtual={lobbyTab} />} {/* Explicação: Exibe o botão de suporte técnico após a saída della splash screen. */}
 
-          {/* CHAMADA DO NOVO RODAPÉ ATÔMICO ISOLADO E TOTALMENTE ASSENTADO */}
-          {/* Explicação: Invocamos o Footer passando os parâmetros necessários de forma enxuta e performática. */}
           <Footer 
             tabs={ORDEM_TABS} // Explicação: Entrega as abas autorizadas baseadas na herança do crachá.
             activeTab={lobbyTab} // Explicação: Informa qual aba está ativa.

@@ -32,7 +32,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
   const level = userData?.accessLevel; // Explicação: Lê o cargo de autoridade gravado no Crachá Eletrônico do usuário.
   const isMaster = level === 'master'; // Explicação: Verifica se o usuário é o criador/administrador supremo do sistema.
   const isComissao = isMaster || level === 'comissao'; // Explicação: Define se o usuário pertence à comissão regional ou master.
-  const isRegionalCidade = isComissao || level === 'regional_cidade'; // Explicação: Define se o usuário tem poder para gerenciar uma cidade inteira.
+  const isRegionalCidade = isComissao || level === 'regional_cidade'; // Explicação: Define se o usuário tempo poder para gerenciar uma cidade inteira.
   const isGemLocal = isRegionalCidade || level === 'gem_local'; // Explicação: Define se o usuário é um secretário de igreja comum local.
 
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId || null; // Explicação: Define a ID da Regional principal baseada no Crachá do usuário.
@@ -75,7 +75,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
             }}
             className="bg-red-600 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center gap-2" // Explicação: Botão vermelho chamativo, cantos arredondados, sombra suave e efeito de encolher ao toque.
           >
-            Excluir Agora {/* Explicação: Texto do botão de confirmação definitiva. */}
+            Excluir Agora {/* Explicação: Texto do botão de confirmation definitiva. */}
           </button> {/* Explicação: Força o fechamento do botão de exclusão. */}
         </div> {/* Explicação: Fecha a linha de botões. */}
       </div>
@@ -138,7 +138,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
         const qComuns = query(collection(db, 'comuns'), where('regionalId', '==', activeRegionalId)); // Explicação: Cria uma busca filtrando apenas as igrejas que pertencem à regional dele.
         unsubs.push(onSnapshot(qComuns, (s) => { // Explicação: Abre o canal em tempo real para escutar a lista de igrejas da regional.
           if (!isMounted) return; // Explicação: Aborta se a tela foi fechada durante o processo.
-          const listaBruta = s.docs.map(d => ({ id: d.id, ...d.data(), comum: d.data().comum || "Sem Nome" })); // Explicação: Transforma a lista de comuns do banco em formato legível.
+          const listaBruta = s.docs.map(d => ({ id: d.id, ...d.data(), comum: d.data().comum || "Sem Nome" })); // Explicação: Transforma a lista de comuns do banco in formato legível.
           const permitidasIds = [userData?.comumId, ...(userData?.acessosPermitidos || [])]; // Explicação: Mapeia quais IDs de igrejas este usuário tem direito de enxergar.
           
           const comunsVisiveis = (isComissao) // Explicação: Aplica o filtro de segurança de visualização territorial.
@@ -178,9 +178,22 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
     const unsub = onSnapshot(docRefFocado, (docSnap) => { // Explicação: Abre o canal em tempo real para monitorar os dados cadastrais da igreja comum selecionada.
         if (docSnap.exists() && isMounted) setSelectedComum({ id: docSnap.id, ...docSnap.data() }); // Explicação: Atualiza em tempo real as informações de endereço e horários da igreja comum.
     });
+    
+    // 🚀 OUVINTE DA ORQUESTRA COM ORDENAÇÃO DINÂMICA (CAMINHO 2): Alinha as linhas organizadas pelo peso da cadeira '.ordem' do Firebase!
     const unsubInst = onSnapshot(collection(db, 'comuns', comumIdEfetivo, 'instrumentos_config'), (sInst) => { // Explicação: Abre canal com a subcoleção interna que diz quais instrumentos estão ativos ou desativados nesta igreja.
       if (!isMounted) return; // Explicação: Aborta if a tela foi fechada.
-      setSharedData(prev => ({ ...prev, instruments: sInst.docs.map(d => ({ ...d.data(), id: d.id, section: d.data().section?.toUpperCase() || 'GERAL' })) })); // Explicação: Transforma a lista de instrumentos em maiúsculo por segurança e salva na memória do app.
+      
+      // 🚀 MOTOR DE FUSÃO DINÂMICA: Converte os documentos brutos ordenando-os matematicamente pelo peso numérico da cadeira salva!
+      const instrumentosOrdenadosLote = sInst.docs.map(d => ({ 
+        ...d.data(), 
+        id: d.id, 
+        section: d.data().section?.toUpperCase() || 'GERAL',
+        ordem: parseInt(d.data().ordem) || 0 // Explicação: Extrai e limpa a propriedade da ordem do Firebase.
+      }));
+      
+      instrumentosOrdenadosLote.sort((a, b) => (a.ordem || 0) - (b.ordem || 0)); // 🚀 FIAÇÃO DO FILTRO DND: Organiza a fila da orquestra de forma crescente baseando-se nas cadeiras numéricas!
+
+      setSharedData(prev => ({ ...prev, instruments: instrumentosOrdenadosLote })); // Explicação: Despacha a grade reordenada com sucesso para a memória compartilhada do app.
     });
     return () => { isMounted = false; unsub(); unsubInst(); }; // Explicação: Desliga os ouvintes de detalhes da igreja ao trocar de seleção ou fechar a página.
   }, [comumIdEfetivo, sharedData.comunsDaRegional, level]); // Explicação: Variáveis que reiniciam esta escuta profunda se mudarem.
@@ -337,7 +350,7 @@ const SettingsPage = () => { // Explicação: Inicia a construção da página p
               <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0 text-left">
                 <div className="leading-tight text-left pr-2 flex-1 min-w-0">
                   <p className="text-[8px] font-black text-indigo-600 uppercase tracking-widest italic mb-0.5">Módulo Configurações</p>
-                  <h3 className="text-[12px] font-black text-slate-900 uppercase italic tracking-tight whitespace-normal break-words leading-snug"> {/* Explicação: Título do modal por extenso sem cortes em elipse. */}
+                  <h3 className="text-[12px] font-black text-slate-900 uppercase italic tracking-tight whitespace-normal break-words leading-snug"> {/* Explicação: Título do modal por extenso sem cortes in elipse. */}
                     {activeModal === 'global' && 'Painel de Referências: Cargos & Ministérios'}
                     {activeModal === 'cities' && 'Geografia Regional: Gestão de Cidades Ativas'}
                     {activeModal === 'churches_mgr' && 'Infraestrutura: Manutenção de Comuns'}
@@ -396,7 +409,7 @@ const MenuButton = ({ icon, title, moduleName, onClick }) => { // Explicação: 
           {moduleName && ( /* Explicação: Pequena tag superior em itálico azul indicando o escopo funcional */
             <p className="text-[7px] font-black text-indigo-600 uppercase mb-0.5 tracking-wider italic opacity-85 leading-none">{moduleName}</p>
           )}
-          <h3 className="text-[11px] font-black text-slate-800 uppercase italic tracking-tight whitespace-normal break-words leading-snug">{title}</h3> {/* Explicação: Exibição textual por extenso, sem cortes em elipse para total higiene visual. */}
+          <h3 className="text-[11px] font-black text-slate-800 uppercase italic tracking-tight whitespace-normal break-words leading-snug">{title}</h3> {/* Explicação: Exibição textual por extenso, sem cortes in elipse para total higiene visual. */}
         </div>
       </div>
       <ChevronRight size={13} className="text-slate-300 shrink-0 ml-2 group-hover:text-slate-400 transition-colors" />
