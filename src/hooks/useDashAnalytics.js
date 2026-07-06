@@ -16,7 +16,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
       if (filterType === 'all') return true; // [Funcionamento]: Se o usuário escolheu ver o Histórico Total, pula as travas e aprova todos os documentos.
       if (y !== parseInt(selectedYear)) return false; // [Funcionamento]: Se o ano do ensaio for diferente do ano selecionado na lupa da tela, descarta o documento.
       const mIdx = m - 1; // [Funcionamento]: Ajusta o mês do calendário para o índice base zero do JavaScript (0 é Janeiro, 11 é Dezembro).
-      if (filterType === 'month') return mIdx === parseInt(subFilter); // [Funcionamento]: Filtro Mensal: Só deixa passar o ensaio se o mês bater exatamente com o escolhido.
+      if (filterType === 'month') return mIdx === parseInt(subFilter); // [Funcionamento]: Filtro Mensal: Só deixa passar o ensaio if o mês bater exatamente com o escolhido.
       if (filterType === 'semester') return subFilter === '0' ? mIdx < 6 : mIdx >= 6; // [Funcionamento]: Filtro Semestral: Separa os ensaios entre os primeiros 6 meses ou os últimos 6 meses.
       if (filterType === 'quarter') return Math.floor(mIdx / 3) === parseInt(subFilter); // [Funcionamento]: Filtro Trimestral: Divide os meses em blocos de 3 para agrupar as estações do ano.
       return true; // [Funcionamento]: Retorna verdadeiro para os ensaios aprovados na linha de corte do tempo.
@@ -39,7 +39,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
       const mIdx = parseInt(ev.date.split('-')[1]) - 1; // [Funcionamento]: Captura o número do mês do ensaio corrente e ajusta para o índice da memória.
       const key = mesesRef[mIdx]; // [Funcionamento]: Converte o número do mês na palavra correspondente (ex: 3 vira "Abr").
       
-      if (!groups[key]) { // [Funcionamento]: Se o mês ainda não foi preparado na tabela de acúmulo, inicializa a ficha dele zerada.
+      if (!groups[key]) { // [Funcionamento]: If o mês ainda não foi preparado na tabela de acúmulo, inicializa a ficha dele zerada.
         groups[key] = { // [Funcionamento]: Define a estrutura interna de propriedades que os gráficos do Recharts precisam ler.
           label: key, // [Funcionamento]: Define o nome do mês que vai aparecer embaixo da coluna no gráfico.
           monthIdx: mIdx, // [Funcionamento]: Guarda a posição do mês para ordenar a linha cronológica mais tarde.
@@ -67,7 +67,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
       const g = groups[key]; // [Funcionamento]: Aponta para a gaveta do mês corrente para injetar as somas matemáticas.
 
       Object.entries(ev.counts || {}).forEach(([id, data]) => { // [Funcionamento]: Abre o mapa fatiado de contagens de instrumentos gravado dentro do documento do Firestore.
-        if (id.startsWith('meta_')) return; // [Funcionamento]: Se a chave for de metadados técnicos de configuração da tela, pula e ignora ela.
+        if (id.startsWith('meta_')) return; // [Funcionamento]: If a chave for de metadados técnicos de configuração da tela, pula e ignora ela.
         
         const tot = Number(data.total) || 0; // [Funcionamento]: Captura o campo [total] enviado pelo chip do celular e força conversão para número seguro.
         const com = Number(data.comum) || 0; // [Funcionamento]: Captura o campo [comum] de músicos da casa e trata valores nulos.
@@ -75,14 +75,14 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
         const vis = Math.max(0, tot - com); // [Funcionamento]: Regra de Ouro do seu banco: Visitas é rigorosamente o campo [total] menos o campo [comum].
         const saneId = legacyMap[id] || id.toLowerCase(); // [Funcionamento]: Higieniza a ID do instrumento cruzando com a tabela de tradução para evitar duplicados tortos.
 
-        if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { // [Funcionamento]: Identifica se a linha processada pertence ao grupo coral da irmandade sentada.
+        if (sec === 'IRMANDADE' || sec === 'CORAL' || saneId === 'coral' || saneId === 'irmandade') { // [Funcionamento]: Identifica if a linha processada pertence ao grupo coral da irmandade sentada.
           const irmaosCount = Number(data.irmaos) || 0; // [Funcionamento]: Captura irmãos do coral.
           const irmasCount = Number(data.irmas) || 0; // [Funcionamento]: Captura irmãs do coral.
           g.irmaos += irmaosCount; // [Funcionamento]: Acumula a quantidade de irmãos na propriedade mensal correspondente.
           g.irmas += irmasCount; // [Funcionamento]: Acumula a quantidade de irmãs na propriedade mensal correspondente.
           tI += (irmaosCount + irmasCount); // [Funcionamento]: Soma ambos e joga o resultado direto no Big Number global do topo da página.
         } 
-        else if (sec === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { // [Funcionamento]: Identifica se a linha processada pertence à categoria das organistas da bancada.
+        else if (sec === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { // [Funcionamento]: Identifica if a linha processada pertence à categoria das organistas da bancada.
           g.organistas += com; // [Funcionamento]: Soma as organistas da casa na propriedade mensal.
           g.organistasV += vis; // [Funcionamento]: Soma as organistas visitantes na propriedade mensal.
           tO += tot; // [Funcionamento]: Alimenta o Big Number global de organistas com o total acumulado presente.
@@ -92,11 +92,16 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
           g.visitaTotalAcumulada += vis; // [Funcionamento]: Adiciona o valor derivado [total - comum] na sacola mensal de visitas.
           tM += com; // [Funcionamento]: O card "Orquestra Ativa" do topo foca estritamente nos músicos do corpo estável da casa.
 
-          if (sec === 'CORDAS' || ['violino', 'viola', 'violoncelo'].includes(saneId)) { // [Funcionamento]: Classifica o instrumento dentro do naipe de cordas da orquestra.
+          if (sec === 'CORDAS' || ['violino', 'viola', 'violoncelo', 'contrabaixo'].includes(saneId)) { // [Funcionamento]: Classifica o instrumento dentro do naipe de cordas da orquestra.
             g.cordas += com; // [Funcionamento]: Acumula a contagem de cordas locais no mês.
             g.cordasV += vis; // [Funcionamento]: Acumula a contagem de cordas visitantes no mês.
           }
-          else if (sec.includes('MADEIRA') || sec.includes('SAX') || ['flauta', 'clarinete', 'oboe', 'fagote', 'claronealto', 'claronebaixo', 'corneingles', 'saxalto', 'saxtenor', 'saxsoprano', 'saxbaritono'].includes(saneId)) { // [Funcionamento]: Classifica o instrumento dentro do naipe de madeiras ou palhetas.
+          // 🚀 ALTERAÇÃO SOLICITADA (RADAR ISOLADO DE SAXOFONES): Separa os Saxofones de forma independente antes que caiam no bolo de madeiras!
+          else if (sec.includes('SAX') || ['saxalto', 'saxtenor', 'saxsoprano', 'saxbaritono'].includes(saneId) || saneId.startsWith('sax')) { // [Funcionamento]: Identifica se é do naipe exclusivo de palhetas cônicas de metal.
+            g.madeiras += com; // [Funcionamento]: Agrupa o volume dos Saxofones dentro da categoria de palhetas/madeiras conforme as regras do gráfico consolidado.
+            g.madeirasV += vis; // [Funcionamento]: Agrupa o volume de Saxofones visitantes na propriedade mensal correspondente.
+          }
+          else if (sec.includes('MADEIRA') || ['flauta', 'clarinete', 'oboe', 'fagote', 'claronealto', 'claronebaixo', 'corneingles'].includes(saneId)) { // [Funcionamento]: Classifica o instrumento dentro do naipe de madeiras de sopro tradicionais.
             g.madeiras += com; // [Funcionamento]: Acumula a contagem de madeiras locais no mês.
             g.madeirasV += vis; // [Funcionamento]: Acumula a contagem de madeiras visitantes no mês.
           }
@@ -113,12 +118,12 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
 
       ev.ata?.partes?.forEach((p, idx) => { // [Funcionamento]: Varre o array de blocos e partes liturgicas preenchidas na ata da secretaria.
         p.hinos?.forEach(h => { // [Funcionamento]: Passa pente fino na sub-lista de hinos coletados de cada parte.
-          if (h && h.trim() !== "") { // [Funcionamento]: Verifica se o slot do hino possui um número preenchido e limpa espaços vazios.
+          if (h && h.trim() !== "") { // [Funcionamento]: Verifica if o slot do hino possui um número preenchido e limpa espaços vazios.
             const hNum = h.trim(); // [Funcionamento]: Isola a string limpa do número do hino (ex: "h244" ou "244").
             hinosMap[hNum] = (hinosMap[hNum] || 0) + 1; // [Funcionamento]: Incrementa o ranking de repetição daquele número no dicionário litúrgico.
             tH++; // [Funcionamento]: Incrementa o Big Number global de hinos cantados no topo.
             g.hTotal++; // [Funcionamento]: Soma no volume total de hinos cantados no mês para o Recharts.
-            if (idx === 0) g.h1++; else if (idx === 1) g.h2++; // [Funcionamento]: Classifica se o hino foi entoado na abertura (1ª parte) ou no encerramento (2ª parte).
+            if (idx === 0) g.h1++; else if (idx === 1) g.h2++; // [Funcionamento]: Classifica if o hino foi entoado na abertura (1ª parte) ou no encerramento (2ª parte).
           }
         });
       });
@@ -129,7 +134,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
         cityMap[(v.cidadeUf || "N/I").toUpperCase().trim()] = (cityMap[(v.cidadeUf || "N/I").toUpperCase().trim()] || 0) + 1; // [Funcionamento]: Contabiliza a cidade e o estado de origem do visitante na tabela geográfica.
         bairroMap[(v.bairro || "N/I").toUpperCase().trim()] = (bairroMap[(v.bairro || "N/I").toUpperCase().trim()] || 0) + 1; // [Funcionamento]: Contabiliza o bairro de origem do visitante para o carrossel de mapas.
         
-        if (cargo.includes('ENCARREGADO')) { // [Funcionamento]: Verifica de forma estrita em letras maiúsculas se o visitante possui a palavra ENCARREGADO no cargo.
+        if (cargo.includes('ENCARREGADO')) { // [Funcionamento]: Verifica de forma estrita em letras maiúsculas if o visitante possui a palavra ENCARREGADO no cargo.
           tEnc++; // [Funcionamento]: Incrementa o Big Number de condutores no topo do dashboard.
           g.condutoresVisitas++; // [Funcionamento]: Alimenta especificamente a gaveta de condutores visitantes do mês corrente.
         }
@@ -141,7 +146,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
       });
 
       ev.ata?.presencaLocalFull?.forEach(p => { // [Funcionamento]: Abre a sub-lista de presenças fixas salvas da irmandade do corpo local.
-        if ((p.role || "").toUpperCase().includes('ENCARREGADO')) { // [Funcionamento]: Checa se o irmão da casa possui o papel ou atribuição de ENCARREGADO.
+        if ((p.role || "").toUpperCase().includes('ENCARREGADO')) { // [Funcionamento]: Checa if o irmão da casa possui o papel ou attribution de ENCARREGADO.
           tEnc++; // [Funcionamento]: Incrementa o Big Number global de condutores unificados do topo.
           g.condutoresLocais++; // [Funcionamento]: Alimenta especificamente a gaveta de condutores locais da casa daquele mês.
         }
@@ -162,7 +167,7 @@ export const useDashAnalytics = (events, filterType, selectedYear, subFilter) =>
           ...g, // [Funcionamento]: Mantém todas as propriedades fatiadas de naipes e hinos intactas.
           totalOrq: g.comumTotalAcumulado, // [Funcionamento]: Vincula a soma dos músicos da casa na propriedade antiga.
           visitaOrq: g.visitaTotalAcumulada, // [Funcionamento]: Vincula a soma do cálculo de visitas derivado.
-          // 🚀 CONEXÃO CIRÚRGICA DE CHAVES: Força a injeção dos nomes exatos de dados esperados pelo gráfico de linhas mestre
+          // [Funcionamento]: Força a injeção dos nomes exatos de dados esperados pelo gráfico de linhas mestre
           name: g.label, // [Funcionamento]: Replica o rótulo do mês na chave name.
           orquestra: totalOrquestraDoMes, // [Funcionamento]: Injeta o gomo consolidado completo da orquestra presente.
           público: publicoGeralEstimado > 0 ? publicoGeralEstimado : Math.round(totalOrquestraDoMes * 1.8) // [Funcionamento]: Injeta o gomo de público estimado ou aplica proporção estatística segura.

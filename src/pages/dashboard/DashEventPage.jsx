@@ -1,80 +1,80 @@
-import React, { useMemo, useState, useEffect } from 'react'; // 💡 Importa as ferramentas oficiais do React para gerenciar memória, estados e efeitos de escuta.
-import { useAuth } from '../../context/AuthContext'; // 💡 Conecta ao sistema de login para ler o "Crachá Eletrônico" (Custom Claims) do usuário ativo.
-import { hasPermission } from '../../config/permissions'; // 💡 Importa a tabela de segurança para decidir quem pode exportar relatórios.
-import { pdfEventService } from '../../services/pdfEventService'; // 💡 Importa o serviço responsável por construir o documento impresso em PDF.
-import { whatsappService } from '../../services/whatsappService'; // 💡 Importa o formatador automatizado de mensagens para o WhatsApp.
-import { db } from '../../config/firebase'; // 💡 Conexão cirúrgica com o banco de dados sem requisições redundantes.
-import { collection, doc, onSnapshot } from 'firebase/firestore'; // 💡 Importa o escutador em tempo real e o direcionador de coleções do Firebase.
-import toast from 'react-hot-toast'; // 💡 Importa o sistema de balões de aviso flutuantes para a interface.
-import { LayoutGrid, ClipboardList, Scale, PieChart, FileText, Share2 } from 'lucide-react'; // 💡 Importa os ícones do menu de navegação do carrossel, o ícone de arquivo e o ícone de compartilhar.
-import { AnimatePresence, motion } from 'framer-motion'; // 💡 Motor de animação para transições suaves de deslize entre as telas.
+import React, { useMemo, useState, useEffect } from 'react'; // [Funcionamento]: Traz as ferramentas oficiais do React para gerenciar memória, estados e efeitos de escuta.
+import { useAuth } from '../../context/AuthContext'; // [Funcionamento]: Conecta ao sistema de login para ler o "Crachá Eletrônico" (Custom Claims) do usuário ativo.
+import { hasPermission } from '../../config/permissions'; // [Funcionamento]: Importa a tabela de segurança para decidir quem pode exportar relatórios.
+import { pdfEventService } from '../../services/pdfEventService'; // [Funcionamento]: Importa o serviço responsável por construir o documento impresso em PDF.
+import { whatsappService } from '../../services/whatsappService'; // [Funcionamento]: Importa o formatador automatizado de mensagens para o WhatsApp.
+import { db } from '../../config/firebase'; // [Funcionamento]: Conexão cirúrgica com o banco de dados sem requisições redundantes.
+import { collection, doc, onSnapshot } from 'firebase/firestore'; // [Funcionamento]: Importa o escutador em tempo real e o direcionador de coleções do Firebase.
+import toast from 'react-hot-toast'; // [Funcionamento]: Importa o sistema de balões de aviso flutuantes para a interface.
+import { LayoutGrid, ClipboardList, Scale, PieChart, FileText, Share2 } from 'lucide-react'; // [Funcionamento]: Importa os ícones do menu de navegação do carrossel, o ícone de arquivo e o ícone de compartilhar.
+import { AnimatePresence, motion } from 'framer-motion'; // [Funcionamento]: Motor de animation para transições suaves de deslize entre as telas.
 
 // 📦 IMPORTAÇÃO DAS 4 TELAS ESPECIALIZADAS E DESMEMBRADAS
-import ScreenGeral from './components/ScreenGeral.jsx'; // 💡 Importa a Tela 1: Cards Interativos e Gráficos Históricos.
-import ScreenPresenca from './components/ScreenPresenca.jsx'; // 💡 Importa a Tela 2: Trilho de Chamada Nominal de Presentes.
-import ScreenEquilibrio from './components/ScreenEquilibrio.jsx'; // 💡 Importa a Tela 3: Distribuição e Porcentagem de Naipes.
-import ScreenResumo from './components/ScreenResumo.jsx'; // 💡 Importa a Tela 4: Painel da Copa e Conclusão Operacional.
+import ScreenGeral from './components/ScreenGeral.jsx'; // [Funcionamento]: Importa a Tela 1: Cards Interativos e Gráficos Históricos.
+import ScreenPresenca from './components/ScreenPresenca.jsx'; // [Funcionamento]: Importa a Tela 2: Trilho de Chamada Nominal de Presentes.
+import ScreenEquilibrio from './components/ScreenEquilibrio.jsx'; // [Funcionamento]: Importa a Tela 3: Distribuição e Porcentagem de Naipes.
+import ScreenResumo from './components/ScreenResumo.jsx'; // [Funcionamento]: Importa a Tela 4: Painel da Copa e Conclusão Operacional.
 
-const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) => { // 💡 Início do componente Maestro que gerencia o painel do ensaio.
-  const { userData } = useAuth(); // 💡 Recupera o Crachá Eletrônico do usuário conectado de forma local (Custo Zero de cota).
+const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) => { // [Funcionamento]: Início do componente Maestro que gerencia o painel do ensaio.
+  const { userData } = useAuth(); // [Funcionamento]: Recupera o Crachá Eletrônico do usuário conectado de forma local (Custo Zero de cota).
   
   // 🛡️ VALIDAÇÃO DE PERMISSÃO EM TEMPO REAL
-  const canExport = hasPermission(userData, 'generate_report', ataData?.scope); // 💡 Valida se o crachá do usuário permite emitir relatórios.
+  const canExport = hasPermission(userData, 'generate_report', ataData?.scope); // [Funcionamento]: Valida se o crachá do usuário permite emitir relatórios.
 
-  const [currentScreen, setCurrentScreen] = useState('geral'); // 💡 Estado que controla qual aba do carrossel está ativa.
-  const [activeModal, setActiveModal] = useState(null); // 💡 Estado global que gerencia qual modal de Drilldown está aberto centralizado na tela.
-  const [comumFullData, setComumFullData] = useState(null); // 💡 Estado local criado para reter as informações completas de endereço físico e horários da comum.
+  const [currentScreen, setCurrentScreen] = useState('geral'); // [Funcionamento]: Estado que controla qual aba do carrossel está ativa.
+  const [activeModal, setActiveModal] = useState(null); // [Funcionamento]: Estado global que gerencia qual modal de Drilldown está aberto centralizado na tela.
+  const [comumFullData, setComumFullData] = useState(null); // [Funcionamento]: Estado local criado para reter as informações completas de endereço físico e horários da comum.
 
-  const isBasico = userData?.isBasico; // 💡 Verifica se é um usuário com acesso básico de consulta.
+  const isBasico = userData?.isBasico; // [Funcionamento]: Verifica se é um usuário com acesso básico de consulta.
 
   // 📡 PONTE REATIVA DE PRESENÇA (CAPTURA A SUBCOLEÇÃO DO FIRESTORE EM TEMPO REAL)
-  const [chamadaNominal, setChamadaNominal] = useState([]); // 💡 Estado local que guardará a lista de chamada vinda de chamada_musicos.
+  const [chamadaNominal, setChamadaNominal] = useState([]); // [Funcionamento]: Estado local que guardará a lista de chamada vinda de chamada_musicos.
 
   useEffect(() => {
-    if (!eventId) return; // 💡 Trava de segurança caso o identificador do evento não seja carregado na inicialização.
+    if (!eventId) return; // [Funcionamento]: Trava de segurança caso o identificador do evento não seja carregado na inicialização.
 
     // 🎯 Mira diretamente na subcoleção do evento atual para não misturar dados
-    const chamadaRef = collection(db, 'events_global', eventId, 'chamada_musicos');
+    const llamadaRef = collection(db, 'events_global', eventId, 'chamada_musicos'); // [Funcionamento]: Monta o caminho da subcoleção no banco.
 
     // 🏎️ Escuta reativa em tempo real com custo zero de re-consultas na navegação de abas
-    const unsubscribe = onSnapshot(chamadaRef, (snapshot) => {
-      const listaMusicos = []; // 💡 Cria a gaveta vazia temporária para receber os músicos da portaria.
-      snapshot.forEach((docSnap) => { // 💡 Varre documento por documento reativamente.
-        const dados = docSnap.data(); // 💡 Puxa o JSON puro interno do Firestore.
-        listaMusicos.push({
-          id: docSnap.id, // 💡 Carimba a ID única gerada pelo Firebase.
-          nome: dados.nome || '', // 💡 Salva o nome do irmão oficializado ou em ensaio.
-          instrumentoNome: dados.instrumentoNome || 'SOLISTA', // 💡 Resgata o nome por extenso do naipe dele.
-          presente: dados.presente === true // 💡 Força o booleano seguro
-        });
-      });
-      setChamadaNominal(listaMusicos); // 💡 Atualiza a esteira de presença dinamicamente
-    }, (error) => {
-      console.error("Erro na escuta da chamada:", error); // 💡 Emite alerta no console se houver perda de autenticação no Firebase.
-    });
+    const unsubscribe = onSnapshot(llamadaRef, (snapshot) => { // [Funcionamento]: Liga o canal reativo com o banco.
+      const listaMusicos = []; // [Funcionamento]: Cria a gaveta vazia temporária para receber os músicos da portaria.
+      snapshot.forEach((docSnap) => { // [Funcionamento]: Varre documento por documento reativamente.
+        const dados = docSnap.data(); // [Funcionamento]: Puxa o JSON puro interno do Firestore.
+        listaMusicos.push({ // [Funcionamento]: Salva os dados do músico no vetor temporário.
+          id: docSnap.id, // [Funcionamento]: Carimba a ID única gerada pelo Firebase.
+          nome: dados.nome || '', // [Funcionamento]: Salva o nome do irmão oficializado ou em ensaio.
+          instrumentoNome: dados.instrumentoNome || 'SOLISTA', // [Funcionamento]: Resgata o nome por extenso do naipe dele.
+          presente: dados.presente === true // [Funcionamento]: Força o booleano seguro
+        }); // [Funcionamento]: Fecha a inclusão de dados.
+      }); // [Funcionamento]: Termina a varredura do snapshot.
+      setChamadaNominal(listaMusicos); // [Funcionamento]: Atualiza a esteira de presença dinamicamente
+    }, (error) => { // [Funcionamento]: Captura erros na escuta do Firestore.
+      console.error("Erro na escuta da chamada:", error); // [Funcionamento]: Emite alerta no console se houver perda de autenticação no Firebase.
+    }); // [Funcionamento]: Fecha a escuta em tempo real.
 
-    return () => unsubscribe(); // 💡 Desliga a escuta ao fechar o painel para proteger a bateria e a cota de dados.
-  }, [eventId]); // 💡 Monitora re-atualizações baseadas estritamente se o ID do ensaio mudar.
+    return () => unsubscribe(); // [Funcionamento]: Desliga laço de escuta ao fechar o painel para proteger a bateria e a cota de dados.
+  }, [eventId]); // [Funcionamento]: Monitora re-atualizações baseadas estritamente se o ID do ensaio mudar.
 
   // 📡 PONTE REATIVA DE ENDEREÇO DA COMUM (BUSCA AS INFORMAÇÕES DE CADASTRO DA LOCALIDADE EM SEGUNDO PLANO)
   useEffect(() => {
-    const comumTargetId = ataData?.comumId || userData?.activeComumId || userData?.comumId; // 💡 Isola o identificador da igreja comum de forma segura.
-    if (!comumTargetId) return; // 💡 Aborta se não houver ponteiro GPS territorial disponível na RAM.
+    const comumTargetId = ataData?.comumId || userData?.activeComumId || userData?.comumId; // [Funcionamento]: Isola o identificador da igreja comum de forma segura.
+    if (!comumTargetId) return; // [Funcionamento]: Aborta se não houver ponteiro GPS territorial disponível na RAM.
 
     // 🏎️ Escuta em tempo real conectada na raiz da comum para capturar mapas de ruas e horários de cultos
-    const unsubComum = onSnapshot(doc(db, 'comuns', comumTargetId), (docSnap) => {
-      if (docSnap.exists()) { // 💡 Se a ficha cadastral da igreja existir no servidor.
-        setComumFullData({ id: docSnap.id, ...docSnap.data() }); // 💡 Despeja o endereço, CEP, rua e número salvos na RAM.
-      }
-    }, (err) => {
-      console.error("Erro ao escutar dados da comum:", err); // 💡 Registra bloqueios de portaria nas regras de segurança do Firebase.
-    });
+    const unsubComum = onSnapshot(doc(db, 'comuns', comumTargetId), (docSnap) => { // [Funcionamento]: Abre escuta no documento mestre da igreja.
+      if (docSnap.exists()) { // [Funcionamento]: Se a ficha cadastral da igreja existir no servidor.
+        setComumFullData({ id: docSnap.id, ...docSnap.data() }); // [Funcionamento]: Despeja o endereço, CEP, rua e número salvos na RAM.
+      } // [Funcionamento]: Fecha validação de existência.
+    }, (err) => { // [Funcionamento]: Captura erros de restrição de segurança.
+      console.error("Erro ao escutar dados da comum:", err); // [Funcionamento]: Registra bloqueios de portaria nas regras de segurança do Firebase.
+    }); // [Funcionamento]: Fecha o canal de monitoramento da comum.
 
-    return () => unsubComum(); // 💡 Desliga o elo de escuta geográfica ao sair do painel.
-  }, [ataData?.comumId, userData]); // 💡 Monitora as chaves de isolamento territorial do usuário ativo.
+    return () => unsubComum(); // [Funcionamento]: Desliga o elo de escuta geográfica ao sair do painel.
+  }, [ataData?.comumId, userData]); // [Funcionamento]: Monitora as chaves de isolamento territorial do usuário ativo.
 
   // ⚡ COMPILADOR MATEMÁTICO INTEGRADO (PROCESSA TUDO EM MEMÓRIA LOCAL SEM CUSTO DE COTA - DENORMALIZADO)
-  const stats = useMemo(() => { // 💡 useMemo retém os cálculos em cache e só reprocessa se os dados mudarem fisicamente.
+  const stats = useMemo(() => { // [Funcionamento]: useMemo retém os cálculos em cache e só reprocessa se os dados mudarem fisicamente.
     const totals = { 
       geral: 0, orquestra: 0, musicos: 0, organistas: 0, irmandade: 0, 
       irmaos: 0, irmas: 0, hinos: 0, visitas_total: 0, ministerio_oficio: 0,
@@ -91,219 +91,220 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
       deltaGeral: 0, deltaOrquestra: 0, deltaCoral: 0, deltaHinos: 0, deltaEncarregados: 0,
       musicosPresentesLista: chamadaNominal, 
       historicoGrafico: [] 
-    };
+    }; // [Funcionamento]: Inicializa a árvore limpa de acumuladores de BI.
 
-    if (counts) {
-      Object.entries(counts).forEach(([id, data]) => {
-        if (id.startsWith('meta_')) return;
-        const valTotal = parseInt(data.total) || 0;
-        const valComum = parseInt(data.comum) || 0;
-        const valVisita = Math.max(0, valTotal - valComum);
-        const section = (data.section || "GERAL").toUpperCase();
-        const saneId = id.toLowerCase();
+    if (counts) { // [Funcionamento]: Valida se o objeto contendo as contagens numéricas da portaria foi carregado.
+      Object.entries(counts).forEach(([id, data]) => { // [Funcionamento]: Passa uma varredura em cada uma das linhas do objeto de contagem.
+        if (id.startsWith('meta_')) return; // [Funcionamento]: Descarta linhas de configuração técnica que não representam pessoas.
+        const valTotal = parseInt(data.total) || 0; // [Funcionamento]: Captura o total de cabeças confirmadas daquele instrumento.
+        const valComum = parseInt(data.comum) || 0; // [Funcionamento]: Captura quantos são da própria igreja comum local.
+        const valVisita = Math.max(0, valTotal - valComum); // [Funcionamento]: Realiza subtração segura para isolar o número de visitantes.
+        const section = (data.section || "GERAL").toUpperCase(); // [Funcionamento]: Isola o nome da seção litúrgica mestre em maiúsculo.
+        const saneId = id.toLowerCase(); // [Funcionamento]: Normaliza a string do ID do instrumento em minúsculo.
 
-        if (saneId === 'coral' || section === 'IRMANDADE' || saneId.includes('irmandade') || saneId.includes('irmao') || saneId.includes('irma')) { 
-          const irmaosCount = parseInt(data.irmaos) || 0; 
-          const irmasCount = parseInt(data.irmas) || 0; 
-          totals.irmaos += irmaosCount; 
-          totals.irmas += irmasCount; 
-          totals.irmandade += (irmaosCount + irmasCount); 
-        } else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { 
-          totals.organistas += valTotal; 
-          totals.organistasComum += valComum;
-          totals.organistasVisita += valVisita;
-        } else { 
-          totals.musicos += valTotal; 
-          totals.musicosComum += valComum;
-          totals.musicosVisita += valVisita;
+        if (saneId === 'coral' || section === 'IRMANDADE' || saneId.includes('irmandade') || saneId.includes('irmao') || saneId.includes('irma')) {  // [Funcionamento]: Identifica se pertence ao coro ou irmandade de fileira.
+          const irmaosCount = parseInt(data.irmaos) || 0; // [Funcionamento]: Soma os irmãos homens da irmandade.
+          const irmasCount = parseInt(data.irmas) || 0; // [Funcionamento]: Soma as irmãs mulheres da irmandade.
+          totals.irmaos += irmaosCount; // [Funcionamento]: Acumula no totalizador anual de homens.
+          totals.irmas += irmasCount; // [Funcionamento]: Acumula no totalizador anual de mulheres.
+          totals.irmandade += (irmaosCount + irmasCount); // [Funcionamento]: Soma no montante de suporte geral da irmandade.
+        } else if (section === 'ORGANISTAS' || saneId === 'orgao' || saneId === 'org') { // [Funcionamento]: Identifica se o instrumento pertence ao banco do órgão eletrônico.
+          totals.organistas += valTotal; // [Funcionamento]: Acumula no bloco absoluto de organistas presentes.
+          totals.organistasComum += valComum; // [Funcionamento]: Incrementa organistas que pertencem à casa.
+          totals.organistasVisita += valVisita; // [Funcionamento]: Incrementa organistas visitantes de apoio.
+        } else { // [Funcionamento]: Se for músico de fileira orquestral (Cordas, Madeiras, Saxofones, Metais ou Teclas).
+          totals.musicos += valTotal; // [Funcionamento]: Acumula no bloco absoluto de músicos de sopro e arco.
+          totals.musicosComum += valComum; // [Funcionamento]: Soma músicos da própria comum local.
+          totals.musicosVisita += valVisita; // [Funcionamento]: Soma músicos visitantes.
 
-          if (['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo', 'contrabaixo'].includes(saneId) || section.includes('CORDA')) {
-            totals.cordas += valTotal; totals.cordasComum += valComum; totals.cordasVisita += valVisita;
-          } else if (section.includes('SAX')) {
-            totals.saxofones += valTotal; totals.saxofonesComum += valComum; totals.saxofonesVisita += valVisita;
-          } else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt', 'flauta', 'clarinete'].includes(saneId)) {
-            totals.madeiras += valTotal; totals.madeirasComum += valComum; totals.madeirasVisita += valVisita;
-          } else if (section.includes('METAI') || ['tpt', 'tbn', 'trp', 'euf', 'tub', 'trompete'].includes(saneId)) {
-            totals.metais += valTotal; totals.metaisComum += valComum; totals.metaisVisita += valVisita;
-          } else if (saneId === 'acordeon') {
-            totals.teclas += valTotal; totals.teclasComum += valComum; totals.teclasVisita += valVisita;
-          }
-        }
-      });
-    }
+          // 🚀 ALTERAÇÃO SOLICITADA (INVERSÃO DA PRECEDÊNCIA DE METAIS): Metais sobem para o topo para interceptar o Flugelhorn antes das Cordas!
+          if (section.includes('METAI') || ['tpt', 'tbn', 'trp', 'euf', 'tub', 'trompete', 'flugelhorn', 'flugel'].includes(saneId) || id.toUpperCase().includes('FLUGEL')) { // [Funcionamento]: Identifica e blinda o Flugel nos metais de bocal de forma estrita.
+            totals.metais += valTotal; totals.metaisComum += valComum; totals.metaisVisita += valVisita; // [Funcionamento]: Distribui nos sub-contadores de metais de forma isolada na RAM.
+          } else if (['vln', 'vla', 'vcl', 'violino', 'viola', 'violoncelo', 'contrabaixo'].includes(saneId) || section.includes('CORDA')) { // [Funcionamento]: Identifica se é do naipe de cordas puras de arco.
+            totals.cordas += valTotal; totals.cordasComum += valComum; totals.cordasVisita += valVisita; // [Funcionamento]: Distribui nos sub-contadores de cordas locais e de visitas.
+          } else if (section.includes('SAX')) { // [Funcionamento]: Identifica se é do naipe de saxofones.
+            totals.saxofones += valTotal; totals.saxofonesComum += valComum; totals.saxofonesVisita += valVisita; // [Funcionamento]: Distribui nos sub-contadores de saxofones.
+          } else if (section.includes('MADEIRA') || ['flt', 'clt', 'oboe', 'fgt', 'flauta', 'clarinete'].includes(saneId)) { // [Funcionamento]: Identifica se é do naipe de madeiras.
+            totals.madeiras += valTotal; totals.madeirasComum += valComum; totals.madeirasVisita += valVisita; // [Funcionamento]: Distribui nos sub-contadores de madeiras.
+          } else if (saneId === 'acordeon' || section.includes('TECLA')) { // [Funcionamento]: Verifica e acumula os acordeonistas e teclistas.
+            totals.teclas += valTotal; totals.teclasComum += valComum; totals.teclasVisita += valVisita; // [Funcionamento]: Distribui nos sub-contadores de teclas/acordeon de forma consolidada.
+          } // [Funcionamento]: Encerra sub-triagem de naipes com precedência restabelecida.
+        } // [Funcionamento]: Termina bloco condicional de categorias.
+      }); // [Funcionamento]: Fecha loop forEach de linhas de contagem.
+    } // [Funcionamento]: Fecha validação de existência de contagens.
 
-    const processarPessoasAta = (lista, isVisitante = false) => { 
-      if (!lista || !Array.isArray(lista)) return;
-      lista.forEach(p => {
-        const cargo = (p.min || p.role || "");
-        if (isVisitante) totals.visitas_total++;
+    const processarPessoasAta = (lista, isVisitante = false) => { // [Funcionamento]: Função auxiliar interna para varrer e contar o ministério de oficialato da ata.
+      if (!lista || !Array.isArray(lista)) return; // [Funcionamento]: Aborta se a lista nominal vier vazia.
+      lista.forEach(p => { // [Funcionamento]: Percorre pessoa por pessoa da lista de ministério.
+        const cargo = (p.min || p.role || ""); // [Funcionamento]: Pesca o cargo carimbado na ficha eletrônica do irmão.
+        if (isVisitante) totals.visitas_total++; // [Funcionamento]: Se a flag marcar verdadeiro, incrementa o totalizador geral de visitantes.
         
-        if (cargo === 'Encarregado Regional') {
-          if (isVisitante) totals.encRegionalVisita++; else totals.encRegionalComum++;
-        }
-        if (cargo === 'Encarregado Local') {
-          if (isVisitante) totals.encLocalVisita++; else totals.encLocalComum++;
-        }
-        if (cargo === 'Examinadora') {
-          if (isVisitante) totals.examinadorasVisita++; else totals.examinadorasComum++;
-          totals.examinadorasTotal++;
-        }
-        if (['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM'].includes(cargo)) {
-          totals.ministerio_oficio++;
-        }
-      });
-    };
+        if (cargo === 'Encarregado Regional') { // [Funcionamento]: Identifica se é encarregado regional.
+          if (isVisitante) totals.encRegionalVisita++; else totals.encRegionalComum++; // [Funcionamento]: Acumula na gaveta correspondente de comarca.
+        } // [Funcionamento]: Termina checagem de regional.
+        if (cargo === 'Encarregado Local') { // [Funcionamento]: Identifica se é encarregado de orquestra local.
+          if (isVisitante) totals.encLocalVisita++; else totals.encLocalComum++; // [Funcionamento]: Acumula na gaveta correspondente local.
+        } // [Funcionamento]: Termina checagem de local.
+        if (cargo === 'Examinadora') { // [Funcionamento]: Identifica se é examinadora de organistas.
+          if (isVisitante) totals.examinadorasVisita++; else totals.examinadorasComum++; // [Funcionamento]: Separa e incrementa nos blocks de examinadoras.
+          totals.examinadorasTotal++; // [Funcionamento]: Soma no montante absoluto de examinadoras na ata.
+        } // [Funcionamento]: Termina checagem de examinadora.
+        if (['Ancião', 'Diácono', 'Cooperador do Ofício', 'Cooperador RJM'].includes(cargo)) { // [Funcionamento]: Varre os cargos do Ministério de Ofício do Altar.
+          totals.ministerio_oficio++; // [Funcionamento]: Soma no totalizador de oficiais presentes.
+        } // [Funcionamento]: Termina checagem de ofício.
+      }); // [Funcionamento]: Fecha o laço forEach de pessoas.
+    }; // [Funcionamento]: Encerra função interna de processamento.
 
-    processarPessoasAta(ataData?.presencaLocalFull, false); 
-    processarPessoasAta(ataData?.visitantes, true); 
+    processarPessoasAta(ataData?.presencaLocalFull, false); // [Funcionamento]: Roda o processamento de oficiais da casa.
+    processarPessoasAta(ataData?.visitantes, true); // [Funcionamento]: Roda o processamento de oficiais visitantes de outras comuns.
 
-    totals.orquestra = totals.musicos + totals.organistas; 
-    totals.geral = totals.orquestra + totals.irmandade; 
-    totals.encTotal = totals.encRegionalComum + totals.encRegionalVisita + totals.encLocalComum + totals.encLocalVisita; 
+    totals.orquestra = totals.musicos + totals.organistas; // [Funcionamento]: Realiza a soma litúrgica unindo músicos de fileira e as irmãs organistas.
+    totals.geral = totals.orquestra + totals.irmandade; // [Funcionamento]: Realiza a soma do público geral unindo a orquestra e a irmandade sentada no coro/bancos.
+    totals.encTotal = totals.encRegionalComum + totals.encRegionalVisita + totals.encLocalComum + totals.encLocalVisita; // [Funcionamento]: Totaliza todos os encarregados de orquestra presentes.
 
-    if (ataData?.partes) { 
-      const p1Obj = ataData.partes.find(p => p.label?.includes('1ª') || p.id === 'parte_1');
-      if (p1Obj) totals.hinosP1 = p1Obj.hinos?.filter(h => h && h.trim() !== '') || [];
-      const p2Obj = ataData.partes.find(p => p.label?.includes('2ª') || p.id === 'parte_2');
-      if (p2Obj) totals.hinosP2 = p2Obj.hinos?.filter(h => h && h.trim() !== '') || [];
-      totals.hinos = totals.hinosP1.length + totals.hinosP2.length;
-    }
+    if (ataData?.partes) { // [Funcionamento]: Verifica se o array contendo os hinos tocados nas partes do ensaio está preenchido.
+      const p1Obj = ataData.partes.find(p => p.label?.includes('1ª') || p.id === 'parte_1'); // [Funcionamento]: Localiza o bloco correspondente à primeira parte do ensaio.
+      if (p1Obj) totals.hinosP1 = p1Obj.hinos?.filter(h => h && h.trim() !== '') || []; // [Funcionamento]: Filtra e guarda os números de hinos limpos tocados na 1ª parte.
+      const p2Obj = ataData.partes.find(p => p.label?.includes('2ª') || p.id === 'parte_2'); // [Funcionamento]: Localiza o bloco correspondente à segunda parte do ensaio.
+      if (p2Obj) totals.hinosP2 = p2Obj.hinos?.filter(h => h && h.trim() !== '') || []; // [Funcionamento]: Filtra e guarda os números de hinos limpos tocados na 2ª parte.
+      totals.hinos = totals.hinosP1.length + totals.hinosP2.length; // [Funcionamento]: Soma o comprimento dos dois vetores fixando o total de hinos ensaiados.
+    } // [Funcionamento]: Termina a extração de hinologia.
 
-    if (allEvents && allEvents.length > 0 && ataData?.comumId) {
-      const atualCreatedAt = ataData?.createdAt || Date.now();
+    if (allEvents && allEvents.length > 0 && ataData?.comumId) { // [Funcionamento]: Sensor de histórico: se houver outros relatórios guardados, inicia os cálculos de gráficos.
+      const atualCreatedAt = ataData?.createdAt || Date.now(); // [Funcionamento]: Isola o marcador de milissegundos do ensaio atual para servir de barreira cronológica.
 
-      const eventos2026 = allEvents 
-        .filter(ev => ev.comumId === ataData.comumId && ev.createdAt && ev.createdAt <= atualCreatedAt) 
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); 
+      const eventos2026 = allEvents // [Funcionamento]: Filtra a coleção global de relatórios.
+        .filter(ev => ev.comumId === ataData.comumId && ev.createdAt && ev.createdAt <= atualCreatedAt) // [Funcionamento]: Puxa apenas relatórios da mesma igreja e que aconteceram antes do ensaio atual.
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); // [Funcionamento]: Ordena do mais antigo para o mais recente para alinhar a linha do gráfico.
 
-      eventos2026.forEach((ev) => {
-        let totalEv = 0; let orqEv = 0; let comEv = 0; let visEv = 0;
-        if (ev.counts) {
-          Object.entries(ev.counts).forEach(([id, d]) => {
-            if (id.startsWith('meta_')) return;
-            const t = parseInt(d.total) || 0;
-            const c = parseInt(d.comum) || 0;
-            const s = (d.section || "").toUpperCase();
-            const sid = id.toLowerCase();
+      eventos2026.forEach((ev) => { // [Funcionamento]: Varre ensaio por ensaio do histórico encontrado para montar as coordenadas do gráfico.
+        let totalEv = 0; let orqEv = 0; let comEv = 0; let visEv = 0; // [Funcionamento]: Inicializa mini-acumuladores locais para a linha ativa.
+        if (ev.counts) { // [Funcionamento]: Valida se o relatório antigo possui as linhas de contagem preenchidas.
+          Object.entries(ev.counts).forEach(([id, d]) => { // [Funcionamento]: Destrincha o dicionário antigo em pares de chave e valor.
+            if (id.startsWith('meta_')) return; // [Funcionamento]: Descarta linhas de cabeçalhos técnicos.
+            const t = parseInt(d.total) || 0; // [Funcionamento]: Captura total absoluto do instrumento.
+            const c = parseInt(d.comum) || 0; // [Funcionamento]: Captura total de músicos da casa da época.
+            const s = (d.section || "").toUpperCase(); // [Funcionamento]: Normaliza seção em maiúsculo.
+            const sid = id.toLowerCase(); // [Funcionamento]: Normaliza ID em minúsculo.
             
-            if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) {
-              totalEv += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0));
-            } else {
-              totalEv += t;
-              orqEv += t;
-              comEv += c; 
-              visEv += Math.max(0, t - c); 
-            }
-          });
-        }
-        const dataFormatada = ev.date ? new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : '---'; 
+            if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) { // [Funcionamento]: Identifica irmandade antiga.
+              totalEv += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0)); // [Funcionamento]: Soma homens e mulheres antigos no total do público.
+            } else { // [Funcionamento]: Era músico de fileira ou organista no ensaio antigo.
+              totalEv += t; // [Funcionamento]: Soma no público geral daquele mês histórico.
+              orqEv += t; // [Funcionamento]: Acumula no tamanho antigo da orquestra.
+              comEv += c; // [Funcionamento]: Acumula quantos eram da casa naquele ensaio.
+              visEv += Math.max(0, t - c); // [Funcionamento]: Isola e acumula os visitantes de apoio da época.
+            } // [Funcionamento]: Termina condicional de agrupamento histórico.
+          }); // [Funcionamento]: Termina loop de contagens antigas.
+        } // [Funcionamento]: Termina verificação de existência.
+        const dataFormatada = ev.date ? new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : '---'; // [Funcionamento]: Converte data técnica em mês abreviado de 3 letras (ex: 'jul').
         totals.historicoGrafico.push({
-          name: dataFormatada.toUpperCase().replace('.', ''),
-          público: totalEv,
-          orquestra: orqEv,
-          orquestraComum: comEv, 
-          visitantesApoio: visEv  
-        });
-      });
+          name: dataFormatada.toUpperCase().replace('.', ''), // [Funcionamento]: Remove pontos e padroniza em caixa alta (ex: 'JUL').
+          público: totalEv, // [Funcionamento]: Eixo Y: Volume total de público daquela data antiga.
+          orquestra: orqEv, // [Funcionamento]: Eixo Y: Tamanho da orquestra antiga.
+          orquestraComum: comEv, // [Funcionamento]: Eixo Y: Tamanho dos músicos locais antigos.
+          visitantesApoio: visEv  // [Funcionamento]: Eixo Y: Tamanho dos visitantes antigos.
+        }); // [Funcionamento]: Fecha o push de coordenadas.
+      }); // [Funcionamento]: Encerra laço forEach de ensaios passados.
 
-      if (!eventos2026.some(e => e.id === eventId)) {
+      if (!eventos2026.some(e => e.id === eventId)) { // [Funcionamento]: Proteção de segurança: se o ensaio atual acabou de ser criado e não entrou na lista, injeta uma coordenada final.
         totals.historicoGrafico.push({ 
           name: 'ATUAL', 
           público: totals.geral, 
           orquestra: totals.orquestra,
           orquestraComum: totals.musicosComum + totals.organistasComum,
           visitorsApoio: totals.musicosVisita + totals.organistasVisita
-        });
-      }
+        }); // [Funcionamento]: Fecha inclusão do ponto atual.
+      } // [Funcionamento]: Encerra barreira protetora do gráfico.
 
-      const ensaiosPassados = allEvents
-        .filter(ev => ev.comumId === ataData.comumId && ev.id !== eventId && ev.createdAt && ev.createdAt < atualCreatedAt) 
-        .sort((a, b) => (a.createdAt || 0) - (a.createdAt || 0)); 
+      const ensaiosPassados = allEvents // [Funcionamento]: Filtra novamente para descobrir o ensaio que aconteceu imediatamente antes deste.
+        .filter(ev => ev.comumId === ataData.comumId && ev.id !== eventId && ev.createdAt && ev.createdAt < atualCreatedAt) // [Funcionamento]: Isola relatórios passados excluindo o atual.
+        .sort((a, b) => (a.createdAt || 0) - (a.createdAt || 0)); // [Funcionamento]: Ordenação cronológica.
 
-      const uEnsaio = ensaiosPassados[0]; 
-      if (uEnsaio) {
-        let uOrq = 0; let uCoral = 0; let uHinos = 0; let uEnc = 0; 
+      const uEnsaio = ensaiosPassados[0]; // [Funcionamento]: Captura o documento do ensaio anterior imediato.
+      if (uEnsaio) { // [Funcionamento]: Se houver um ensaio anterior para podermos tirar a diferença de BI (Delta).
+        let uOrq = 0; let uCoral = 0; let uHinos = 0; let uEnc = 0; // [Funcionamento]: Inicializa acumuladores do ensaio passado.
         
-        if (uEnsaio.counts) { 
-          Object.entries(uEnsaio.counts).forEach(([id, d]) => {
-            if (id.startsWith('meta_')) return;
-            const t = parseInt(d.total) || 0;
-            const s = (d.section || "").toUpperCase();
-            const sid = id.toLowerCase();
+        if (uEnsaio.counts) { // [Funcionamento]: Varre as contagens do ensaio anterior.
+          Object.entries(uEnsaio.counts).forEach(([id, d]) => { // [Funcionamento]: Triagem de chaves e valores.
+            if (id.startsWith('meta_')) return; // [Funcionamento]: Ignora linhas de metadados.
+            const t = parseInt(d.total) || 0; // [Funcionamento]: Total do instrumento.
+            const s = (d.section || "").toUpperCase(); // [Funcionamento]: Seção em maiúsculo.
+            const sid = id.toLowerCase(); // [Funcionamento]: ID em minúsculo.
             
-            if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) {
-              uCoral += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0)); 
-            } else {
-              uOrq += t; 
-            }
-          });
-        }
+            if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) { // [Funcionamento]: Identifica irmandade anterior.
+              uCoral += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0)); // [Funcionamento]: Soma homens e mulheres anteriores.
+            } else { // [Funcionamento]: Era orquestra no ensaio anterior.
+              uOrq += t; // [Funcionamento]: Soma no montante da orquestra anterior.
+            } // [Funcionamento]: Termina condicional de naipe anterior.
+          }); // [Funcionamento]: Termina loop de contagens passadas.
+        } // [Funcionamento]: Termina checagem de existência anterior.
         
-        if (uEnsaio.partes) {
-          uHinos = uEnsaio.partes.reduce((acc, p) => acc + (p.hinos?.filter(h => h && h.trim() !== '').length || 0), 0);
-        }
+        if (uEnsaio.partes) { // [Funcionamento]: Calcula quantos hinos foram tocados no ensaio anterior.
+          uHinos = uEnsaio.partes.reduce((acc, p) => acc + (p.hinos?.filter(h => h && h.trim() !== '').length || 0), 0); // [Funcionamento]: Soma o comprimento dos vetores de hinos antigos.
+        } // [Funcionamento]: Termina hinologia antiga.
         
-        const contarEncAntigo = (lista) => {
-          if (!lista) return;
-          lista.forEach(p => {
-            if (['Encarregado Regional', 'Encarregado Local', 'Examinadora'].includes(p.min || p.role)) uEnc++;
-          });
-        };
-        contarEncAntigo(uEnsaio.ata?.presencaLocalFull);
-        contarEncAntigo(uEnsaio.ata?.visitantes);
+        const contarEncAntigo = (lista) => { // [Funcionamento]: Mini-função interna para somar oficiais da ata anterior.
+          if (!lista) return; // [Funcionamento]: Aborta se a lista nominal antiga estiver vazia.
+          lista.forEach(p => { // [Funcionamento]: Varre oficiais antigos.
+            if (['Encarregado Regional', 'Encarregado Local', 'Examinadora'].includes(p.min || p.role)) uEnc++; // [Funcionamento]: Incrementa se bater com os cargos de liderança.
+          }); // [Funcionamento]: Termina loop.
+        }; // [Funcionamento]: Fecha escopo do método interno.
+        contarEncAntigo(uEnsaio.ata?.presencaLocalFull); // [Funcionamento]: Roda para oficiais da casa antigos.
+        contarEncAntigo(uEnsaio.ata?.visitantes); // [Funcionamento]: Roda para oficiais visitantes antigos.
 
-        totals.deltaGeral = totals.geral - (uOrq + uCoral); 
-        totals.deltaOrquestra = totals.orquestra - uOrq; 
-        totals.deltaCoral = totals.irmandade - uCoral; 
-        totals.deltaHinos = totals.hinos - uHinos; 
-        totals.deltaEncarregados = totals.encTotal - uEnc; 
-      }
-    }
+        totals.deltaGeral = totals.geral - (uOrq + uCoral); // [Funcionamento]: Calcula o balanço comparativo do público geral (Atual menos Anterior).
+        totals.deltaOrquestra = totals.orquestra - uOrq; // [Funcionamento]: Calcula o balanço comparativo de crescimento ou queda da orquestra.
+        totals.deltaCoral = totals.irmandade - uCoral; // [Funcionamento]: Calcula o balanço comparativo da irmandade sentada.
+        totals.deltaHinos = totals.hinos - uHinos; // [Funcionamento]: Calcula a diferença de hinos ensaiados comparado ao mês passado.
+        totals.deltaEncarregados = totals.encTotal - uEnc; // [Funcionamento]: Calcula a diferença de liderança presente comparado ao mês passado.
+      } // [Funcionamento]: Termina bloco lógico de cálculo do Delta.
+    } // [Funcionamento]: Termina barreira protetora do sensor histórico.
 
-    return totals; 
-  }, [counts, ataData, allEvents, eventId, chamadaNominal]);
+    return totals; // [Funcionamento]: Devolve a árvore de resultados matemáticos higienizada para o cache da tela.
+  }, [counts, ataData, allEvents, eventId, chamadaNominal]); // [Funcionamento]: Recalcula o useMemo unicamente se dados físicos mudarem nas conexões do Firebase.
 
   // 🎯 CORREÇÃO DE PONTE COMPACTA DE LANCHES (WHATSAPP): Aciona o método real de montagem de strings
-  const handleShareLanche = () => {
-    if (!counts) return toast.error('Dados de contagem indisponíveis'); // 💡 Bloqueia se o barramento estiver vazio.
-    if (whatsappService && typeof whatsappService.obterTextoAlimentacao === 'function') { // 💡 Valida se a função de strings está pronta.
-      const msg = whatsappService.obterTextoAlimentacao({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // 🚀 Compila o texto oficial do lanche da portaria.
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // 🚀 Dispara no navegador para o celular abrir o App.
-    } else {
-      toast.error('Serviço de compartilhamento pendente de carregamento'); // 💡 Mensagem de fallback seguro.
-    }
-  };
+  const handleShareLanche = () => { // [Funcionamento]: Rotina acionada no clique do ícone de compartilhar lanches da Copa.
+    if (!counts) return toast.error('Dados de contagem indisponíveis'); // [Funcionamento]: Bloqueia se o barramento estiver vazio.
+    if (whatsappService && typeof whatsappService.obterTextoAlimentacao === 'function') { // [Funcionamento]: Valida se a função de strings está pronta.
+      const msg = whatsappService.obterTextoAlimentacao({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // [Funcionamento]: Compila o texto oficial do lanche da portaria.
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // [Funcionamento]: Dispara no navegador para o celular abrir o App.
+    } else { // [Funcionamento]: Se a biblioteca falhar ou não carregar.
+      toast.error('Serviço de compartilhamento pendente de carregamento'); // [Funcionamento]: Mensagem de fallback seguro.
+    } // [Funcionamento]: Termina tratamento de envio.
+  }; // [Funcionamento]: Fecha método de lanches.
 
   // 🎯 CORREÇÃO DE PONTE COMPACTA ESTATÍSTICA (WHATSAPP): Aciona o método real de montagem de strings
-  const handleShareEstatistico = () => {
-    if (!counts) return toast.error('Dados estatísticos indisponíveis'); // 💡 Bloqueia se a volumetria estiver vazia.
-    if (whatsappService && typeof whatsappService.obterTextoEstatistico === 'function') { // 💡 Valida se a função de strings está pronta.
-      const msg = whatsappService.obterTextoEstatistico({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // 🚀 Compila o texto estatístico oficial.
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // 🚀 Dispara no navegador para o celular abrir o App.
-    } else {
-      toast.error('Serviço estatístico pendente de carregamento'); // 💡 Mensagem de fallback seguro.
-    }
-  };
+  const handleShareEstatistico = () => { // [Funcionamento]: Rotina acionada no clique do botão de exportação estatística do WhatsApp.
+    if (!counts) return toast.error('Dados estatísticos indisponíveis'); // [Funcionamento]: Bloqueia se a volumetria estiver vazia.
+    if (whatsappService && typeof whatsappService.obterTextoEstatistico === 'function') { // [Funcionamento]: Valida se a função de strings está pronta.
+      const msg = whatsappService.obterTextoEstatistico({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // [Funcionamento]: Compila o texto estatístico oficial.
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // [Funcionamento]: Dispara no navegador para o celular abrir o App.
+    } else { // [Funcionamento]: Caso o arquivo de serviço falte na inicialização.
+      toast.error('Serviço estatístico pendente de carregamento'); // [Funcionamento]: Mensagem de fallback seguro.
+    } // [Funcionamento]: Termina tratamento estatístico.
+  }; // [Funcionamento]: Fecha método estatístico.
 
   // 🎯 CORREÇÃO DE PONTE DO PDF ORIGINAL: Conecta diretamente ao método 'generateAtaEnsaio' descoberto no arquivo
-  const handleGeneratePDF = async () => {
-    try {
-      if (pdfEventService && typeof pdfEventService.generateAtaEnsaio === 'function') { // 💡 Valida o nome exato do método da classe.
-        // 🚀 CORREÇÃO CIRÚRGICA DA ADEQUAÇÃO REATIVA: Passamos o estado 'comumFullData' como o 5º argumento para injetar o endereço correto (rua, número e bairro) no rodapé do PDF, contornando strings vazias antigas.
-        await pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, comumFullData || ataData); 
-        toast.success('PDF gerado com sucesso!'); // 💡 Balão informativo de sucesso.
-      } else {
-        toast.error('Serviço de PDF pendente de carregamento'); // 💡 Alerta caso a função falte.
-      }
-    } catch (error) {
-      console.error(error); // 💡 Registra o rastro do erro no log.
-      toast.error('Erro ao gerar relatório em PDF'); // 💡 Balão informativo de erro na compilação.
-    }
-  };
+  const handleGeneratePDF = async () => { // [Funcionamento]: Método acionado para compilar e disparar the download do relatório impresso da ata de ensaio.
+    try { // [Funcionamento]: Inicia bloco de segurança.
+      if (pdfEventService && typeof pdfEventService.generateAtaEnsaio === 'function') { // [Funcionamento]: Valida o nome exato do método da classe.
+        // [Funcionamento]: Passamos o estado 'comumFullData' como o 5º argumento para injetar o endereço correto (rua, número e bairro) no rodapé do PDF, contornando strings vazias antigas.
+        await pdfEventService.generateAtaEnsaio(stats, ataData, userData, counts, comumFullData || ataData); // [Funcionamento]: Dispara a montagem do PDF.
+        toast.success('PDF gerado com sucesso!'); // [Funcionamento]: Balão informativo de sucesso.
+      } else { // [Funcionamento]: Se o arquivo de serviço sumir da esteira.
+        toast.error('Serviço de PDF pendente de carregamento'); // [Funcionamento]: Alerta caso a função falte.
+      } // [Funcionamento]: Termina condicional de validação de método.
+    } catch (error) { // [Funcionamento]: Intercepta falhas catastróficas de compilação.
+      console.error(error); // [Funcionamento]: Registra o rastro do erro no log.
+      toast.error('Erro ao gerar relatório em PDF'); // [Funcionamento]: Balão informativo de erro na compilação.
+    } // [Funcionamento]: Encerra o bloco de tratamento de capturas.
+  }; // [Funcionamento]: Fecha método de PDF.
 
-  const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0"; // 💡 Função auxiliar de percentual.
+  const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0"; // [Funcionamento]: Função auxiliar matemática de divisão percentual com uma casa decimal fixa.
 
-  return (
+  return ( // [Funcionamento]: Palco visual mestre do painel móvel.
     <div className="space-y-4 text-slate-900 pb-24 max-w-md mx-auto px-1">
       
       {/* 👥 SEÇÃO DE TOPO DUPLA: CARD DE ALIMENTAÇÃO + BOTÃO AZUL ORIGINAL DE PDF LADO A LADO */}
@@ -311,28 +312,28 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
         
         {/* 🧳 CARD ESCURO DE ALIMENTAÇÃO: Cópia idêntica e sem alterações de 'image_53cee1.png' */}
         <div className="bg-slate-950 px-5 py-4 rounded-[2rem] shadow-xl border border-white/5 min-h-[76px] flex items-center overflow-hidden flex-1 text-left relative">
-          <div className="w-[35%] leading-none"> {/* 💡 Alinhamento textual esquerdo exato para o título da Copa. */}
-            <p className="text-[7px] font-black text-amber-500 uppercase tracking-[0.3em] mb-1 italic">Alimentação</p> {/* 💡 Tag superior dourada. */}
-            <h3 className="text-xl font-[1000] text-white uppercase italic tracking-tighter">Resumo</h3> {/* 💡 Subtítulo branco em caixa alta. */}
+          <div className="w-[35%] leading-none"> {/* [Funcionamento]: Alinhamento textual esquerdo exato para o título da Copa. */}
+            <p className="text-[7px] font-black text-amber-500 uppercase tracking-[0.3em] mb-1 italic">Alimentação</p> {/* [Funcionamento]: Tag superior dourada. */}
+            <p className="text-xl font-[1000] text-white uppercase italic tracking-tighter">Resumo</p> {/* [Funcionamento]: Subtítulo branco em caixa alta. */}
           </div>
-          <div className="w-[42%] text-center"> {/* 💡 Coluna centralizada do indicador master. */}
-            <span className="text-4xl font-[1000] text-white italic tracking-tighter leading-none">{stats.geral}</span> {/* 💡 Placar volumétrico total do evento. */}
+          <div className="w-[42%] text-center"> {/* [Funcionamento]: Coluna centralizada do indicador master. */}
+            <span className="text-4xl font-[1000] text-white italic tracking-tighter leading-none">{stats.geral}</span> {/* [Funcionamento]: Placar volumétrico total do evento. */}
           </div>
-          <div className="w-[45%] flex gap-4 border-l border-white/10 pl-4 h-10 items-center justify-end"> {/* 💡 Setor direito de sub-totais operacionais. */}
-            <div className="text-center leading-none"> {/* 💡 Caixa numérica da orquestra. */}
-              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Orq</p> {/* 💡 Legenda cinza. */}
-              <p className="text-lg font-black text-white">{stats.orquestra}</p> {/* 💡 Contagem de lanches da orquestra. */}
+          <div className="w-[45%] flex gap-4 border-l border-white/10 pl-4 h-10 items-center justify-end"> {/* [Funcionamento]: Setor direito de sub-totais operacionais. */}
+            <div className="text-center leading-none"> {/* [Funcionamento]: Caixa numérica da orquestra. */}
+              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Orq</p> {/* [Funcionamento]: Legenda cinza. */}
+              <p className="text-lg font-black text-white">{stats.orquestra}</p> {/* [Funcionamento]: Contagem de lanches da orquestra. */}
             </div>
-            <div className="text-center leading-none"> {/* 💡 Caixa numérica do coral. */}
-              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Coral</p> {/* 💡 Legenda cinza. */}
-              <p className="text-lg font-black text-white">{stats.irmandade}</p> {/* 💡 Contagem de lanches do coro. */}
+            <div className="text-center leading-none"> {/* [Funcionamento]: Caixa numérica do coral. */}
+              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Coral</p> {/* [Funcionamento]: Legenda cinza. */}
+              <p className="text-lg font-black text-white">{stats.irmandade}</p> {/* [Funcionamento]: Contagem de lanches do coro. */}
             </div>
             <button 
-              onClick={handleShareLanche} // 💡 Gatilho reativo de envio de texto estruturado para o WhatsApp.
-              className="text-emerald-500 active:scale-90 ml-1 min-w-[32px] h-8 flex items-center justify-center outline-none" // 💡 Área de clique livre de interrupções.
-              aria-label="Compartilhar Lanches" // 💡 Controle de acessibilidade de tela.
+              onClick={handleShareLanche} // [Funcionamento]: Gatilho reativo de envio de texto estruturado para o WhatsApp.
+              className="text-emerald-500 active:scale-90 ml-1 min-w-[32px] h-8 flex items-center justify-center outline-none" // [Funcionamento]: Área de clique livre de interrupções.
+              aria-label="Compartilhar Lanches" // [Funcionamento]: Controle de acessibilidade de tela.
             >
-              <Share2 size={18} /> {/* 💡 Desenho do nó gráfico verde de compartilhamento. */}
+              <Share2 size={18} /> {/* [Funcionamento]: Desenho do nó gráfico verde de compartilhamento. */}
             </button>
           </div>
         </div>
@@ -340,11 +341,11 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
         {/* ⚡ BOTÃO DE PDF ORIGINAL RESTAURADO: Alinhamento, cor, borda e texto 100% idênticos a 'image_53d665.png' */}
         {canExport && (
           <button 
-            onClick={handleGeneratePDF} // 💡 Executa a compilação do relatório impresso.
-            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex items-center justify-center gap-0.5 min-h-[76px] px-2.5 shadow-sm font-black text-[11px] uppercase tracking-wider shrink-0 outline-none layout-touch" // 🎯 DESIGN ATUALIZADO RIGOROSAMENTE CONFORME 'image_53d665.png'
+            onClick={handleGeneratePDF} // [Funcionamento]: Executa a compilação do relatório impresso.
+            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex items-center justify-center gap-0.5 min-h-[76px] px-2.5 shadow-sm font-black text-[11px] uppercase tracking-wider shrink-0 outline-none layout-touch" // [Funcionamento]: Estilização visual fiel ao painel nativo.
           >
-            <FileText size={16} className="text-blue-600" /> {/* 💡 Ícone técnico azul nativo da biblioteca Lucide. */}
-            <span className="font-extrabold tracking-tight">PDF</span> {/* 💡 Inscrição textual pura original sem reescritas. */}
+            <FileText size={16} className="text-blue-600" /> {/* [Funcionamento]: Ícone técnico azul nativo da biblioteca Lucide. */}
+            <span className="font-extrabold tracking-tight">PDF</span> {/* [Funcionamento]: Inscrição textual pura original sem reescritas. */}
           </button>
         )}
       </div>
@@ -396,14 +397,14 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
   );
 };
 
-const renderDelta = (val) => {
-  if (val === 0 || isNaN(val)) return <span className="text-slate-300 font-black text-sm select-none">―</span>;
-  const isUp = val > 0;
+const renderDelta = (val) => { // [Funcionamento]: Renderizador de diferencial numérico comparado ao ensaio do mês anterior.
+  if (val === 0 || isNaN(val)) return <span className="text-slate-300 font-black text-sm select-none">―</span>; // [Funcionamento]: Devolve traço se o valor for nulo ou empatado.
+  const isUp = val > 0; // [Funcionamento]: Define se o indicador é positivo.
   return (
     <span className={`text-[11px] font-black flex items-center select-none ${isUp ? 'text-emerald-600' : 'text-rose-600'}`}>
       {isUp ? '▲' : '▼'} {isUp ? `+${val}` : val}
     </span>
-  );
-};
+  ); // [Funcionamento]: Retorna the badge colorida verde ou vermelha apontando a flutuação.
+}; // [Funcionamento]: Fecha escopo do renderizador delta.
 
 export default DashEventPage;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // [Funcionamento]: Traz o núcleo do React e as ferramentas de gerenciamento de memória (estados) e sensores (efeitos).
+import React, { useState, useEffect, useMemo } from 'react'; // [Funcionamento]: Traz o núcleo do React e as ferramentas de gerenciamento de memória (estados) e sensores (efeitos).
 // PRESERVAÇÃO: Canais de comunicação em tempo real com o banco de dados Firebase mantidos e otimizados para corte de custos
 import { db, collection, onSnapshot, query, where } from '../../config/firebase'; // Conectores oficiais do banco Firestore para escutas macro.
 import { useDashAnalytics } from '../../hooks/useDashAnalytics'; // A calculadora matemática isolada do painel de dados.
@@ -53,7 +53,7 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
   const [listaIgrejas, setListaIgrejas] = useState([]); // Armazena a lista de comuns/igrejas mapeadas.
   
   // MATRIZ DE PODER: Transforma os seletores estáticos em Estados Reativos controlados pelos menus da Lupa
-  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || 'all'); // Estado reativo da cidade selecionada.
+  const [selectedCityId, setSelectedCityId] = useState(userData?.activeCityId || userData?.cidadeId || 'all'); // Estado reativo da cidade sniper focada.
   const [activeComumId, setActiveComumId] = useState(userData?.activeComumId || userData?.comumId || 'consolidated'); // Estado reativo da localidade selecionada.
 
   const level = (userData?.accessLevel || 'basico').toLowerCase().trim(); // Captura o nível de autoridade e força letras minúsculas para checagem segura.
@@ -161,6 +161,12 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
     });
   }, [events, subCollectionAttendance]);
 
+  // 🚀 EXTRAÇÃO DA IDENTIDADE DE FILTRO PROFUNDO (PROTETOR ANTI-PISCADA VITE): Localiza e envelopa os dados reais da Comum ativa de forma 100% segura.
+  const payloadComumEfetivoNoFoco = useMemo(() => {
+    const alvo = listaIgrejas.find(i => i.id === activeComumId); // [Funcionamento]: Pesca o documento completo da igreja selecionada na Lupa.
+    return alvo ? { comum: alvo.comum, cidadeNome: alvo.cidadeNome || "Jundiaí" } : null; // [Funcionamento]: Retorna o mapa higienizado ou nulo estável.
+  }, [activeComumId, listaIgrejas]); // [Funcionamento]: Recalcula apenas se a seleção de localidade mudar no topo.
+
   const mesesRef = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
   if (loading && events.length === 0) return <div className="h-screen flex items-center justify-center font-black text-slate-500 animate-pulse uppercase text-xs tracking-wider">Sincronizando Painel...</div>;
@@ -216,7 +222,13 @@ const DashPage = ({ userData }) => { // Inicia a tela principal do Dashboard rec
 
           {activeTab === 'chamada' && (
             <motion.div key="chamada" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} transition={{ duration: 0.12 }} className="w-full">
-              <LocalAttendanceList events={eventsWithAttendanceInjected} userLevel={level} />
+              {/* 🚀 COMBINAÇÃO DE SEGURANÇA MESTRE: Acopla os dados cronológicos e os payloads de foco estruturados para o PDF processar sem travar */}
+              <LocalAttendanceList 
+                events={eventsWithAttendanceInjected} 
+                userLevel={level} 
+                comumDataSelected={payloadComumEfetivoNoFoco} 
+                anoFiltroAtivo={selectedYear} 
+              />
             </motion.div>
           )}
 

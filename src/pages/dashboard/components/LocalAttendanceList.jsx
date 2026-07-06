@@ -1,150 +1,191 @@
-import React, { useState, useMemo } from 'react'; // [Funcionamento]: Traz hooks do React para controle de estados e travar computações pesadas em RAM.
-import { Search, Music, UserCheck, ShieldAlert, Award, X, Percent, Lock } from 'lucide-react'; // [Funcionamento]: Ícones do Lucide para ilustrar seções, alertas, travas e botões.
-import { AnimatePresence, motion } from 'framer-motion'; // [Funcionamento]: Framer Motion para acionar transições suaves e modais premium.
+import React, { useState, useMemo, useEffect } from 'react'; // [Funcionamento]: Traz hooks do React para controle de estados, travar computações pesadas em RAM e escutar alterações.
+import { Search, Music, UserCheck, ShieldAlert, Award, X, Percent, Lock, FileText } from 'lucide-react'; // [Funcionamento]: Importa ícones vetorizados de alta qualidade para ilustrar os botões da tela.
+import { AnimatePresence, motion } from 'framer-motion'; // [Funcionamento]: Framer Motion para acionar transições suaves e modais premium na interface.
+// PRESERVAÇÃO: Conecta a biblioteca de avisos flutuantes para extinguir o ReferenceError no clique!
+import toast from 'react-hot-toast'; // [Funcionamento]: Emite alertas de sucesso ou erro no topo do aplicativo móvel.
+// PRESERVAÇÃO: Importa o serviço que processa e monta a matriz de 12 meses na folha deitada do PDF
+import { pdfPresencaAnualService } from '../../../services/pdfPresencaAnualService'; // [Funcionamento]: Serviço mestre que gera e faz o download do arquivo PDF.
 
 /**
  * COMPONENTE: LocalAttendanceList v5.2 (RESILIENT SECURITY EDITION)
- * Objetivo: Exibir o Heatmap anual condensado com iniciais de meses e validação flexível de nível de poder (gem_local).
+ * IDIOMA VISUAL: Unificado com a identidade corporativa do painel master de atas
  */
-const LocalAttendanceList = ({ events = [], userLevel = 'basico' }) => {
-  const [searchTerm, setSearchTerm] = useState(''); // Guarda a string digitada na caixa de busca por nome.
-  const [selectedSection, setSelectedSection] = useState('ALL'); // Armazena a seção de filtro ativa (Orquestra, Órgão, etc.).
-  const [selectedMusico, setSelectedMusico] = useState(null); // Controla o músico selecionado para exibição da ficha técnica no modal.
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // Ano sob análise no heatmap.
+const LocalAttendanceList = ({ events = [], userLevel = 'basico', comumDataSelected = null, anoFiltroAtivo = 2026 }) => { // [Funcionamento]: Inicializa a lista recebendo os dados filtrados do painel pai.
+  const [searchTerm, setSearchTerm] = useState(''); // [Funcionamento]: Caixa de memória para guardar o texto digitado na busca por nomes de músicos.
+  const [selectedSection, setSelectedSection] = useState('ALL'); // [Funcionamento]: Caixa de memória para controlar qual família instrumental está selecionada nas abas.
+  const [selectedMusico, setSelectedMusico] = useState(null); // [Funcionamento]: Controla qual músico foi clicado para abrir o painel com a sua ficha detalhada.
+  const [selectedYear, setSelectedYear] = useState(anoFiltroAtivo || new Date().getFullYear()); // [Funcionamento]: Inicializa o ano local baseado no filtro mestre herdado da página pai.
 
-  // 🚀 CORREÇÃO CIRÚRGICA: Transforma a checagem em busca parcial (.includes). Se contiver 'gem' ou 'local', o Victor entra na hora!
-  const isAuthorized = useMemo(() => {
-    const lvl = String(userLevel || 'basico').toLowerCase().trim();
+  // INTERCEPTADOR DE FILTRO CRONOLÓGICO PAÍ: Garante que o ano do componente mude instantaneamente se o usuário refinar a pesquisa na Lupa de cima!
+  useEffect(() => { // [Funcionamento]: Sensor reativo que monitora a chegada de novas propriedades do componente pai.
+    if (anoFiltroAtivo) { // [Funcionamento]: Valida se o ano enviado pela Lupa de cima é válido.
+      setSelectedYear(anoFiltroAtivo); // [Funcionamento]: Sobrescreve o seletor local atualizando as tabelas na tela de forma reativa.
+    } // [Funcionamento]: Fecha a verificação lógica de tempo.
+  }, [anoFiltroAtivo]); // [Funcionamento]: Dispara este sensor unicamente se o ano mestre mudar lá no topo.
+
+  // PRESERVAÇÃO: Transforma a checagem em busca parcial (.includes). Se contiver 'gem' ou 'local', o Victor entra na hora!
+  const isAuthorized = useMemo(() => { // [Funcionamento]: Bloqueia o processamento em cache para proteger o desempenho e a segurança se o usuário for inválido.
+    const lvl = String(userLevel || 'basico').toLowerCase().trim(); // [Funcionamento]: Coloca em caixa baixa e remove espaços vazios do crachá do usuário.
     return lvl.includes('master') || 
            lvl.includes('comissao') || 
            lvl.includes('regional') || 
            lvl.includes('local') || 
-           lvl.includes('gem');
-  }, [userLevel]);
+           lvl.includes('gem'); // [Funcionamento]: Retorna verdadeiro se o usuário possuir qualquer um dos cargos de liderança musical.
+  }, [userLevel]); // [Funcionamento]: Só reavalia o poder se o nível de acesso do usuário mudar.
 
   // Iniciais dos meses compactadas para o alinhamento da régua superior
-  const iniciaisMeses = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+  const iniciaisMeses = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]; // [Funcionamento]: Lista de strings com uma única letra para o cabeçalho mobile.
 
   // PROCESSAMENTO EM RAM: Transforma os ensaios do ano em uma caderneta anual matricial compacta
-  const orchestraMatrix = useMemo(() => {
-    if (!isAuthorized) return []; // Se não for autorizado, bloqueia o processamento em memória para poupar hardware.
+  const orchestraMatrix = useMemo(() => { // [Funcionamento]: Agrupa e constrói a tabela bidimensional de presenças indexada por músico.
+    if (!isAuthorized) return []; // [Funcionamento]: Se não possuir access level liberado, retorna uma lista vazia e protege o hardware.
     
-    const registry = {};
+    const registry = {}; // [Funcionamento]: Abre um dicionário vazio para agrupar as presenças por nome de irmão.
 
-    const yearEvents = events.filter(ev => {
-      if (!ev.date) return false;
-      const evYear = new Date(ev.date).getFullYear() || parseInt(ev.date.substring(0, 4));
-      return evYear === parseInt(selectedYear);
-    });
+    const yearEvents = events.filter(ev => { // [Funcionamento]: Filtra os ensaios recebidos do banco de dados salvando apenas os do ano selecionado.
+      if (!ev.date) return false; // [Funcionamento]: Descarta relatórios sem data carimbada por segurança.
+      const evYear = new Date(ev.date).getFullYear() || parseInt(ev.date.substring(0, 4)); // [Funcionamento]: Extrai o ano numérico da data do ensaio.
+      return evYear === parseInt(selectedYear); // [Funcionamento]: Compara e valida se pertence ao ano de análise activa.
+    }); // [Funcionamento]: Fecha o filtro cronológico.
 
-    yearEvents.forEach(ev => {
-      const list = ev.musicosPresentesLista || ev.ata?.presencaLocalFull || [];
-      const evMonth = ev.date ? new Date(ev.date).getMonth() : (ev.date ? parseInt(ev.date.substring(5, 7)) - 1 : -1);
+    yearEvents.forEach(ev => { // [Funcionamento]: Passa uma varredura em cada um dos ensaios encontrados no ano filtrado.
+      const list = ev.musicosPresentesLista || ev.ata?.presencaLocalFull || []; // [Funcionamento]: Localiza a lista nominal bruta de quem tocou naquele ensaio.
+      const evMonth = ev.date ? new Date(ev.date).getMonth() : (ev.date ? parseInt(ev.date.substring(5, 7)) - 1 : -1); // [Funcionamento]: Calcula o índice do mês (0 para Janeiro, 11 para Dezembro).
 
-      if (evMonth < 0 || evMonth > 11) return;
+      if (evMonth < 0 || evMonth > 11) return; // [Funcionamento]: Ignora meses corrompidos fora do limite do calendário.
 
-      list.forEach(p => {
-        if (!p || !p.nome) return; 
-        const cleanName = String(p.nome).trim();
-        if (!cleanName) return;
+      list.forEach(p => { // [Funcionamento]: Varre cada músico presente catalogado no cartão de chamada do ensaio.
+        if (!p || !p.nome) return; // [Funcionamento]: Pula registros sem identificação para não poluir os dados.
+        const cleanName = String(p.nome).trim(); // [Funcionamento]: Limpa espaços vazios nas bordas do texto.
+        if (!cleanName) return; // [Funcionamento]: Aborta se o nome do irmão vier vazio.
         
-        const instId = String(p.instrumentoId || '').toLowerCase().trim();
-        const instNome = String(p.instrumentoNome || 'SOLISTA').toUpperCase().trim();
-        let section = 'CORDAS'; 
+        const instId = String(p.instrumentoId || '').toLowerCase().trim(); // [Funcionamento]: Captura o identificador técnico da sigla do instrumento.
+        const instNome = String(p.instrumentoNome || 'SOLISTA').toUpperCase().trim(); // [Funcionamento]: Captura o nome do instrumento em letras maiúsculas.
+        let section = 'CORDAS'; // [Funcionamento]: Define as cordas como gaveta de fallback inicial da matriz.
 
-        if (instId === 'orgao' || instId === 'órgão' || instNome.includes('ORGANISTA') || instNome === 'ÓRGÃO') {
-          section = 'ÓRGÃO';
-        } else if (instId === 'acordeon' || instNome.includes('ACORDEON') || instNome.includes('TECLA')) {
-          section = 'TECLAS';
-        } else if (instId.startsWith('sax') || instNome.includes('SAX')) {
-          section = 'SAXOFONES';
+        if (instId === 'orgao' || instId === 'órgão' || instNome.includes('ORGANISTA') || instNome === 'ÓRGÃO') { // [Funcionamento]: Identifica se é organista.
+          section = 'ÓRGÃO'; // [Funcionamento]: Classifica o instrumento na família das organistas.
+        } else if (instId === 'acordeon' || instNome.includes('ACORDEON') || instNome.includes('TECLA')) { // [Funcionamento]: Filtra os acordeonistas.
+          section = 'TECLAS'; // [Funcionamento]: Separa na gaveta de teclas.
+        } else if (instId.startsWith('sax') || instNome.includes('SAX')) { // [Funcionamento]: Identifica a família dos saxofones.
+          section = 'SAXOFONES'; // [Funcionamento]: Direciona para os saxofones.
         } else if (
           ['tpt', 'tbn', 'trp', 'euf', 'tub', 'trompete', 'trombone', 'trompa', 'eufônio', 'tuba', 'flugelhorn', 'flugel'].includes(instId) || 
           instNome.includes('TROMPETE') || instNome.includes('TROMBONE') || instNome.includes('TROMPA') || 
           instNome.includes('TUBA') || instNome.includes('METAL') || instNome.includes('METAIS') || instNome.includes('EUFÔNIO')
-        ) {
-          section = 'METAIS';
+        ) { // [Funcionamento]: Filtra os metais de sopro.
+          section = 'METAIS'; // [Funcionamento]: Agrupa na gaveta dos metais.
         } else if (
           ['flt', 'clt', 'oboe', 'fgt', 'flauta', 'clarinete', 'claronealto', 'claronebaixo', 'corneingles'].includes(instId) || 
           instNome.includes('CLARINETE') || instNome.includes('FLAUTA') || instNome.includes('OBOÉ') || 
           instNome.includes('FAGOTE') || instNome.includes('MADEIRA') || instNome.includes('CLARONE')
-        ) {
-          section = 'MADEIRAS';
+        ) { // [Funcionamento]: Filtra as madeiras de sopro.
+          section = 'MADEIRAS'; // [Funcionamento]: Agrupa na gaveta das madeiras.
         } else if (
           ['vln', 'vla', 'vcl', 'cbx', 'violino', 'viola', 'violoncelo', 'contrabaixo'].includes(instId) || 
           instNome.includes('VIOLINO') || instNome.includes('VIOLA') || instNome.includes('CELLO') || 
           instNome.includes('VIOLONCELO') || instNome.includes('CONTRABAIXO') || instNome.includes('CORDA')
-        ) {
-          section = 'CORDAS';
+        ) { // [Funcionamento]: Confirma e higieniza os dados de cordas tradicionais.
+          section = 'CORDAS'; // [Funcionamento]: Fixa o músico na gaveta das cordas.
         }
 
-        if (!registry[cleanName]) {
-          registry[cleanName] = {
-            name: cleanName,
-            section: section,
-            instrument: instNome,
-            situacao: p.situacao || 'Músico Local',
-            monthsStatus: Array(12).fill(null), 
-            totalEnsaioNoAno: 0,
-            presencesCount: 0
-          };
-        }
+        if (!registry[cleanName]) { // [Funcionamento]: Se o músico ainda não foi adicionado na planilha, inicializa a ficha dele.
+          registry[cleanName] = { // [Funcionamento]: Abre o objeto estruturado com os dados cadastrais do irmão.
+            id: p.id || cleanName.toLowerCase().replace(/\s+/g, ''), // [Funcionamento]: Cria um ID de rede limpo e estável para indexar as chaves no PDF.
+            name: cleanName, // [Funcionamento]: Salva o nome próprio higienizado do componente.
+            section: section, // [Funcionamento]: Vincula a família instrumental litúrgica dele.
+            instrument: instNome, // [Funcionamento]: Grava o nome do instrumento completo por extenso.
+            situacao: p.situacao || 'Músico Local', // [Funcionamento]: Identifica a categoria do irmão (Músico Local, Visitante, GEM, etc.).
+            monthsStatus: Array(12).fill(null), // [Funcionamento]: Cria os 12 slots mensais em branco para receber presenças ou faltas.
+            totalEnsaioNoAno: 0, // [Funcionamento]: Inicializa contador vertical de meses ativos.
+            presencesCount: 0 // [Funcionamento]: Inicializa acumulador horizontal de presenças do irmão.
+          }; // [Funcionamento]: Fecha a inicialização cadastral.
+        } // [Funcionamento]: Encerra a barreira protetora.
 
-        if (registry[cleanName].monthsStatus[evMonth] === null) {
-          registry[cleanName].monthsStatus[evMonth] = false;
-        }
+        if (registry[cleanName].monthsStatus[evMonth] === null) { // [Funcionamento]: Se o mês ainda estava sem ensaios mapeados, carimba como ausente por padrão.
+          registry[cleanName].monthsStatus[evMonth] = false; // [Funcionamento]: Marca false (ausência) para auditoria subsequente.
+        } // [Funcionamento]: Fecha a verificação.
 
-        if (p.presente === true) {
-          registry[cleanName].monthsStatus[evMonth] = true;
-        }
-      });
-    });
+        if (p.presente === true) { // [Funcionamento]: Se na lista do ensaio do banco o irmão constar como presente com Toque Azul.
+          registry[cleanName].monthsStatus[evMonth] = true; // [Funcionamento]: Substitui na célula cravando true (presente verdadeiro).
+        } // [Funcionamento]: Termina a validação de presença.
+      }); // [Funcionamento]: Encerra o laço interno de músicos do ensaio ativo.
+    }); // [Funcionamento]: Encerra o laço mestre de relatórios de ensaios do ano.
 
-    return Object.values(registry).map(musico => {
-      let consecutiveAbsences = 0;
-      let maxConsecutiveAbsences = 0;
-      let monthsWithEnsaio = 0;
-      let presences = 0;
+    return Object.values(registry).map(musico => { // [Funcionamento]: Transforma o dicionário estruturado em uma lista linear JavaScript calculando os índices de BI.
+      let consecutiveAbsences = 0; // [Funcionamento]: Contador horizontal temporário de faltas seguidas.
+      let maxConsecutiveAbsences = 0; // [Funcionamento]: Registrador do recorde de faltas seguidas do irmão no ano.
+      let monthsWithEnsaio = 0; // [Funcionamento]: Contador de meses que de fato tiveram chamada nominal realizada.
+      let presences = 0; // [Funcionamento]: Contador final de presenças.
 
-      musico.monthsStatus.forEach(status => {
-        if (status !== null) {
-          monthsWithEnsaio++;
-          if (status === false) {
-            consecutiveAbsences++;
-            maxConsecutiveAbsences = Math.max(maxConsecutiveAbsences, consecutiveAbsences);
-          } else {
-            presences++;
-            consecutiveAbsences = 0; 
-          }
-        }
-      });
+      musico.monthsStatus.forEach(status => { // [Funcionamento]: Passa lendo as 12 células mensais do histórico do irmão.
+        if (status !== null) { // [Funcionamento]: Identifica se o mês teve ensaios computados.
+          monthsWithEnsaio++; // [Funcionamento]: Incrementa a base de meses ativos.
+          if (status === false) { // [Funcionamento]: Detectou uma ausência na célula.
+            consecutiveAbsences++; // [Funcionamento]: Soma mais um no contador de reincidência.
+            maxConsecutiveAbsences = Math.max(maxConsecutiveAbsences, consecutiveAbsences); // [Funcionamento]: Atualiza o recorde se quebrar a marca anterior.
+          } else { // [Funcionamento]: O irmão estava presente no ensaio naquele mês.
+            presences++; // [Funcionamento]: Incrementa o total de presenças horizontais dele.
+            consecutiveAbsences = 0; // [Funcionamento]: Zera imediatamente o contador de reincidência consecutiva (presença salvadora).
+          } // [Funcionamento]: Encerra condicional de estado de célula.
+        } // [Funcionamento]: Encerra filtro de meses vazios.
+      }); // [Funcionamento]: Fecha a varredura das 12 colunas do músico.
 
-      return {
-        ...musico,
-        presencesCount: presences,
-        totalEnsaioNoAno: monthsWithEnsaio,
-        attendanceRate: monthsWithEnsaio > 0 ? Math.round((presences / monthsWithEnsaio) * 100) : 0,
-        isEvasionRisk: maxConsecutiveAbsences >= 3 
-      };
-    }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return { // [Funcionamento]: Entrega o objeto final injetando as taxas matemáticas calculadas.
+        ...musico, // [Funcionamento]: Herda os dados de cadastro e o vetor de meses.
+        presencesCount: presences, // [Funcionamento]: Fixa a soma total de presenças do ano.
+        totalEnsaioNoAno: monthsWithEnsaio, // [Funcionamento]: Fixa o total de oportunidades de ensaios.
+        attendanceRate: monthsWithEnsaio > 0 ? Math.round((presences / monthsWithEnsaio) * 100) : 0, // [Funcionamento]: Calcula a porcentagem clássica de assiduidade individual.
+        isEvasionRisk: maxConsecutiveAbsences >= 3 // [Funcionamento]: Gatilho preditivo: marca true se o irmão acumulou 3 ou mais faltas seguidas no ano.
+      }; // [Funcionamento]: Fecha o retorno do mapeamento.
+    }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')); // [Funcionamento]: Ordena o Corpo Musical em ordem alfabética de A a Z respeitando a acentuação nativa.
 
-  }, [events, selectedYear, isAuthorized]);
+  }, [events, selectedYear, isAuthorized]); // [Funcionamento]: Recalcula a matriz inteira na RAM se novos relatórios chegarem ou o ano mudar.
 
   // Menu superior fixo com Órgão na segunda posição imediata
-  const sectionsMenu = ['ALL', 'ÓRGÃO', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS'];
+  const sectionsMenu = ['ALL', 'ÓRGÃO', 'CORDAS', 'MADEIRAS', 'SAXOFONES', 'METAIS', 'TECLAS']; // [Funcionamento]: Vetor estático que alimenta as abas de filtragem por naipes na interface.
 
   // Filtros de pesquisa em tempo real
-  const filteredMusicos = useMemo(() => {
-    return orchestraMatrix.filter(m => {
-      const matchSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchSection = selectedSection === 'ALL' || m.section === selectedSection;
-      return matchSearch && matchSection;
-    });
-  }, [orchestraMatrix, searchTerm, selectedSection]);
+  const filteredMusicos = useMemo(() => { // [Funcionamento]: Aplica os filtros combinados de busca por nome e aba instrumental na matriz da orquestra.
+    return orchestraMatrix.filter(m => { // [Funcionamento]: Varre os músicos calculando a interseção dos filtros.
+      const matchSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase()); // [Funcionamento]: Checa se o texto digitado bate com parte do nome do músico.
+      const matchSection = selectedSection === 'ALL' || m.section === selectedSection; // [Funcionamento]: Checa se a aba ativa é 'ALL' ou bate com a família do irmão.
+      return matchSearch && matchSection; // [Funcionamento]: Retorna verdadeiro unicamente se o músico passar em ambas as exigências.
+    }); // [Funcionamento]: Termina a filtragem.
+  }, [orchestraMatrix, searchTerm, selectedSection]); // [Funcionamento]: Recalcula as linhas visuais se o usuário digitar ou trocar de aba.
+
+  // PRESERVAÇÃO: INTERCEPTADOR ASSÍNCRONO BLINDADO (REFIX VITE 500)
+  const handleDispararImprimirPdf = async () => { // [Funcionamento]: Rotina acionada no clique da impressora para disparar a geração mestre do PDF.
+    if (orchestraMatrix.length === 0) return toast.error("Nenhum dado disponível para o ano selecionado."); // [Funcionamento]: Emite aviso flutuante e barra o processo se a tabela estiver zerada.
+    
+    const toastCarregando = toast.loading("Calculando colunas e desenhando matriz anual..."); // [Funcionamento]: Dispara tela de loading flutuante na interface mobile.
+    
+    try {
+      // [Funcionamento]: Reconstrói o histórico condensado no formato de dicionário que o pdfPresencaAnualService exige para bater as chaves.
+      const historicoMapeadoParaBCE = {}; // [Funcionamento]: Inicializa dicionário limpo na RAM.
+      orchestraMatrix.forEach(m => { // [Funcionamento]: Varre os músicos ativos processados na tela.
+        historicoMapeadoParaBCE[m.id] = {}; // [Funcionamento]: Abre um sub-objeto para o ID estável daquele irmão.
+        m.monthsStatus.forEach((status, idx) => { // [Funcionamento]: Transforma as 12 colunas horizontais no indexador temporal oficial.
+          const chaveMesAno = `${selectedYear}_${String(idx + 1).padStart(2, '0')}`; // [Funcionamento]: Monta a string de chave técnica (ex: 2026_07).
+          historicoMapeadoParaBCE[m.id][chaveMesAno] = { presente: status === true }; // [Funcionamento]: Carimba o booleano de presença pura no formato que o motor de BI exige.
+        }); // [Funcionamento]: Fecha loop de meses.
+      }); // [Funcionamento]: Fecha loop de músicos.
+
+      // [Funcionamento]: Blindagem de Sinal Vite: Garante uma estrutura limpa se os filtros da Comum estiverem vazios no carregamento.
+      const comumMockPayload = comumDataSelected || { comum: events[0]?.comumNome || "Sua Comum", cidadeNome: events[0]?.cidadeNome || "Jundiaí" }; // [Funcionamento]: Cria objeto de fallback seguro contra quebras de nulo.
+
+      // [Funcionamento]: Disparo Soberano da Folha: Invocação do módulo passando ano, comuns, fichas originais e o histórico mapeado.
+      await pdfPresencaAnualService.generatePresencaAnual(selectedYear, comumMockPayload, orchestraMatrix, historicoMapeadoParaBCE, { accessLevel: 'comissao', activeRegionalName: events[0]?.regionalNome || 'Jundiaí' }); // [Funcionamento]: Executa a compilação matemática vetorial dos gráficos e tabelas no PDF.
+      toast.success("Relatório Anual PDF gerado com sucesso!", { id: toastCarregando }); // [Funcionamento]: Remove a tela de carregamento e exibe mensagem de sucesso para a secretaria.
+    } catch (err) { // [Funcionamento]: Captura falhas de código ou estouros de memória.
+      console.error(err); // [Funcionamento]: Imprime o erro técnico no log do sistema.
+      toast.error("Falha ao processar matriz de impressão.", { id: toastCarregando }); // [Funcionamento]: Alerta a liderança sobre erro no motor vetorial.
+    } // [Funcionamento]: Termina bloco de tratamento de erros.
+  }; // [Funcionamento]: Fecha método assíncrono.
 
   // TELA DE BLOQUEIO LOCALIZADA: Se o usuário for básico, barra exclusivamente esta aba com card amigável
-  if (!isAuthorized) {
-    return (
+  if (!isAuthorized) { // [Funcionamento]: Barreira de segurança nível de acesso local.
+    return ( // [Funcionamento]: Intercepta a interface e devolve o aviso de bloqueio na tela do usuário básico.
       <div className="w-full py-10 bg-white border border-slate-100 rounded-[2.5rem] p-6 flex flex-col items-center text-center shadow-sm animate-fadeIn">
         <div className="w-12 h-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center mb-3">
           <Lock size={18} />
@@ -154,13 +195,13 @@ const LocalAttendanceList = ({ events = [], userLevel = 'basico' }) => {
           A visualização é exclusiva para a Liderança Musical.
         </p>
       </div>
-    );
-  }
+    ); // [Funcionamento]: Termina o retorno do card protetor.
+  } // [Funcionamento]: Fecha bloco de validação de poder.
 
-  return (
+  return ( // [Funcionamento]: Palco visual mestre da aba de frequência se o usuário tiver autorização.
     <div className="space-y-4 w-full min-w-0 text-left">
       
-      {/* SEÇÃO 1: PESQUISA TEXTUAL + SELETOR DE ANO */}
+      {/* SEÇÃO 1 RETIFICADA: REMOVIDO O SELETOR DE ANO LOCAL SECUNDÁRIO PARA CENTRALIZAR O FILTRO NA LUPA PAI */}
       <div className="flex gap-3 w-full items-center">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400">
@@ -174,19 +215,16 @@ const LocalAttendanceList = ({ events = [], userLevel = 'basico' }) => {
             className="w-full h-12 pl-11 pr-4 bg-white border border-slate-100 rounded-2xl shadow-sm text-sm text-slate-800 font-bold focus:outline-none focus:border-blue-500 transition-all"
           />
         </div>
-        
-        <div className="h-12 bg-white border border-slate-100 px-3 rounded-2xl shadow-sm flex flex-col justify-center min-w-[75px] shrink-0">
-          <span className="text-[8px] font-black text-slate-400 uppercase tracking-tight -mb-0.5">Ano</span>
-          <select 
-            value={selectedYear} 
-            onChange={(e) => setSelectedYear(e.target.value)} 
-            className="bg-transparent font-black text-xs text-slate-800 outline-none appearance-none cursor-pointer"
-          >
-            <option value="2026">2026</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
-          </select>
-        </div>
+
+        {/* 🚀 BOTÃO PREMIUM DE PDF RESTAURADO: Alinhamento, cor, contorno e texto 100% integrados no padrão original da ata */}
+        <button
+          type="button" // [Funcionamento]: Evita recarregamento de página padrão HTML.
+          onClick={handleDispararImprimirPdf} // [Funcionamento]: Invoca a rotina assíncrona de compilação da matriz de 12 meses.
+          className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex items-center justify-center gap-0.5 h-12 px-3 shadow-sm font-black text-[11px] uppercase tracking-wider shrink-0 outline-none layout-touch" // [Funcionamento]: Molda o botão retangular horizontal com conforto de 48px de altura.
+        >
+          <FileText size={16} className="text-blue-600" /> {/* [Funcionamento]: Desenha o ícone técnico de folha azul no centro da ação. */}
+          <span className="font-extrabold tracking-tight">PDF</span> {/* [Funcionamento]: Injeta a etiqueta textual mestre ao lado do desenho unificando the identidade visual. */}
+        </button>
       </div>
 
       {/* SEÇÃO 2: ABAS FIXAS SUPERIORES */}
