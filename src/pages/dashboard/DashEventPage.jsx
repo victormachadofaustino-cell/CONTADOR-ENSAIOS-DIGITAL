@@ -30,7 +30,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
   // 📡 PONTE REATIVA DE PRESENÇA (CAPTURA A SUBCOLEÇÃO DO FIRESTORE EM TEMPO REAL)
   const [chamadaNominal, setChamadaNominal] = useState([]); // [Funcionamento]: Estado local que guardará a lista de chamada vinda de chamada_musicos.
 
-  useEffect(() => {
+  useEffect(() => { // [Funcionamento]: Dispara a escuta em tempo real da lista de presença assim que a página carrega.
     if (!eventId) return; // [Funcionamento]: Trava de segurança caso o identificador do evento não seja carregado na inicialização.
 
     // 🎯 Mira diretamente na subcoleção do evento atual para não misturar dados
@@ -57,7 +57,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
   }, [eventId]); // [Funcionamento]: Monitora re-atualizações baseadas estritamente se o ID do ensaio mudar.
 
   // 📡 PONTE REATIVA DE ENDEREÇO DA COMUM (BUSCA AS INFORMAÇÕES DE CADASTRO DA LOCALIDADE EM SEGUNDO PLANO)
-  useEffect(() => {
+  useEffect(() => { // [Funcionamento]: Abre escuta paralela para capturar os dados geográficos e cadastrais da igreja local.
     const comumTargetId = ataData?.comumId || userData?.activeComumId || userData?.comumId; // [Funcionamento]: Isola o identificador da igreja comum de forma segura.
     if (!comumTargetId) return; // [Funcionamento]: Aborta se não houver ponteiro GPS territorial disponível na RAM.
 
@@ -100,7 +100,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
         const valComum = parseInt(data.comum) || 0; // [Funcionamento]: Captura quantos são da própria igreja comum local.
         const valVisita = Math.max(0, valTotal - valComum); // [Funcionamento]: Realiza subtração segura para isolar o número de visitantes.
         const section = (data.section || "GERAL").toUpperCase(); // [Funcionamento]: Isola o nome da seção litúrgica mestre em maiúsculo.
-        const saneId = id.toLowerCase(); // [Funcionamento]: Normaliza a string do ID do instrumento em minúsculo.
+        const saneId = id.toLowerCase(); // [Funcionamento]: Normaliza a string do ID do instrumento in minúsculo.
 
         if (saneId === 'coral' || section === 'IRMANDADE' || saneId.includes('irmandade') || saneId.includes('irmao') || saneId.includes('irma')) {  // [Funcionamento]: Identifica se pertence ao coro ou irmandade de fileira.
           const irmaosCount = parseInt(data.irmaos) || 0; // [Funcionamento]: Soma os irmãos homens da irmandade.
@@ -185,7 +185,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
             const t = parseInt(d.total) || 0; // [Funcionamento]: Captura total absoluto do instrumento.
             const c = parseInt(d.comum) || 0; // [Funcionamento]: Captura total de músicos da casa da época.
             const s = (d.section || "").toUpperCase(); // [Funcionamento]: Normaliza seção em maiúsculo.
-            const sid = id.toLowerCase(); // [Funcionamento]: Normaliza ID em minúsculo.
+            const sid = id.toLowerCase(); // [Funcionamento]: Normaliza ID in minúsculo.
             
             if (sid === 'coral' || s === 'IRMANDADE' || sid.includes('irmandade') || sid.includes('irmao') || sid.includes('irma')) { // [Funcionamento]: Identifica irmandade antiga.
               totalEv += ((parseInt(d.irmaos) || 0) + (parseInt(d.irmas) || 0)); // [Funcionamento]: Soma homens e mulheres antigos no total do público.
@@ -271,7 +271,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
       const msg = whatsappService.obterTextoAlimentacao({ counts, date: ataData?.date, scope: ataData?.scope, comumNome: ataData?.comumNome }, stats); // [Funcionamento]: Compila o texto oficial do lanche da portaria.
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank'); // [Funcionamento]: Dispara no navegador para o celular abrir o App.
     } else { // [Funcionamento]: Se a biblioteca falhar ou não carregar.
-      toast.error('Serviço de compartilhamento pendente de carregamento'); // [Funcionamento]: Mensagem de fallback seguro.
+      toast.error('Serviço de compartilhamento pendente de carregamento'); // [Funcionamento]: Mágica de fallback seguro.
     } // [Funcionamento]: Termina tratamento de envio.
   }; // [Funcionamento]: Fecha método de lanches.
 
@@ -286,7 +286,7 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
     } // [Funcionamento]: Termina tratamento estatístico.
   }; // [Funcionamento]: Fecha método estatístico.
 
-  // 🎯 CORREÇÃO DE PONTE DO PDF ORIGINAL: Conecta diretamente ao método 'generateAtaEnsaio' descoberto no arquivo
+  // 🎯 CORREÇÃO DE PONTE DO PDF ORIGINAL: Conecta diretamente ao método 'generateAtaEnsaio' do arquivo de serviços
   const handleGeneratePDF = async () => { // [Funcionamento]: Método acionado para compilar e disparar the download do relatório impresso da ata de ensaio.
     try { // [Funcionamento]: Inicia bloco de segurança.
       if (pdfEventService && typeof pdfEventService.generateAtaEnsaio === 'function') { // [Funcionamento]: Valida o nome exato do método da classe.
@@ -305,63 +305,69 @@ const DashEventPage = ({ counts, ataData, isAdmin, eventId, allEvents = [] }) =>
   const getPerc = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : "0.0"; // [Funcionamento]: Função auxiliar matemática de divisão percentual com uma casa decimal fixa.
 
   return ( // [Funcionamento]: Palco visual mestre do painel móvel.
-    <div className="space-y-4 text-slate-900 pb-24 max-w-md mx-auto px-1">
+    <div className="space-y-4 text-slate-900 pb-24 max-w-md mx-auto px-2 font-sans">
       
-      {/* 👥 SEÇÃO DE TOPO DUPLA: CARD DE ALIMENTAÇÃO + BOTÃO AZUL ORIGINAL DE PDF LADO A LADO */}
-      <div className="flex gap-2 items-center w-full">
+      {/* 👥 SEÇÃO DE TOPO MASTER DUPLA REESTRUTURADA COM MARGENS ELÁSTICAS (TOTALMENTE ANTI-SOBREPOSIÇÃO) */}
+      <div className="flex gap-2 items-stretch w-full select-none">
         
-        {/* 🧳 CARD ESCURO DE ALIMENTAÇÃO: Cópia idêntica e sem alterações de 'image_53cee1.png' */}
-        <div className="bg-slate-950 px-5 py-4 rounded-[2rem] shadow-xl border border-white/5 min-h-[76px] flex items-center overflow-hidden flex-1 text-left relative">
-          <div className="w-[35%] leading-none"> {/* [Funcionamento]: Alinhamento textual esquerdo exato para o título da Copa. */}
-            <p className="text-[7px] font-black text-amber-500 uppercase tracking-[0.3em] mb-1 italic">Alimentação</p> {/* [Funcionamento]: Tag superior dourada. */}
-            <p className="text-xl font-[1000] text-white uppercase italic tracking-tighter">Resumo</p> {/* [Funcionamento]: Subtítulo branco em caixa alta. */}
+        {/* 🧳 CARD ESCURO DE ALIMENTAÇÃO: Ajustado com flex elástico para dar respiro em telas de qualquer largura */}
+        <div className="bg-slate-950 px-4 py-2.5 rounded-[1.8rem] shadow-xl border border-white/5 flex items-center justify-between flex-1 min-w-0 text-left relative overflow-hidden">
+          
+          {/* Título Identificador com corte protetor contra esmagamentos laterais */}
+          <div className="leading-tight shrink-0"> 
+            <p className="text-[7px] font-black text-amber-500 uppercase tracking-[0.2em] mb-0.5 italic">Alimentação</p> {/* [Funcionamento]: Tag superior dourada. */}
+            <p className="text-lg font-[1000] text-white uppercase italic tracking-tighter">Resumo</p> {/* [Funcionamento]: Subtítulo branco em caixa alta. */}
           </div>
-          <div className="w-[42%] text-center"> {/* [Funcionamento]: Coluna centralizada do indicador master. */}
-            <span className="text-4xl font-[1000] text-white italic tracking-tighter leading-none">{stats.geral}</span> {/* [Funcionamento]: Placar volumétrico total do evento. */}
+
+          {/* Número Grande Centralizado com Margem de Ajuste Elástico */}
+          <div className="text-center min-w-0 px-2 flex-1"> 
+            <span className="text-3xl font-[1000] text-white italic tracking-tighter block leading-none">{stats.geral}</span> {/* [Funcionamento]: Placar volumétrico total do evento. */}
           </div>
-          <div className="w-[45%] flex gap-4 border-l border-white/10 pl-4 h-10 items-center justify-end"> {/* [Funcionamento]: Setor direito de sub-totais operacionais. */}
+
+          {/* Sub-totais Operacionais da Portaria com Espaçamentos e Tamanhos Seguros de Fontes */}
+          <div className="flex items-center gap-3 border-l border-white/10 pl-3 h-8 shrink-0"> 
             <div className="text-center leading-none"> {/* [Funcionamento]: Caixa numérica da orquestra. */}
-              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Orq</p> {/* [Funcionamento]: Legenda cinza. */}
-              <p className="text-lg font-black text-white">{stats.orquestra}</p> {/* [Funcionamento]: Contagem de lanches da orquestra. */}
+              <p className="text-[7px] font-black text-slate-500 uppercase italic mb-0.5">Orq</p> {/* [Funcionamento]: Legenda cinza. */}
+              <p className="text-[11px] font-black text-white tracking-tight">{stats.orquestra}</p> {/* [Funcionamento]: Contagem de lanches da orquestra. */}
             </div>
             <div className="text-center leading-none"> {/* [Funcionamento]: Caixa numérica do coral. */}
-              <p className="text-[8px] font-black text-slate-500 uppercase italic mb-.5">Coral</p> {/* [Funcionamento]: Legenda cinza. */}
-              <p className="text-lg font-black text-white">{stats.irmandade}</p> {/* [Funcionamento]: Contagem de lanches do coro. */}
+              <p className="text-[7px] font-black text-slate-500 uppercase italic mb-0.5">Coral</p> {/* [Funcionamento]: Legenda cinza. */}
+              <p className="text-[11px] font-black text-white tracking-tight">{stats.irmandade}</p> {/* [Funcionamento]: Contagem de lanches do coro. */}
             </div>
             <button 
               onClick={handleShareLanche} // [Funcionamento]: Gatilho reativo de envio de texto estruturado para o WhatsApp.
-              className="text-emerald-500 active:scale-90 ml-1 min-w-[32px] h-8 flex items-center justify-center outline-none" // [Funcionamento]: Área de clique livre de interrupções.
+              className="text-emerald-500 active:scale-90 cursor-pointer w-7 h-7 flex items-center justify-center outline-none shrink-0" // [Funcionamento]: Área de clique livre de interrupções.
               aria-label="Compartilhar Lanches" // [Funcionamento]: Controle de acessibilidade de tela.
             >
-              <Share2 size={18} /> {/* [Funcionamento]: Desenho do nó gráfico verde de compartilhamento. */}
+              <Share2 size={16} /> {/* [Funcionamento]: Desenho do nó gráfico verde de compartilhamento. */}
             </button>
           </div>
         </div>
 
-        {/* ⚡ BOTÃO DE PDF ORIGINAL RESTAURADO: Alinhamento, cor, borda e texto 100% idênticos a 'image_53d665.png' */}
+        {/* ⚡ BOTÃO DE PDF REESCALADO PARA SIMETRIA HORIZONTAL PERFECT: Alinhamento, cor, borda e texto originais mantidos */}
         {canExport && (
           <button 
             onClick={handleGeneratePDF} // [Funcionamento]: Executa a compilação do relatório impresso.
-            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex items-center justify-center gap-0.5 min-h-[76px] px-2.5 shadow-sm font-black text-[11px] uppercase tracking-wider shrink-0 outline-none layout-touch" // [Funcionamento]: Estilização visual fiel ao painel nativo.
+            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex flex-col items-center justify-center gap-0.5 px-3 shadow-sm font-black text-[10px] uppercase tracking-wider shrink-0 outline-none layout-touch min-w-[56px]" // [Funcionamento]: Estilização visual alinhada em altura ao card de lanche.
           >
             <FileText size={16} className="text-blue-600" /> {/* [Funcionamento]: Ícone técnico azul nativo da biblioteca Lucide. */}
-            <span className="font-extrabold tracking-tight">PDF</span> {/* [Funcionamento]: Inscrição textual pura original sem reescritas. */}
+            <span className="font-extrabold tracking-tight mt-0.5">PDF</span> {/* [Funcionamento]: Inscrição textual pura original sem reescritas. */}
           </button>
         )}
       </div>
 
       {/* Carrossel de Abas Fixo */}
-      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
-        <button onClick={() => setCurrentScreen('geral')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'geral' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 select-none">
+        <button onClick={() => setCurrentScreen('geral')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === 'geral' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
           <LayoutGrid size={12} /> Geral
         </button>
-        <button onClick={() => setCurrentScreen('presenca')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'presenca' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+        <button onClick={() => setCurrentScreen('presenca')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === 'presenca' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
           <ClipboardList size={12} /> Presença
         </button>
-        <button onClick={() => setCurrentScreen('equilibrio')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'equilibrio' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+        <button onClick={() => setCurrentScreen('equilibrio')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === 'equilibrio' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
           <Scale size={12} /> Equilíbrio
         </button>
-        <button onClick={() => setCurrentScreen('resumo')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] ${currentScreen === 'resumo' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
+        <button onClick={() => setCurrentScreen('resumo')} className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === 'resumo' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400'}`}>
           <PieChart size={12} /> Resumo
         </button>
       </div>
@@ -407,4 +413,4 @@ const renderDelta = (val) => { // [Funcionamento]: Renderizador de diferencial n
   ); // [Funcionamento]: Retorna the badge colorida verde ou vermelha apontando a flutuação.
 }; // [Funcionamento]: Fecha escopo do renderizador delta.
 
-export default DashEventPage;
+export default DashEventPage; // [Funcionamento]: Exporta o componente Maestro do Ensaio Local pronto para uso no ecossistema do app.
