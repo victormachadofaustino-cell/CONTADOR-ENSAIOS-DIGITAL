@@ -309,15 +309,18 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         return true;
       }
 
-      // Passo 2: Checagem de permissão dinâmica baseada em posse (quem "assumiu a caneta").
-      // Relevante principalmente para ensaios regionais onde a responsabilidade é dividida.
-      if (ataData?.scope === "regional") {
-        // Checagem de posse do naipe inteiro (ex: CORDAS)
+      // Passo 2A: Checagem de posse para eventos LOCAIS.
+      // Em eventos locais, a posse é por seção (naipe). Se o usuário assumiu, ele pode editar.
+      if (ataData?.scope !== "regional") {
         const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, "_")}`;
         if (localCounts?.[metaKey]?.responsibleId === myUID) {
           return true;
         }
+      }
 
+      // Passo 2: Checagem de permissão dinâmica baseada em posse (quem "assumiu a caneta").
+      // Relevante principalmente para ensaios regionais onde a responsabilidade é dividida.
+      if (ataData?.scope === "regional") {
         // Checagem de posse de um instrumento específico (relevante para o Coral com 'irmas' e 'irmaos')
         const sectionInstruments = allInstruments.filter(
           (i) => (i.section || "").toUpperCase() === sec.toUpperCase(),

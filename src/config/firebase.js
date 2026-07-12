@@ -14,9 +14,8 @@ import {
   where,
   getDocs,
   writeBatch,
-  initializeFirestore,
-  memoryLocalCache, // Explicação: Configura o cache em memória RAM para evitar conflitos de dados de contas recém-deletadas.
   collectionGroup,
+  enableIndexedDbPersistence,
   or,
   and, // 🚀 CONEXÃO DE PEÇA: Importa oficialmente o conector lógico "E" diretamente da biblioteca do Firestore da Google.
 } from "firebase/firestore"; // Explicação: Captura as ferramentas estruturais para mexer nas tabelas e documentos de dados.
@@ -42,14 +41,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig); // Explicação: Liga os motores do Firebase aplicando a fiação das suas chaves de credenciais configuradas acima.
 
-/**
- * CONFIGURAÇÃO ESTABILIZADA v8.10.0
- * Limpa o cache físico local do smartphone forçando o uso de memória volátil, resolvendo erros de permissão.
- */
-const db = initializeFirestore(app, {
-  // Explicação: Inicializa o banco de dados Firestore aplicando regras avançadas de performance.
-  localCache: memoryLocalCache(), // Explicação: Ativa o Crachá Limpo: o aplicativo ignora dados antigos salvos no disco e sempre lê a verdade do servidor.
-  useFetchStreams: true, // Explicação: Ativa a tecnologia Fetch Streams que puxa e sincroniza os dados da nuvem na velocidade máxima da internet.
+const db = getFirestore(app); // Explicação: Inicializa o banco de dados Firestore com a configuração padrão.
+
+// ATIVAÇÃO DO MODO OFFLINE
+enableIndexedDbPersistence(db).catch((err) => {
+  // Explicação: Tenta ativar o cache persistente no disco do dispositivo.
+  if (err.code == "failed-precondition") {
+    // Múltiplas abas abertas, o que não é um problema no celular.
+    // A persistência só pode ser ativada em uma aba por vez.
+  } else if (err.code == "unimplemented") {
+    // O navegador não suporta o modo offline (muito raro hoje em dia).
+  }
 });
 
 const auth = getAuth(app); // Explicação: Liga o vigia oficial do sistema de autenticação para saber quem está operando o app.
