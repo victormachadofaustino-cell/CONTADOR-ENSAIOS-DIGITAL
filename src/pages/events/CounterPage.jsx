@@ -46,6 +46,7 @@ import OwnershipModal from "./components/OwnershipModal"; // Explicação: Janel
 import ExtraInstrumentModal from "./components/ExtraInstrumentModal"; // Explicação: Janela para adicionar instrumentos na hora.
 import CounterRegional from "./components/CounterRegional"; // Explicação: Modo de contagem em massa para eventos regionais.
 import CounterFooter from "./components/CounterFooter"; // Explicação: Traz o nosso RODAPÉ ISOLADO e fixado na base absoluta da tela.
+import { useOnlineStatus } from "../../hooks/useOnlineStatus"; // Explicação: Importa o hook que verifica o status da conexão.
 
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   // Explicação: Inicia a estrutura da página de contagem.
@@ -69,16 +70,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     MAPA_TRADUTOR_EXTENSO,
   } = useCounterSync(currentEventId, counts); // Explicação: Herda todos os estados sincronizados e represas anti-piscas prontas do Custom Hook.
 
-  // Explicação: REFACTOR DE HIERARQUIA: Vincula as checagens de poder baseando-se estritamente no campo oficial 'accessLevel' do token.
-  const level = userData?.accessLevel; // Explicação: Captura a string pura do cargo gravada no crachá eletrônico.
-  const isMaster = level === "master"; // Explicação: Verifica se o nível de acesso do crachá do usuário é Master.
-  const isComissao = level === "comissao" || isMaster; // Explicação: Verifica se o usuário pertence à comissão regional ou master.
-  const isRegionalCidade = level === "regional_cidade" || isComissao; // Explicação: Verifica se ele gerencia o nível de regional_cidade ou superior.
-  const isGemLocal = level === "gem_local" || isRegionalCidade; // Explicação: Verifica se possui nível de administração local ou superior.
-  const isBasico = level === "basico"; // Explicação: Identifica se o usuário possui apenas nível básico de leitura.
-
-  const canEditAta = isGemLocal || isRegionalCidade || isComissao || isMaster; // Explicação: Condicional que avalia se o usuário tempo cargo suficiente para mexer na Ata.
-
+  const isOnline = useOnlineStatus(); // Explicação: Verifica se o aplicativo está online.
   const [activeTab, setActiveTab] = useState("contador"); // Explicação: Controla se estamos na aba de contagem, ata ou gráficos.
   const [instrumentsNacionais, setInstrumentsNacionais] = useState([]); // Explicação: Lista nacional de instrumentos da CCB.
   const [instrumentsConfig, setInstrumentsConfig] = useState([]); // Explicação: Configurações específicas da igreja local.
@@ -305,48 +297,56 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     ); // Explicação: Agrupa os nomes de seções removendo duplicados e ordenando rigorosamente pelo padrão.
   }, [allInstruments]); // Explicação: Recalcula se la lista unificada de instrumentos mudar.
 
-  // --- 🚀 REMODELAGEM CIRÚRGICA DA TRAVA VISUAL: LIBERAÇÃO DO ACESSO BÁSICO DA PRÓPRIA COMUM ---
-  const isEditingEnabled = (sec, subInstId = null) => {
-    // Explicação: Descobre se o seu crachá eletrônico territorial te dá direito de somar/subtrair nesta linha da tela.
-    if (isClosed || isCountsLocked) return false; // Explicação: Se a contagem ou ata geral do ensaio foi lacrada, bloqueia o app inteiro para edição.
-    if (isComissao) return true; // Explicação: Nível master e comissão regional ganham permissão global automática em qualquer naipe.
+  // --- CENTRALIZAÇÃO DE PERMISSÕES (PRÁTICA PROFISSIONAL) ---
+  const isEditingEnabled = useMemo(() => {
+    // Explicação: Otimiza a checagem de permissões, recalculando apenas quando necessário.
+    return (sec, subInstId = null) => {
+      // Explicação: Descobre se o usuário tem direito de somar/subtrair nesta linha da tela.
+      if (isClosed || isCountsLocked) return false; // Explicação: Trava de estado: Se a contagem ou ata geral foi lacrada, bloqueia a edição.
 
-    const minhaComumLegitima = userData?.comumId || userData?.activeComumId; // Explicação: Puxa a igreja mãe de direito gravada no chip do seu login.
-    const ehEnsaioDaMinhaCasa = minhaComumLegitima === eventComumId; // Explicação: Compara se o ensaio aberto na tela pertence à igreja dele.
-    const ehEventoLocal = ataData?.scope !== "regional"; // Explicação: Verifica se o escopo não é uma reunião regional centralizada de comarca.
+      // Passo 1: Checagem de permissão estática baseada em cargo e território, delegada ao "cérebro" de permissões.
+      if (userData.can("gerenciar_contagem_evento", ataData)) {
+        return true;
+      }
 
-    // 🚀 AJUSTE DE LIBERAÇÃO REGIONAL PARA O GEM LOCAL: Se o escopo for amplo e o irmão for GEM Local da mesma Regional administrativa, libera a caneta na hora!
-    if (
-      level === "gem_local" &&
-      !ehEventoLocal &&
-      ataData?.regionalId === userData?.regionalId
-    ) {
-      return true; // Explicação: Destrava as opacidades e botões do David Ribeiro para atuar nos naipes da Flat-List Regional!
-    }
+      // Passo 2: Checagem de permissão dinâmica baseada em posse (quem "assumiu a caneta").
+      // Relevante principalmente para ensaios regionais onde a responsabilidade é dividida.
+      if (ataData?.scope === "regional") {
+        // Checagem de posse do naipe inteiro (ex: CORDAS)
+        const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, "_")}`;
+        if (localCounts?.[metaKey]?.responsibleId === myUID) {
+          return true;
+        }
 
-    // 🚀 AJUSTE DE LIBERAÇÃO DA INTERFACE: Permite cliques se o usuário for cadastrado nesta igreja (Básico ou GEM Local) in ensaio local comum.
-    if (
-      (level === "gem_local" || level === "basico") &&
-      ehEnsaioDaMinhaCasa &&
-      ehEventoLocal
-    ) {
-      // Explicação: Se for da mesma igreja comuns e ensaio local, abre os botões para clique na hora!
-      return true; // Explicação: Destrava a opacidade e liga as ações de presença nominal de custo zero de cota!
-    }
+        // Checagem de posse de um instrumento específico (relevante para o Coral com 'irmas' e 'irmaos')
+        const sectionInstruments = allInstruments.filter(
+          (i) => (i.section || "").toUpperCase() === sec.toUpperCase(),
+        );
+        const mestre = sectionInstruments.find(
+          (i) => !["irmas", "irmaos"].includes(i.id.toLowerCase()),
+        );
+        const masterData = localCounts?.[mestre?.id];
 
-    const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, "_")}`; // Explicação: Calculates a chave técnica de metadados da seção (ex: 'meta_cordas').
-    if (ehEventoLocal) return localCounts?.[metaKey]?.responsibleId === myUID; // Explicação: Fallback para ensaios locais comuns caso haja divisão de secretários auxiliares.
-    const sectionInstruments = allInstruments.filter(
-      (i) => (i.section || "").toUpperCase() === sec.toUpperCase(),
-    ); // Explicação: Tratamento complexo para divisão de naipes regionais em massa.
-    const mestre = sectionInstruments.find(
-      (i) => !["irmas", "irmaos"].includes(i.id.toLowerCase()),
-    ); // Explicação: Isola a referência principal de instrumento da seção.
-    const masterData = localCounts?.[mestre?.id]; // Explicação: Puxa as contagens e assinaturas de controle daquele instrumento.
-    if (subInstId === "irmas" || subInstId === "irmaos")
-      return masterData?.[`responsibleId_${subInstId}`] === myUID; // Explicação: Trata permissões específicas de divisão de gênero para o caso do Coral.
-    return masterData?.responsibleId === myUID; // Explicação: Retorna se o ID do responsible confere com whom está logado no aparelho.
-  }; // Explicação: Encerra the método de checagem isEditingEnabled.
+        if (subInstId) {
+          // Caso específico do Coral (irmas/irmaos)
+          return masterData?.[`responsibleId_${subInstId}`] === myUID;
+        }
+
+        // Caso de um instrumento individual dentro de um naipe
+        return masterData?.responsibleId === myUID;
+      }
+
+      return false; // Explicação: Se nenhuma regra de permissão (estática ou dinâmica) for atendida, bloqueia a edição.
+    };
+  }, [
+    isClosed,
+    isCountsLocked,
+    userData,
+    ataData,
+    localCounts,
+    myUID,
+    allInstruments,
+  ]);
 
   const handleUpdateInstrument = (
     id,
@@ -545,7 +545,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (
       !nome.trim() ||
       !extraInstrumentSection ||
-      !isGemLocal ||
+      !userData.isGemLocal ||
       isCountsLocked
     )
       return; // Explicação: Filtra parâmetros válidos e travas de segurança.
@@ -601,6 +601,23 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   return (
     // Explicação: Inicia a montagem dos elementos de interface visual na tela do smartphone.
     <div className="flex flex-col h-screen bg-[#F1F5F9] overflow-hidden text-left relative font-sans">
+      {/* BANNER DE STATUS OFFLINE */}
+      <AnimatePresence>
+        {!isOnline && (
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -40, opacity: 0 }}
+            className="absolute top-0 left-0 right-0 bg-amber-500 text-white p-2 text-center z-[100] shadow-lg"
+          >
+            <p className="text-xs font-bold">
+              Você está offline. As alterações serão salvas quando a conexão
+              voltar.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* HEADER COM CENTRALIZAÇÃO ABSOLUTA */}
       <header className="bg-white pt-6 pb-6 px-6 rounded-b-[2.5rem] shadow-md border-b border-slate-200 z-50 relative">
         <div className="flex justify-between items-center max-w-md mx-auto w-full relative h-12">
@@ -632,9 +649,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
           {/* BOTÃO CADEADO */}
           <div className="flex items-center gap-2 z-10">
-            {(ataData?.scope === "regional"
-              ? isComissao || isMaster
-              : isRegionalCidade) &&
+            {userData.can("gerenciar_contagem_evento", ataData) &&
               !isClosed && (
                 <button
                   type="button"
@@ -682,8 +697,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                   localCounts={localCounts}
                   sections={sections}
                   onUpdate={handleUpdateInstrument}
-                  onToggleSection={(id, status, role) =>
-                    setOwnership(id, auth.currentUser?.uid, userData?.name)
+                  onToggleSection={(id, status, subId) =>
+                    setOwnership(
+                      id,
+                      auth.currentUser?.uid,
+                      userData?.name,
+                      subId,
+                    )
                   }
                   userData={userData}
                   isClosed={isClosed || isCountsLocked}
@@ -691,6 +711,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                   onFocus={handleFocus}
                   onBlur={handleBlur}
                   isEditingEnabled={isEditingEnabled}
+                  onAddExtra={(s) =>
+                    userData.isGemLocal && setExtraInstrumentSection(s)
+                  }
                 />
               ) : (
                 sections.map((sec) => (
@@ -705,7 +728,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                     handleUpdateInstrument={handleUpdateInstrument}
                     isEditingEnabled={isEditingEnabled}
                     onAddExtra={(s) =>
-                      isGemLocal && setExtraInstrumentSection(s)
+                      userData.isGemLocal && setExtraInstrumentSection(s)
                     }
                     onFocus={handleFocus}
                     onBlur={handleBlur}

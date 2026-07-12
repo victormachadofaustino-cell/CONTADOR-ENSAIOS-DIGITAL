@@ -149,21 +149,13 @@ export const useCounterSync = (currentEventId, counts) => {
       if (section?.toUpperCase() === "IRMANDADE") {
         idSaneado = "coral"; // Explicação: Força o ID de rede a mirar no nó unificado pai 'coral'.
         const fieldLimpo = field === "total" ? id : field; // Explicação: Saneia se o input veio como total_simples da pílula regional.
-        const antigasIrmas = parseInt(prev["coral"]?.irmas) || 0; // Explicação: Varre a propriedade em minúsculo na memória RAM.
-        const antigosIrmaos = parseInt(prev["coral"]?.irmaos) || 0; // Explicação: Varre a propriedade em minúsculo na memória RAM.
-
-        const novasIrmas = fieldLimpo === "irmas" ? parsedValue : antigasIrmas; // Explicação: Substitui pelo novo valor se o clique foi nas irmãs, senão mantém o antigo.
-        const novosIrmaos =
-          fieldLimpo === "irmaos" ? parsedValue : antigosIrmaos; // Explicação: Substitui pelo novo valor se o clique foi nos irmãos, senão mantém o antigo.
-        const novoTotalSomado = novasIrmas + novosIrmaos; // Explicação: Executa a soma atômica imediata das duas frações musicais.
 
         return {
-          // Explicação: Retorna o novo estado remontado com o total reajustado em tempo real de execução.
+          // Explicação: Retorna o novo estado, atualizando apenas a parte que o usuário clicou (irmas ou irmaos). A soma do total agora é de responsabilidade exclusiva do eventService para evitar duplicação.
           ...prev, // Explicação: Clona os outros instrumentos intactos.
           coral: {
             ...prev["coral"], // Explicação: Preserva metadados ou assinaturas de responsáveis anteriores.
             [fieldLimpo]: parsedValue, // Explicação: Altera a ala correspondente do clique (irmas ou irmaos).
-            total: novoTotalSomado, // Explicação: Purificação do Coral: Resta apenas a reatividade pura do totalizador absoluto!
           },
         }; // Explicação: Encerra a montagem reativa do Coral.
       } // Explicação: Fim do interceptador do Coral.

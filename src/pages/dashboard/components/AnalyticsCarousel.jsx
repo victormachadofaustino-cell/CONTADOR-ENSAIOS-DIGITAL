@@ -84,24 +84,19 @@ const AnalyticsCarousel = ({
         ? parseInt(m.saxV)
         : Math.floor(m.saxV || madeirasVisita * 0.4); // [Funcionamento]: Isola os saxofones visitantes salvos ou gera fallback de proporção.
 
-    const cTot = cordasLocal + cordasVisita; // [Funcionamento]: Calcula a somatória total absoluta do naipe de cordas (Locais + Visitas).
-    const madTot =
-      Math.max(0, madeirasLocal - saxLocal) +
-      Math.max(0, madeirasVisita - saxVisita); // [Funcionamento]: Subtrai as frações de saxofones das madeiras para impedir contagens duplicadas no gráfico.
-    const sxTot = saxLocal + saxVisita; // [Funcionamento]: Calcula a somatória total absoluta do naipe de saxofones.
-    const metTot = metaisLocal + metaisVisita; // [Funcionamento]: Calcula a somatória total absoluta do naipe de metais.
-    const tecTot = teclasLocal + teclasVisita; // [Funcionamento]: Calcula a somatória total absoluta do naipe de teclas e acordeon.
-    const totalMes = cTot + madTot + sxTot + metTot + tecTot; // [Funcionamento]: Consolida o montante total de instrumentistas ativos na orquestra daquele mês.
+    const cTot = cordasLocal + cordasVisita;
+    const madTot = madeirasLocal + saxLocal + madeirasVisita + saxVisita; // [Funcionamento]: Soma Madeiras e Saxofones para uma família unificada.
+    const metTot = metaisLocal + metaisVisita;
+    const tecTot = teclasLocal + teclasVisita;
+    const totalMes = cTot + madTot + metTot + tecTot; // [Funcionamento]: Consolida o montante total, agora com madeiras e sax unificados.
 
     return {
       // [Funcionamento]: Devolve o payload mensal formatado em propriedades de porcentagens estáveis para o gráfico empilhado ler.
       ...m, // [Funcionamento]: Preserva os metadados e os campos linearmente calculados de histórico de público do pai.
       cordas: cordasLocal, // [Funcionamento]: Guarda o número absoluto higienizado de cordas comuns da casa.
       cordasV: cordasVisita, // [Funcionamento]: Guarda o número absoluto de cordas visitantes.
-      madeiras: Math.max(0, madeirasLocal - saxLocal), // [Funcionamento]: Guarda o número absoluto higienizado de madeiras comuns da casa.
-      madeirasV: Math.max(0, madeirasVisita - saxVisita), // [Funcionamento]: Guarda o número absoluto de madeiras visitantes.
-      sax: saxLocal, // [Funcionamento]: Guarda o número absoluto limpo de saxofones locais.
-      saxV: saxVisita, // [Funcionamento]: Guarda o número absoluto limpo de saxofones de apoio.
+      madeiras: madeirasLocal + saxLocal, // [Funcionamento]: Combina madeiras e saxofones locais.
+      madeirasV: madeirasVisita + saxVisita, // [Funcionamento]: Combina madeiras e saxofones visitantes.
       metais: metaisLocal, // [Funcionamento]: Guarda o número absoluto limpo de metais da casa.
       metaisV: metaisVisita, // [Funcionamento]: Guarda o número absoluto limpo de metais visitantes.
       teclas: teclasLocal, // [Funcionamento]: Guarda o número absoluto de acordeons e teclas da casa.
@@ -109,7 +104,6 @@ const AnalyticsCarousel = ({
       // 🚀 SINTONIZAÇÃO DIRETA: Grava as chaves com os mesmos nomes exatos de exibição para proporções
       Cordas: totalMes > 0 ? Math.round((cTot / totalMes) * 100) : 0, // [Funcionamento]: Computa a porcentagem proporcional das cordas no mês.
       Madeiras: totalMes > 0 ? Math.round((madTot / totalMes) * 100) : 0, // [Funcionamento]: Computa a porcentagem proporcional das madeiras no mês.
-      Saxofones: totalMes > 0 ? Math.round((sxTot / totalMes) * 100) : 0, // [Funcionamento]: Computa a porcentagem proporcional dos saxofones no mês.
       Metais: totalMes > 0 ? Math.round((metTot / totalMes) * 100) : 0, // [Funcionamento]: Computa a porcentagem proporcional dos metais no mês.
       Teclas: totalMes > 0 ? Math.round((tecTot / totalMes) * 100) : 0, // [Funcionamento]: Computa a porcentagem proporcional das teclas no mês.
     }; // [Funcionamento]: Termina a montagem do objeto sanitizado.
@@ -118,22 +112,19 @@ const AnalyticsCarousel = ({
   // 🚀 ACÚMULO SEGURO EM RAM: Soma os volumes de todo o período filtrado para gerar a Pizza Macro (Exclui Órgão)
   const pieTotals = calibratedData.reduce(
     (acc, curr) => {
-      // [Funcionamento]: Laço de redução cumulativa para descobrir o tamanho de cada gomo na pizza macro.
-      acc.cordas += curr.cordas + curr.cordasV; // [Funcionamento]: Acumula os totais de cordas absolutos de todo o período.
-      acc.madeiras += curr.madeiras + curr.madeirasV; // [Funcionamento]: Acumula os totais de madeiras absolutos de todo o período.
-      acc.sax += curr.sax + curr.saxV; // [Funcionamento]: Acumula os totais de saxofones absolutos de todo o período.
-      acc.metais += curr.metais + curr.metaisV; // [Funcionamento]: Acumula os totais de metais absolutos de todo o período.
-      acc.teclas += curr.teclas + curr.teclasV; // [Funcionamento]: Acumula os totais de teclas absolutos de todo o período.
-      return acc; // [Funcionamento]: Devolve o acumulador atualizado com as somas.
+      acc.cordas += curr.cordas + curr.cordasV;
+      acc.madeiras += curr.madeiras + curr.madeirasV;
+      acc.metais += curr.metais + curr.metaisV;
+      acc.teclas += curr.teclas + curr.teclasV;
+      return acc;
     },
-    { cordas: 0, madeiras: 0, sax: 0, metais: 0, teclas: 0 }, // [Funcionamento]: Define o estado numérico inicial zerado da redução na RAM.
-  ); // [Funcionamento]: Encerra a redução cumulativa de volumes de gomos.
+    { cordas: 0, madeiras: 0, metais: 0, teclas: 0 },
+  );
 
   const pieData = [
     // [Funcionamento]: Monta a estrutura linear estruturada de dados que alimentará o PieChart de naipes.
     { name: "Cordas", value: pieTotals.cordas, color: "#F59E0B" }, // [Funcionamento]: Item de cordas associado à cor laranja.
     { name: "Madeiras", value: pieTotals.madeiras, color: "#10B981" }, // [Funcionamento]: Item de madeiras associado à cor verde.
-    { name: "Saxofones", value: pieTotals.sax, color: "#06B6D4" }, // [Funcionamento]: Item de saxofones associado à cor ciano.
     { name: "Metais", value: pieTotals.metais, color: "#EF4444" }, // [Funcionamento]: Item de metais associado à cor vermelha.
     { name: "Teclas", value: pieTotals.teclas, color: "#64748B" }, // [Funcionamento]: Item de teclas associado à cor cinza ardósia.
   ].filter((item) => item.value > 0); // [Funcionamento]: Remove do gráfico de pizza os naipes que não possuem nenhuma cabeça registrada para não poluir a tela.
@@ -397,22 +388,6 @@ const AnalyticsCarousel = ({
                 />{" "}
                 {/* [Funcionamento]: Imprime a porcentagem interna do gomo verde. */}
               </Bar>
-              <Bar
-                name="Saxofones"
-                dataKey="Saxofones"
-                fill="#06B6D4"
-                stackId="a"
-              >
-                {" "}
-                {/* [Funcionamento]: Gomo empilhado representando os Saxofones em cor ciano. */}
-                <LabelList
-                  dataKey="Saxofones"
-                  position="center"
-                  formatter={formatPercentLabel}
-                  style={{ fontSize: 9, fontWeight: 900, fill: "#ffffff" }}
-                />{" "}
-                {/* [Funcionamento]: Imprime a porcentagem interna do gomo ciano. */}
-              </Bar>
               <Bar name="Metais" dataKey="Metais" fill="#EF4444" stackId="a">
                 {" "}
                 {/* [Funcionamento]: Gomo empilhado representando os Metais de bocal em cor vermelha. */}
@@ -447,13 +422,11 @@ const AnalyticsCarousel = ({
           equiSlide === 0
             ? "Cordas (Local x Visita)"
             : equiSlide === 1
-              ? "Madeiras (Local x Visita)"
-              : equiSlide === 2
-                ? "Saxofones (Local x Visita)"
-                : "Metais (Local x Visita)"
+              ? "Madeiras e Sax (Local x Visita)"
+              : "Metais (Local x Visita)"
         } // [Funcionamento]: Altera o título de forma automática baseando-se no slide de equilíbrio ativo (0 a 3).
-        onPrev={() => handlePrev(equiSlide, setEquiSlide, 4)} // [Funcionamento]: Navegação circular reversa das 4 famílias orquestrais.
-        onNext={() => handleNext(equiSlide, setEquiSlide, 4)} // [Funcionamento]: Navegação circular de avanço das 4 famílias orquestrais.
+        onPrev={() => handlePrev(equiSlide, setEquiSlide, 3)} // [Funcionamento]: Navegação circular reversa das 3 famílias orquestrais.
+        onNext={() => handleNext(equiSlide, setEquiSlide, 3)} // [Funcionamento]: Navegação circular de avanço das 3 famílias orquestrais.
       >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -569,43 +542,7 @@ const AnalyticsCarousel = ({
                 </Bar>
               </>
             )}
-            {equiSlide === 2 && ( // [Funcionamento]: Slide de Equilíbrio 2: renderiza as colunas de Saxofones da casa vs visitantes.
-              <>
-                <Bar
-                  name="Sax Locais"
-                  dataKey="sax"
-                  fill="#06B6D4"
-                  stackId="b"
-                  barSize={14}
-                >
-                  {" "}
-                  {/* [Funcionamento]: Saxofonistas locais da casa. */}
-                  <LabelList
-                    dataKey="sax"
-                    position="center"
-                    style={{ fontSize: 9, fontWeight: 900, fill: "#ffffff" }}
-                  />{" "}
-                  {/* [Funcionamento]: Texto numérico centralizado. */}
-                </Bar>
-                <Bar
-                  name="Sax Visitantes"
-                  dataKey="saxV"
-                  fill="#CFFAFE"
-                  stackId="b"
-                  barSize={14}
-                >
-                  {" "}
-                  {/* [Funcionamento]: Saxofonistas de apoio de outras comuns. */}
-                  <LabelList
-                    dataKey="saxV"
-                    position="center"
-                    style={{ fontSize: 9, fontWeight: 900, fill: "#115e59" }}
-                  />{" "}
-                  {/* [Funcionamento]: Texto numérico centralizado. */}
-                </Bar>
-              </>
-            )}
-            {equiSlide === 3 && ( // [Funcionamento]: Slide de Equilíbrio 3: renderiza as colunas de Metais da casa vs visitantes.
+            {equiSlide === 2 && ( // [Funcionamento]: Slide de Equilíbrio 2: renderiza as colunas de Metais da casa vs visitantes.
               <>
                 <Bar
                   name="Metais Locais"

@@ -296,18 +296,21 @@ const CounterRegional = ({
                     )}
 
                     {/* BOTÃO INSTRUMENTO EXTRA */}
-                    {!isClosed && !isIrmandade && !isOrganistas && (
-                      <button
-                        type="button" // Explicação: Evita disparos colaterais de formulários HTML.
-                        onClick={() => onAddExtra(section)} // Explicação: Abre o modal para cadastrar novos itens dinâmicos extras criados em tempo de execução.
-                        className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all cursor-pointer hover:text-indigo-600 hover:border-indigo-200" // Explicação: Design Mobile-First com feedback tátil ativo e stacking vertical em telas estreitas.
-                      >
-                        <Plus size={16} strokeWidth={3} />
-                        <span className="text-[9px] font-black uppercase italic tracking-widest">
-                          Incluir Instrumento Extra
-                        </span>
-                      </button>
-                    )}
+                    {!isClosed &&
+                      !isIrmandade &&
+                      !isOrganistas &&
+                      isEditingEnabled(section) && (
+                        <button
+                          type="button" // Explicação: Evita disparos colaterais de formulários HTML.
+                          onClick={() => onAddExtra(section)} // Explicação: Abre o modal para cadastrar novos itens dinâmicos extras criados em tempo de execução.
+                          className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all cursor-pointer hover:text-indigo-600 hover:border-indigo-200" // Explicação: Design Mobile-First com feedback tátil ativo e stacking vertical em telas estreitas.
+                        >
+                          <Plus size={16} strokeWidth={3} />
+                          <span className="text-[9px] font-black uppercase italic tracking-widest">
+                            Incluir Instrumento Extra
+                          </span>
+                        </button>
+                      )}
                   </div>
                 </motion.div>
               )}

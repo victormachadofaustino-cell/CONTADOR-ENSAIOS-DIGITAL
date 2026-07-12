@@ -14,6 +14,7 @@ import {
   getDocs,
   writeBatch,
   or,
+  and, // [Funcionamento]: Mantém o motor lógico "E" importado para checagens combinadas de escopo.
 } from "../config/firebase"; // [Funcionamento]: Mantém a importação de todos os conectores e métodos oficiais do SDK do Firebase Firestore.
 import {
   deleteField,
@@ -111,41 +112,45 @@ export const eventService = {
 
     let constraints = []; // [Funcionamento]: Inicializa uma lista vazia para empilhar os filtros de segurança territorial.
 
-    if (user.activeComumId || user.comumId) {
-      // [Funcionamento]: Se o usuário tiver uma igreja comum ativa selecionada no topo do app.
-      constraints.push(
-        where("comumId", "==", user.activeComumId || user.comumId),
-      ); // [Funcionamento]: Trava o filtro para trazer apenas ensaios dessa igreja comum.
-    } // [Funcionamento]: Encerra o bloco de checagem da igreja comum.
-    else if (user.activeCityId || user.cidadeId) {
-      // [Funcionamento]: Caso não seja comum, mas o usuário possua uma cidade ativa focada.
-      constraints.push(
-        where("cidadeId", "==", user.activeCityId || user.cidadeId),
-      ); // [Funcionamento]: Filtra os ensaios de todas as igrejas daquela cidade.
-    } // [Funcionamento]: Encerra o bloco de checagem de cidade.
-    else if (user.activeRegionalId || user.regionalId) {
-      // [Funcionamento]: Caso seja administrador regional e possua uma regional focada.
-      constraints.push(
-        where("regionalId", "==", user.activeRegionalId || user.regionalId),
-      ); // [Funcionamento]: Filtra os ensaios de toda a regional de ponta a ponta.
-    } // [Funcionamento]: Encerra o bloco de checagem de regional.
+    // 1. Define o filtro de convite, que se aplica a todos os usuários.
+    const invitationConstraint = where(
+      "invitedUsers",
+      "array-contains",
+      user.uid,
+    );
 
-    if (
-      user.accessLevel === ROLES.GEM ||
-      user.accessLevel === "gem_local" ||
-      user.accessLevel === "gem" ||
-      user.accessLevel === "GEM"
-    ) {
-      // [Funcionamento]: Se o operador for estritamente um secretário local GEM.
-      constraints = [
-        or(
-          // [Funcionamento]: Aplica uma condição lógica OU de portaria multi-filtro do Firestore.
-          where("comumId", "==", user.comumId), // [Funcionamento]: Permite carregar os ensaios da sua própria igreja comum de cadastro.
-          where("invitedUsers", "array-contains", user.uid), // [Funcionamento]: Permite carregar os ensaios onde ele foi convidado como adjunto.
-          where("regionalId", "==", user.regionalId), // [Funcionamento]: 🚀 CURA DO FILTRO: Permite enxergar e ouvir em tempo real os ensaios Regionais pertencentes à sua comarca mestre!
-        ),
-      ]; // [Funcionamento]: Encerra a aplicação do filtro composto em paralelo.
-    } // [Funcionamento]: Encerra a checagem de nível GEM.
+    // 2. Define o filtro territorial com base no nível e no GPS ativo do usuário.
+    let territorialConstraint = null;
+
+    // A prioridade é o filtro de GPS ativo (o que o usuário selecionou no topo do app).
+    if (user.activeComumId) {
+      territorialConstraint = where("comumId", "==", user.activeComumId);
+    } else if (user.activeCityId) {
+      territorialConstraint = where("cidadeId", "==", user.activeCityId);
+    } else if (user.activeRegionalId) {
+      territorialConstraint = where("regionalId", "==", user.activeRegionalId);
+    } else {
+      // Se não há filtro de GPS ativo, usamos o escopo padrão do cargo do usuário.
+      const config = PERMISSIONS_MAP[user.accessLevel];
+      if (config?.geoScope === "local" && user.comumId) {
+        territorialConstraint = where("comumId", "==", user.comumId);
+      } else if (config?.geoScope === "cidade" && user.cidadeId) {
+        territorialConstraint = where("cidadeId", "==", user.cidadeId);
+      } else if (config?.geoScope === "regional" && user.regionalId) {
+        territorialConstraint = where("regionalId", "==", user.regionalId);
+      }
+      // Se for 'global' (Master), territorialConstraint permanece null, o que é correto para ver tudo.
+    }
+
+    // 3. Combina os filtros de forma inteligente.
+    if (territorialConstraint) {
+      // Se temos um filtro territorial, queremos eventos DAQUELE TERRITÓRIO **OU** eventos para os quais fui convidado.
+      constraints.push(or(territorialConstraint, invitationConstraint));
+    } else if (user.accessLevel !== ROLES.MASTER) {
+      // Se não há filtro territorial (ex: um usuário sem comumId) e não é Master, mostramos apenas os eventos para os quais ele foi convidado.
+      constraints.push(invitationConstraint);
+    }
+    // Se for Master e não houver filtro territorial, 'constraints' fica vazio, mostrando tudo.
 
     const q = query(
       // [Funcionamento]: Constrói a consulta final unificada para enviar ao Firestore.
@@ -245,7 +250,7 @@ export const eventService = {
 
       if (localSnap.empty) {
         // [Funcionamento]: Se la lista retornar vazia, significa que a igreja comum não configurou sua orquestra ainda.
-        throw new Error("CONFIG_REQUIRED"); // [Funcionamento]: Interrompe a criação disparando o alerta de configuração obrigatória.
+        throw new Error("CONFIG_REQUIRED"); // [Funcionamento]: Interrompe a criação disparando o alerta de configuration obrigatória.
       } // [Funcionamento]: Encerra a validação de grade vazia.
 
       const sessoesDetectadas = new Set(); // [Funcionamento]: Cria uma lista de conjuntos únicos na memória RAM para catalogar os naipes (Cordas, Madeiras, etc).
@@ -273,7 +278,7 @@ export const eventService = {
               responsibleId: null, // [Funcionamento]: Define o ID do dono da contagem como nulo inicial.
               responsibleName: null, // [Funcionamento]: Define o Nome do dono da contagem como nulo inicial.
               updatedAt: Date.now(), // [Funcionamento]: Carimba a data e hora do carimbo inicial em formato numérico Unix.
-            }; // [Funcionamento]: Encerra o payload inicial estruturado regional.
+            }; // [Funcionamento]: Encerra the payload inicial estruturado regional.
             if (id === "coral") {
               // [Funcionamento]: Se for o Coral especificamente no escopo regional.
               initialCounts[id].irmaos = 0; // [Funcionamento]: Inicializa a contagem nominal de irmãos em zero.
@@ -316,7 +321,7 @@ export const eventService = {
       }); // [Funcionamento]: Encerra a varredura através de foreach de instrumentos.
 
       sessoesDetectadas.forEach((sec) => {
-        // [Funcionamento]: Varre os naipes únicos catalogados para criar as chaves de liderança de grupo (Metas de Naipe).
+        // [Funcionamento]: Varre os naipes únicos catalogados para criar as chaves de Liderança de grupo (Metas de Naipe).
         const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, "_")}`; // [Funcionamento]: Transforma o naipe em chave técnica limpa (ex: 'meta_cordas').
         initialCounts[metaKey] = {
           responsibleId: null,
@@ -464,7 +469,7 @@ export const eventService = {
       return await updateDoc(eventRef, {
         "ata.status": "open",
         updatedAt: Date.now(),
-      }); // [Funcionamento]: Altera o status da ata de volta para aberto e atualiza o relógio do documento.
+      }); // [Funcionamento]: Altera o status da ata de volta para aberto e updates o relógio do documento.
     } catch (e) {
       // [Funcionamento]: Captura falhas (ex: usuário sem permissão eclesiástica na comissão).
       throw new Error("Sem permissão para reabrir."); // [Funcionamento]: Interrompe a execução avisando sobre a restrição de portaria.
@@ -476,7 +481,7 @@ export const eventService = {
     if (!eventId || !userObjectOrId) return; // [Funcionamento]: Trava contra disparos órfãos sem dados preenchidos.
     const uid =
       typeof userObjectOrId === "object" ? userObjectOrId.uid : userObjectOrId; // [Funcionamento]: Extrai a string pura do ID do usuário.
-    const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza the documento mestre do ensaio na nuvem.
+    const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza the documento mestre del ensaio na nuvem.
     try {
       // [Funcionamento]: Tenta injetar o convidado.
       return await updateDoc(eventRef, {
@@ -730,7 +735,7 @@ export const eventService = {
       // [Funcionamento]: Cadastra a ficha cadastral de um novo músico na lista nominal fixa da igreja comum.
       console.error("Erro ao adicionar músico comum:", e); // [Funcionamento]: Emite a falha no log técnico.
       throw new Error("Erro ao salvar músico."); // [Funcionamento]: Avisa a tela sobre a falha.
-    } // [Funcionamento]: Encerra o bloco catch.
+    } // [Funcionamento]: Encerra o bloco campanha catch.
   }, // [Funcionamento]: Encerra o método addMusicoComum.
 
   updateMusicoComum: async (comumId, musicoId, camposNovos) => {
@@ -751,7 +756,7 @@ export const eventService = {
         payloadUpdates.instrumentoNome = payloadUpdates.instrumentoNome
           .toUpperCase()
           .trim(); // [Funcionamento]: Força o nome por extenso do instrumento em letras maiúsculas.
-      await updateDoc(fichaRef, payloadUpdates); // [Funcionamento]: Grava as alterações na ficha cadastral do irmão no servidor.
+      await updateDoc(fichaRef, payloadUpdates); // [Funcionamento]: Grava as alterações na ficha cadastral del irmão no servidor.
       return true; // [Funcionamento]: Retorna verdadeiro informando o sucesso.
     } catch (e) {
       // [Funcionamento]: Captura falhas de rede.

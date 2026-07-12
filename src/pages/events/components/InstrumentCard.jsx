@@ -58,21 +58,15 @@ const InstrumentCard = ({
   // LÓGICA DE POSSE INDIVIDUALIZED: Identifica quem é o "dono da caneta" agora.
   const myUID = userData?.uid || userData?.id; // Explicação: Captura o ID único do usuário atual.
 
-  // Explicação: Se você assumir o naipe inteiro ou a sub-chave, ganha o direito de contar na hora!
   const isMyTurn =
     subId === "irmas" || subId === "irmaos"
-      ? data?.[`responsibleId_${subId}`] === myUID ||
-        data?.responsibleId === myUID // Explicação: Valida se você é dono da ala ou da zeladoria macro regional.
+      ? data?.[`responsibleId_${subId}`] === myUID
       : data?.responsibleId === myUID; // Explicação: Caso contrário, segue a regra padrão de ID de responsável do instrumento comum.
 
-  // Explicação: Detecta se outro irmão possui a caneta dessa linha no ecrã.
   const isOtherTurn =
     subId === "irmas" || subId === "irmaos"
-      ? (data?.[`responsibleId_${subId}`] &&
-          data?.[`responsibleId_${subId}`] !== myUID) ||
-        (data?.responsibleId &&
-          data?.responsibleId !== myUID &&
-          data?.[`responsibleId_${subId}`] !== myUID) // Explicação: Protege contra concorrência macro.
+      ? data?.[`responsibleId_${subId}`] &&
+        data?.[`responsibleId_${subId}`] !== myUID
       : data?.responsibleId && data?.responsibleId !== myUID; // Explicação: Regra de barreira de concorrência comum.
 
   // Explicação: Alinha chaves de forma idêntica para o Coral, Órgão ou instrumentos nativos.
