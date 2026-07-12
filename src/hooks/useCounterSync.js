@@ -43,7 +43,7 @@ const MAPA_TRADUTOR_EXTENSO = {
 }; // Explicação: Mantém a paridade estável entre siglas de sistema e strings textuais do banco.
 
 export const useCounterSync = (currentEventId, counts) => {
-  // Explicação: Declara o gancho Custom Hook que gerencia a reatividade de rede do contador de presenças.
+  // Explicação: Declara o gancho Custom Hook que gerencia a reatividade de rede del contador de presenças.
   const [localCounts, setLocalCounts] = useState({}); // Explicação: Estado que armazena o mapa espelho de contagens que o usuário visualiza na tela.
   const [ataData, setAtaData] = useState(null); // Explicação: Armazena as informações litúrgicas compiladas da ata do ensaio corrente.
   const [eventComumId, setEventComumId] = useState(null); // Explicação: Identificador físico da igreja comum onde o evento está sediado.
@@ -51,12 +51,11 @@ export const useCounterSync = (currentEventId, counts) => {
   const [isCountsLocked, setIsCountsLocked] = useState(false); // Explicação: Estado booleano que dita se a digitação de números foi bloqueada por cadeado.
   const [focusedField, setFocusedField] = useState(null); // Explicação: Salva a string técnica do input que está ativo com o teclado aberto para evitar apagões.
 
-  const lastLocalUpdateRef = useRef(0); // Explicação: Guarda a marcação temporal Unix em milissegundos del último clique do operador neste aparelho.
+  const lastLocalUpdateRef = useRef(0); // Explicação: Guarda a marcação temporal Unix em milissegundos do último clique do operador neste aparelho.
 
   // v10.9.2: MONITOR DA SINCRONIZAÇÃO OTIMISTA E CONTROLE DE FOCO CONTRA PISCADAS
   useEffect(() => {
     // Explicação: Efeito que intercepta a chegada de novas contagens do Firebase e decide se mescla ou aguarda.
-    // 🚀 AJUSTE DE RESILIÊNCIA: Expandido de 3 para 8 segundos para cobrir a lentidão do 3G/4G e redes oscilantes de igrejas, eliminando o reset visual de posse.
     const isFreshLocalUpdate = Date.now() - lastLocalUpdateRef.current < 8000; // Explicação: Confere se o celular sofreu clique nos últimos 8 segundos para blindar as alterações locais da RAM.
 
     // 🚀 TRAVA SOBERANA ANTI-SOBRESCRITA: Se o rádio amador do Firebase ou o fechamento de modal tentarem re-injetar dados antigos durante a janela ativa de mutação de 8 segundos, veta a sincronização reversa de frames vazios!
@@ -90,8 +89,8 @@ export const useCounterSync = (currentEventId, counts) => {
   useEffect(() => {
     // Explicação: Liga o link reativo para monitorar as mutações e o status de encerramento da ata.
     if (!currentEventId) return; // Explicação: Aborta se o código do ensaio for nulo.
-    let isMounted = true; // Explicação: Flag protetora contra vazamento de memória e updates em componentes desmontados.
-    const eventRef = doc(db, "events_global", currentEventId); // Explicação: Localiza a rota física do ensaio na coleção central do Firestore.
+    let isMounted = true; // Explicação: Flag de segurança para evitar vazamento de memória e updates em componentes desmontados.
+    const eventRef = doc(db, "events_global", currentEventId); // Explicação: Localiza a rota física do ensaio na coleção central del Firestore.
 
     const unsubEvent = onSnapshot(eventRef, (s) => {
       // Explicação: Conecta o ouvinte em tempo real onSnapshot.
@@ -106,6 +105,7 @@ export const useCounterSync = (currentEventId, counts) => {
           comumNome: data.comumNome, // Explicação: Anexa o nome textual da comum.
           status: data.ata?.status || "open", // Explicação: Define o status lógico de bloqueio de encerramento.
           scope: data.scope || "local", // Explicação: Identifica se é ensaio comum local ou comarca regional.
+          regionalId: data.regionalId || "", // Explicação: Injeta a ID da regional para cruzamento da portaria visual.
         }; // Explicação: Encerra a ata consolidada.
 
         setAtaData(ataConsolidada); // Explicação: Injeta o objeto estruturado no estado local de atas.
@@ -113,7 +113,6 @@ export const useCounterSync = (currentEventId, counts) => {
         setEventDateRaw(data.date || ""); // Explicação: Salva a data bruta.
         setIsCountsLocked(data.countsLocked || false); // Explicação: Liga ou desliga o status de cadeado de contagem.
 
-        // 🚀 AJUSTE DE RESILIÊNCIA: Alinhado para 8 segundos para sincronizar as assinaturas de posse com conexões lentas de operadora.
         const isFreshLocalUpdate =
           Date.now() - lastLocalUpdateRef.current < 8000; // Explicação: Recalcula o delay de clique de segurança de 8 segundos.
         if (!isFreshLocalUpdate) {
@@ -133,6 +132,7 @@ export const useCounterSync = (currentEventId, counts) => {
   const updateCount = (id, field, value, section, userData) => {
     // Explicação: Método que processa e despacha a soma ou subtração de músicos de linha.
     if (ataData?.status === "closed" || isCountsLocked) return; // Explicação: Trava de portaria: bloqueia mutações se a ata ou contagem estiverem trancadas.
+    let idSaneado = id; // Explicação: Inicializa a variável de ID limpa de envio.
     lastLocalUpdateRef.current = Date.now(); // Explicação: Renova a marcação Unix del clique local para travar o escudo de 8 segundos anti-sobrescrita.
 
     setLocalCounts((prev) => {
@@ -142,27 +142,28 @@ export const useCounterSync = (currentEventId, counts) => {
           ? "coral"
           : section?.toUpperCase() === "ORGANISTAS"
             ? "orgao"
-            : id; // 🚀 ALINHAMENTO DE CHAVES SÊNIOR: Ajustado para minúsculo padrão para acoplar no 'coral' legítimo do banco.
+            : id; // Explicação: Ajustado para minúsculo padrão para acoplar no 'coral' legítimo do banco.
       const parsedValue = Math.max(0, parseInt(value) || 0); // Explicação: Garante que o valor processado seja um número inteiro positivo limpo.
 
       // 🚀 INTERCEPTADOR ATÔMICO DO CORAL REATIVO SANEADO: Agora operando 100% em paridade de caixa baixa com o Firestore.
       if (section?.toUpperCase() === "IRMANDADE") {
-        // Explicação: Avalia se o input pertence às linhas de gênero do Coral.
-        const antigasIrmas = parseInt(prev["coral"]?.irmas) || 0; // 🚀 PACIFICAÇÃO CASE-SENSITIVE: Varre a propriedade em minúsculo na memória RAM.
-        const antigosIrmaos = parseInt(prev["coral"]?.irmaos) || 0; // 🚀 PACIFICAÇÃO CASE-SENSITIVE: Varre a propriedade em minúsculo na memória RAM.
+        idSaneado = "coral"; // Explicação: Força o ID de rede a mirar no nó unificado pai 'coral'.
+        const fieldLimpo = field === "total" ? id : field; // Explicação: Saneia se o input veio como total_simples da pílula regional.
+        const antigasIrmas = parseInt(prev["coral"]?.irmas) || 0; // Explicação: Varre a propriedade em minúsculo na memória RAM.
+        const antigosIrmaos = parseInt(prev["coral"]?.irmaos) || 0; // Explicação: Varre a propriedade em minúsculo na memória RAM.
 
-        const novasIrmas = field === "irmas" ? parsedValue : antigasIrmas; // Explicação: Substitui pelo novo valor se o clique foi nas irmãs, senão mantém o antigo.
-        const novosIrmaos = field === "irmaos" ? parsedValue : antigosIrmaos; // Explicação: Substitui pelo novo valor se o clique foi nos irmãos, senão mantém o antigo.
+        const novasIrmas = fieldLimpo === "irmas" ? parsedValue : antigasIrmas; // Explicação: Substitui pelo novo valor se o clique foi nas irmãs, senão mantém o antigo.
+        const novosIrmaos =
+          fieldLimpo === "irmaos" ? parsedValue : antigosIrmaos; // Explicação: Substitui pelo novo valor se o clique foi nos irmãos, senão mantém o antigo.
         const novoTotalSomado = novasIrmas + novosIrmaos; // Explicação: Executa a soma atômica imediata das duas frações musicais.
 
         return {
           // Explicação: Retorna o novo estado remontado com o total reajustado em tempo real de execução.
           ...prev, // Explicação: Clona os outros instrumentos intactos.
           coral: {
-            // 🚀 PACIFICAÇÃO CASE-SENSITIVE: Satura as chaves unificadas de destino em caixa baixa.
             ...prev["coral"], // Explicação: Preserva metadados ou assinaturas de responsáveis anteriores.
-            [field]: parsedValue, // Explicação: Altera a ala correspondente do clique (irmas ou irmaos).
-            total: novoTotalSomado, // 🚀 PURIFICAÇÃO DO CORAL: Campo intruso '.comum' limpo com sucesso! Resta apenas a reatividade pura do totalizador absoluto!
+            [fieldLimpo]: parsedValue, // Explicação: Altera a ala correspondente do clique (irmas ou irmaos).
+            total: novoTotalSomado, // Explicação: Purificação do Coral: Resta apenas a reatividade pura do totalizador absoluto!
           },
         }; // Explicação: Encerra a montagem reativa do Coral.
       } // Explicação: Fim do interceptador do Coral.
@@ -175,7 +176,7 @@ export const useCounterSync = (currentEventId, counts) => {
 
     eventService
       .updateInstrumentCount(eventComumId, currentEventId, {
-        instId: id,
+        instId: idSaneado, // Explicação: Envia o ID pai corrigido e saneado.
         field,
         value,
         userData,
@@ -185,27 +186,31 @@ export const useCounterSync = (currentEventId, counts) => {
   }; // Explicação: Encerra o método updateCount.
 
   // SUBROTINA DE POSSE E ASSINATURA DE ZELADORIA DE NAIPE (GOVERNANÇA DOS SECRETÁRIOS)
-  const setOwnership = async (id, myUID, userName) => {
-    // Explicação: Método encarregado de carimbar o ID e nome do secretário como dono daquela aba.
+  const setOwnership = async (id, myUID, userName, subId = null) => {
+    // Explicação: Método encarregado de carimbar o ID e nome do secretário como dono daquela aba, com suporte a sub-alas de gênero.
     if (!eventComumId || !currentEventId || isCountsLocked || !myUID) return; // Explicação: Trava disparos órfãos ou em ensaios bloqueados por cadeados.
     lastLocalUpdateRef.current = Date.now(); // Explicação: Carimba o relógio Unix local na memória do smartphone.
+
+    // 🚀 LÓGICA DE GAVETAS ISOLADAS REGIONAIS: Se for Coral/Irmandade, calcula as chaves dinâmicas baseadas no subId enviado (irmas/irmaos).
+    const keyId = subId ? `responsibleId_${subId}` : "responsibleId"; // Explicação: Define a string da sub-chave técnica de ID.
+    const keyName = subId ? `responsibleName_${subId}` : "responsibleName"; // Explicação: Define a string da sub-chave técnica de Nome.
 
     setLocalCounts((prev) => ({
       // Explicação: Injeta o nome do operador de forma otimista no cabeçalho da sanfona visível.
       ...prev,
       [id]: {
         ...prev[id],
-        responsibleId: myUID,
-        responsibleName: userName || "Você",
+        [keyId]: myUID,
+        [keyName]: userName || "Você",
       },
     })); // Explicação: Encerra o setState otimista da caneta.
 
     try {
       // Explicação: Tenta gravar a assinatura física no documento mestre do Firebase.
       await updateDoc(doc(db, "events_global", currentEventId), {
-        // Explicação: Envia a instrução de atualização de nós.
-        [`counts.${id}.responsibleId`]: myUID, // Explicação: Carimba o ID de autenticação do secretário logado.
-        [`counts.${id}.responsibleName`]: userName || "Colaborador", // Explicação: Grava o nome nominal por extenso no nó da meta.
+        // Explicação: Envia a instrução de atualização de nós aninhados de governança.
+        [`counts.${id}.${keyId}`]: myUID, // Explicação: Carimba o ID de autenticação do secretário logado na vaga correta.
+        [`counts.${id}.${keyName}`]: userName || "Colaborador", // Explicação: Grava o nome nominal por extenso no nó correspondente da meta.
         updatedAt: Date.now(), // Explicação: Atualiza o relógio mestre do documento.
       }); // Explicação: Encerra a transação.
       toast.success("Zeladoria assumida com sucesso!"); // Explicação: Emite balão verde flutuante de sucesso na tela.

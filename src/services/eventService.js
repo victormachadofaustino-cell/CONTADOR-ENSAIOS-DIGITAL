@@ -94,9 +94,9 @@ export const eventService = {
         // [Funcionamento]: Constrói a estrutura da busca com filtros integrados.
         collection(db, "users"), // [Funcionamento]: Aponta a busca para a tabela mestre de usuários do sistema.
         where("regionalId", "==", regionalId), // [Funcionamento]: Filtra apenas os usuários que pertencem à regional especificada.
-        where("approved", "==", true), // [Funcionamento]: Ex exige que a conta do usuário esteja marcada como aprovada.
+        where("approved", "==", true), // [Funcionamento]: Exige que a conta do usuário esteja marcada como aprovada.
       ); // [Funcionamento]: Encerra a montagem da consulta query.
-      const snap = await getDocs(q); // [Funcionamento]: Executa fisicamente a leitura no Firestore and aguarda o retorno dos documentos.
+      const snap = await getDocs(q); // [Funcionamento]: Executa fisicamente a leitura no Firestore e aguarda o retorno dos documentos.
       return snap.docs.map((d) => ({ uid: d.id, ...d.data() })); // [Funcionamento]: Converte os documentos do banco em objetos JavaScript utilizáveis com ID.
     } catch (e) {
       // [Funcionamento]: Captura qualquer erro de rede ou permissão ocorrido na busca.
@@ -124,7 +124,7 @@ export const eventService = {
       ); // [Funcionamento]: Filtra os ensaios de todas as igrejas daquela cidade.
     } // [Funcionamento]: Encerra o bloco de checagem de cidade.
     else if (user.activeRegionalId || user.regionalId) {
-      // [Funcionamento]: Caso seja administrador regional and possua uma regional focada.
+      // [Funcionamento]: Caso seja administrador regional e possua uma regional focada.
       constraints.push(
         where("regionalId", "==", user.activeRegionalId || user.regionalId),
       ); // [Funcionamento]: Filtra os ensaios de toda a regional de ponta a ponta.
@@ -139,11 +139,12 @@ export const eventService = {
       // [Funcionamento]: Se o operador for estritamente um secretário local GEM.
       constraints = [
         or(
-          // [Funcionamento]: Aplica uma condition lógica OU especial de portaria do banco.
-          where("comumId", "==", user.comumId), // [Funcionamento]: Permite ver os ensaios da própria igreja comuns nativa dele.
-          where("invitedUsers", "array-contains", user.uid), // [Funcionamento]: Ou os ensaios de outras cidades onde ele foi convidado nominalmente.
+          // [Funcionamento]: Aplica uma condição lógica OU de portaria multi-filtro do Firestore.
+          where("comumId", "==", user.comumId), // [Funcionamento]: Permite carregar os ensaios da sua própria igreja comum de cadastro.
+          where("invitedUsers", "array-contains", user.uid), // [Funcionamento]: Permite carregar os ensaios onde ele foi convidado como adjunto.
+          where("regionalId", "==", user.regionalId), // [Funcionamento]: 🚀 CURA DO FILTRO: Permite enxergar e ouvir em tempo real os ensaios Regionais pertencentes à sua comarca mestre!
         ),
-      ]; // [Funcionamento]: Encerra a aplicação do filtro lógico OU.
+      ]; // [Funcionamento]: Encerra a aplicação do filtro composto em paralelo.
     } // [Funcionamento]: Encerra a checagem de nível GEM.
 
     const q = query(
@@ -164,11 +165,11 @@ export const eventService = {
         // [Funcionamento]: Captura erros na escuta em tempo real (ex: falta de internet).
         console.error("Erro no Listener de Eventos Global:", error); // [Funcionamento]: Registra a falha técnica no console para análise.
       },
-    ); // [Funcionamento]: Encerra a conexão reativa del onSnapshot.
+    ); // [Funcionamento]: Encerra a conexão reativa do onSnapshot.
   }, // [Funcionamento]: Encerra o método subscribeToEvents.
 
   createEvent: async (comumId, eventData, userData = null) => {
-    // [Funcionamento]: Método encarregado de criar e estruturar um Executar novo ensaio no banco de dados.
+    // [Funcionamento]: Método encarregado de criar e estruturar um novo ensaio no banco de dados.
     if (
       !comumId &&
       !eventData?.comumId &&
@@ -177,7 +178,7 @@ export const eventService = {
     )
       throw new Error("ID da Localidade ausente."); // [Funcionamento]: Regra de segurança: impede a criação de ensaios sem uma igreja amarrada.
 
-    const auth = getAuth(); // [Funcionamento]: Puxa o motor de autenticação active do dispositivo.
+    const auth = getAuth(); // [Funcionamento]: Puxa o motor de autenticação ativo do dispositivo.
     const currentUser = auth.currentUser; // [Funcionamento]: Isola o operador logado atualmente no chip.
 
     const userRoleLevel = userData?.accessLevel || eventData.accessLevel; // [Funcionamento]: Lê o crachá do usuário para verificar seu nível de autoridade.
@@ -210,15 +211,15 @@ export const eventService = {
 
     const finalScope = isGemUser ? "local" : scope || "local"; // [Funcionamento]: Se for GEM, força o escopo a ser local, senão herda o escopo escolhido.
 
-    // 🚀 BLINDAGEM SÊNIOR ABSOLUTA ANTI-ROTA-VAZIA: Garante o resgate imediato e higienizado do ID da comum de dentro do payload do evento ou das claims do usuário logado se o parâmetro cru vier nulo de componentes órfãos.
+    // [Funcionamento]: Garante o resgate imediato do ID da comum de dentro do payload do evento ou das claims do usuário logado se o parâmetro cru vier nulo.
     const finalComumId =
       comumId ||
       eventData?.comumId ||
       userData?.activeComumId ||
       userData?.comumId ||
-      ""; // [Funcionamento]: Dissolve de forma definitiva as strings nulas ou vazias que quebravam as chamadas nominais da linha 235.
+      ""; // [Funcionamento]: Dissolve de forma definitiva as strings nulas ou vazias que quebravam as chamadas nominais.
 
-    // 🚀 EXCLUSIVO PROFESSIONAL EDITION: Saneamento absoluto anti-ponto cego. Se o Front mandar a cidade vazia na sua comum de origem, resgata ela do crachá do usuário ativo!
+    // [Funcionamento]: Se o Front mandar a cidade vazia na sua comum de origem, resgata ela do crachá do usuário ativo!
     const finalCidadeId =
       cidadeId ||
       eventData?.cidadeId ||
@@ -240,12 +241,12 @@ export const eventService = {
         finalComumId,
         "instrumentos_config",
       ); // [Funcionamento]: Aponta para a subcoleção de instrumentos configurados daquela igreja comum.
-      const localSnap = await getDocs(localRef); // [Funcionamento]: Lê a grade de instrumentos cadastrados na igreja comuns.
+      const localSnap = await getDocs(localRef); // [Funcionamento]: Lê a grade de instrumentos cadastrados na igreja comum.
 
       if (localSnap.empty) {
-        // [Funcionamento]: Se a lista retornar vazia, significa que a igreja comum não configurou sua orquestra ainda.
+        // [Funcionamento]: Se la lista retornar vazia, significa que a igreja comum não configurou sua orquestra ainda.
         throw new Error("CONFIG_REQUIRED"); // [Funcionamento]: Interrompe a criação disparando o alerta de configuração obrigatória.
-      } // [Funcionamento]: Encerra la validation de grade vazia.
+      } // [Funcionamento]: Encerra a validação de grade vazia.
 
       const sessoesDetectadas = new Set(); // [Funcionamento]: Cria uma lista de conjuntos únicos na memória RAM para catalogar os naipes (Cordas, Madeiras, etc).
 
@@ -255,8 +256,8 @@ export const eventService = {
         const originalId = docInst.id; // [Funcionamento]: Puxa a chave identificadora do documento.
         const id =
           INSTRUMENT_ID_MAP[originalId.toLowerCase().trim()] ||
-          originalId.toLowerCase().trim(); // [Funcionamento]: Higieniza o ID convertendo letras maiúsculas and espaços.
-        const sectionName = inst.section?.toUpperCase() || "GERAL"; // [Funcionamento]: Captura o naipe in letras maiúsculas ou define como GERAL padrão.
+          originalId.toLowerCase().trim(); // [Funcionamento]: Higieniza o ID convertendo letras maiúsculas e espaços.
+        const sectionName = inst.section?.toUpperCase() || "GERAL"; // [Funcionamento]: Captura o naipe em letras maiúsculas ou define como GERAL padrão.
         sessoesDetectadas.add(sectionName); // [Funcionamento]: Adiciona o naipe catalogado no conjunto único na RAM.
 
         if (id === "coral" || id === "orgao") {
@@ -269,9 +270,9 @@ export const eventService = {
               name: id === "coral" ? "CORAL" : "ÓRGÃO", // [Funcionamento]: Carimba o nome visual estático por extenso.
               section: sectionName, // [Funcionamento]: Vincula o grupo do naipe correspondente.
               evalType: inst.evalType || "Sem", // [Funcionamento]: Aplica o tipo de avaliação padrão.
-              responsibleId: null, // [Funcionamento]: Define o ID do dono della contagem como nulo inicial.
-              responsibleName: null, // [Funcionamento]: Define o Nome do dono della contagem como nulo inicial.
-              updatedAt: Date.now(), // [Funcionamento]: Carimba a data e hora do carimbo inicial in formato numérico Unix.
+              responsibleId: null, // [Funcionamento]: Define o ID do dono da contagem como nulo inicial.
+              responsibleName: null, // [Funcionamento]: Define o Nome do dono da contagem como nulo inicial.
+              updatedAt: Date.now(), // [Funcionamento]: Carimba a data e hora do carimbo inicial em formato numérico Unix.
             }; // [Funcionamento]: Encerra o payload inicial estruturado regional.
             if (id === "coral") {
               // [Funcionamento]: Se for o Coral especificamente no escopo regional.
@@ -288,15 +289,15 @@ export const eventService = {
               // [Funcionamento]: Inicia a fiação simplificada local de Teclas e Coral.
               total: 0,
               irmaos: 0,
-              irmas: 0, // [Funcionamento]: Inicializa todos os sub-totalizadores zerados in linha.
+              irmas: 0, // [Funcionamento]: Inicializa todos os sub-totalizadores zerados em linha.
               name: id === "coral" ? "CORAL" : "ÓRGÃO", // [Funcionamento]: Carimba o nome por extenso.
               section: sectionName, // [Funcionamento]: Vincula o naipe de irmandade ou organistas.
               evalType: inst.evalType || "Sem", // [Funcionamento]: Inicializa o tipo de avaliação padrão.
-              responsibleId: null, // [Funcionamento]: Define o ID do dono della contagem como nulo.
-              responsibleName: null, // [Funcionamento]: Define o Nome do dono della contagem como nulo.
+              responsibleId: null, // [Funcionamento]: Define o ID do dono da contagem como nulo.
+              responsibleName: null, // [Funcionamento]: Define o Nome do dono da contagem como nulo.
               updatedAt: Date.now(), // [Funcionamento]: Carimba o relógio numérico Unix inicial.
             }; // [Funcionamento]: Encerra o payload enxuto local.
-          } // [Funcionamento]: Encerra la bifurcação de escopos de Teclas.
+          } // [Funcionamento]: Encerra a bifurcação de escopos de Teclas.
         } else {
           // [Funcionamento]: Tratamento para instrumentos lineares comuns da orquestra (ex: violino, flauta).
           if (finalScope === "regional") {
@@ -312,11 +313,11 @@ export const eventService = {
             }; // [Funcionamento]: Inicializa a estrutura tripla local (total, comum da casa, visitas/enc).
           } // [Funcionamento]: Encerra la bifurcação de instrumentos comuns.
         } // [Funcionamento]: Encerra a inicialização de nós de instrumentos.
-      }); // [Funcionamento]: Encerra la varredura através de foreach de instrumentos.
+      }); // [Funcionamento]: Encerra a varredura através de foreach de instrumentos.
 
       sessoesDetectadas.forEach((sec) => {
         // [Funcionamento]: Varre os naipes únicos catalogados para criar as chaves de liderança de grupo (Metas de Naipe).
-        const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, "_")}`; // [Funcionamento]: Transforma o naipe in chave técnica limpa (ex: 'meta_cordas').
+        const metaKey = `meta_${sec.toLowerCase().replace(/\s/g, "_")}`; // [Funcionamento]: Transforma o naipe em chave técnica limpa (ex: 'meta_cordas').
         initialCounts[metaKey] = {
           responsibleId: null,
           responsibleName: null,
@@ -335,7 +336,7 @@ export const eventService = {
           verso: "",
           assunto: "",
         }; // [Funcionamento]: Adiciona o mapa estruturado para catalogar a pregação da Palavra.
-      } // [Funcionamento]: Encerra o bloco della Palavra regional.
+      } // [Funcionamento]: Encerra o bloco da Palavra regional.
 
       const payload = {
         // [Funcionamento]: Monta o documento mestre unificado final que será gravado no Firestore.
@@ -344,29 +345,29 @@ export const eventService = {
         shadowScope: finalScope, // [Funcionamento]: Grava a chave espelho de escopo para indexação de segurança.
         invitedUsers: Array.isArray(invitedUsers) ? invitedUsers : [], // [Funcionamento]: Salva a lista de secretários convidados ou um array vazio por segurança.
         date, // [Funcionamento]: Carimba a data do calendário no formato YYYY-MM-DD.
-        responsavel: responsavel || "Pendente", // [Funcionamento]: Salva the nome del Ancião ou encarregado condutor del ensaio.
+        responsavel: responsavel || "Pendente", // [Funcionamento]: Salva o nome do Ancião ou encarregado condutor do ensaio.
         createdById: currentUser?.uid || null, // [Funcionamento]: Salva a ID de autenticação do operador criador.
         createdByLevel:
           userData?.accessLevel || eventData.accessLevel || "basico", // [Funcionamento]: Carimba o nível de acesso contido no crachá do criador.
-        comumNome: comumNome || "", // [Funcionamento]: Carimba o nome por extenso da igreja comuns (Denormalização).
+        comumNome: comumNome || "", // [Funcionamento]: Carimba o nome por extenso da igreja comum (Denormalização).
         comumId: finalComumId, // [Funcionamento]: Salva o identificador físico de propriedade da igreja comum.
         cidadeId: finalCidadeId, // [Funcionamento]: Salva o ID sanitizado e corrigido da cidade vinculada, liquidando as strings vazias.
-        cidadeNome: cidadeNome || "", // [Funcionamento]: Carimba o nome por extenso da cidade vinculada (Cura do bug de Jundiaí).
+        cidadeNome: cidadeNome || "", // [Funcionamento]: Carimba o nome por extenso da cidade vinculada.
         regionalId: finalRegionalId, // [Funcionamento]: Salva o ID sanitizado e corrigido da regional administrativa.
         regionalNome: regionalNome || "", // [Funcionamento]: Carimba o nome por extenso da regional administrativa.
         ata: ataPayload, // [Funcionamento]: Acopla a estrutura de ata vazia e aberta montada acima.
-        counts: initialCounts, // [Funcionamento]: Acopla toda a grade inicial zerada de instrumentos and naipes criada.
+        counts: initialCounts, // [Funcionamento]: Acopla toda a grade inicial zerada de instrumentos e naipes criada.
         createdAt: Date.now(), // [Funcionamento]: Registra a data e hora exata de nascimento do ensaio no servidor.
         updatedAt: Date.now(), // [Funcionamento]: Inicializa a marcação de atualização com o mesmo relógio corrente.
         dbVersion: "12.6-serial_fixed", // [Funcionamento]: Carimba a versão técnica estável da arquitetura do banco de dados.
-      }; // [Funcionamento]: Encerra a montagem del documento payload mestre.
+      }; // [Funcionamento]: Encerra a montagem do documento payload mestre.
 
       const docNovoCriado = await addDoc(
         collection(db, "events_global"),
         payload,
       ); // [Funcionamento]: Despacha o documento para o Firestore e cria o novo ensaio retornando sua ID.
 
-      // 🚀 BLINDAGEM DE ESCOPO HISTÓRICA DA LINHA 235: Chamadas nominais fixas só são criadas se for Ensaio Local. Ensaios Regionais não possuem lista nominal de músicos locais!
+      // [Funcionamento]: Chamadas nominais fixas só são criadas se for Ensaio Local. Ensaios Regionais não possuem lista nominal de músicos locais!
       if (finalScope !== "regional") {
         // [Funcionamento]: Se o ensaio for local comum (não regional), monta as chamadas de presença nominais da casa.
         const batchChamada = writeBatch(db); // [Funcionamento]: Inicializa uma transação em lote (writeBatch) de escrita atômica para alta performance.
@@ -376,11 +377,11 @@ export const eventService = {
           "comuns",
           finalComumId,
           "musicos_lista",
-        ); // [Funcionamento]: Aponta para a subcoleção nominal de fichas de músicos cadastrados na igreja comuns.
+        ); // [Funcionamento]: Aponta para a subcoleção nominal de fichas de músicos cadastrados na igreja comum.
         const musicosSnap = await getDocs(musicosRef); // [Funcionamento]: Executa a leitura em lote de todos os músicos oficiais e em ensaio da casa.
 
         musicosSnap.docs.forEach((musicoDoc) => {
-          // [Funcionamento]: Varre músico por músico cadastrado na igreja comuns.
+          // [Funcionamento]: Varre músico por músico cadastrado na igreja comum.
           const mData = musicoDoc.data(); // [Funcionamento]: Extrai os dados do músico (nome, instrumentoId).
           const saneInstId =
             INSTRUMENT_ID_MAP[mData.instrumentoId?.toLowerCase().trim()] ||
@@ -400,7 +401,7 @@ export const eventService = {
 
           batchChamada.set(llamadaRef, {
             // [Funcionamento]: Prepara a escrita da ficha de portaria zerada do músico no lote.
-            nome: (mData.nome || mData.name || "IRMÃO(Ã)").toUpperCase().trim(), // [Funcionamento]: Salva o nome do irmão in letras maiúsculas e limpo.
+            nome: (mData.nome || mData.name || "IRMÃO(Ã)").toUpperCase().trim(), // [Funcionamento]: Salva o nome do irmão em letras maiúsculas e limpo.
             instrumentoId: saneInstId, // [Funcionamento]: Carimba o ID limpo do instrumento dele.
             instrumentoNome: (
               mData.instrumentoNome ||
@@ -413,14 +414,14 @@ export const eventService = {
             presente: false, // [Funcionamento]: Inicializa a presença em falso (ausente por padrão até bater o cartão).
             avaliacao: "Sem", // [Funcionamento]: Inicializa a nota de avaliação da execução musical como "Sem".
             updatedAt: Date.now(), // [Funcionamento]: Registra o carimbo de data Unix.
-          }); // [Funcionamento]: Encerra a preparação del documento do músico no lote.
+          }); // [Funcionamento]: Encerra a preparação do documento do músico no lote.
         }); // [Funcionamento]: Encerra o laço XML foreach dos músicos.
 
         const ministerioSnap = await getDocs(
           collection(db, "comuns", finalComumId, "ministerio_lista"),
         ); // [Funcionamento]: Puxa a lista nominal de obreiros e irmãs examinadoras cadastrados na igreja comum.
         ministerioSnap.docs.forEach((minDoc) => {
-          // [Funcionamento]: Varre obreiro por obreiro cadastrado na igreja comuns.
+          // [Funcionamento]: Varre obreiro por obreiro cadastrado na igreja comum.
           const minData = minDoc.data(); // [Funcionamento]: Extrai os dados do ministério (nome, cargo).
           const llamadaMinRef = doc(
             collection(
@@ -457,7 +458,7 @@ export const eventService = {
   reopenAta: async (eventId) => {
     // [Funcionamento]: Método encarregado de reabrir uma ata lacrada para correções tardias de secretaria.
     if (!eventId) return; // [Funcionamento]: Cancela se o ID do ensaio não for fornecido.
-    const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Autentica a rota física do ensaio dentro della coleção global.
+    const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Autentica a rota física do ensaio dentro da coleção global.
     try {
       // [Funcionamento]: Tenta efetuar a atualização no servidor.
       return await updateDoc(eventRef, {
@@ -475,7 +476,7 @@ export const eventService = {
     if (!eventId || !userObjectOrId) return; // [Funcionamento]: Trava contra disparos órfãos sem dados preenchidos.
     const uid =
       typeof userObjectOrId === "object" ? userObjectOrId.uid : userObjectOrId; // [Funcionamento]: Extrai a string pura do ID do usuário.
-    const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza o documento mestre do ensaio na nuvem.
+    const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza the documento mestre do ensaio na nuvem.
     try {
       // [Funcionamento]: Tenta injetar o convidado.
       return await updateDoc(eventRef, {
@@ -511,7 +512,7 @@ export const eventService = {
       // [Funcionamento]: Tenta rodar a exclusão.
       const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza o documento alvo na rota mestre.
       await deleteDoc(eventRef); // [Funcionamento]: Apaga fisicamente o documento principal do Firestore de forma definitiva.
-      return true; // [Funcionamento]: Retorna verdadeiro informando o sucesso della remoção para a tela.
+      return true; // [Funcionamento]: Retorna verdadeiro informando o sucesso da remoção para a tela.
     } catch (error) {
       // [Funcionamento]: Captura erros (ex: travas de segurança eclesiásticas ou rede).
       console.error("ERRO_SERVICE_DELETE:", error.message); // [Funcionamento]: Emite a falha detalhada no console técnico.
@@ -519,7 +520,7 @@ export const eventService = {
     } // [Funcionamento]: Encerra o tratamento catch.
   }, // [Funcionamento]: Encerra o método deleteEvent.
 
-  // 🚀 MOTOR ESTABILIZADO PROFESSIONAL EDITION: Gravação com Buffers Ricos e Salvamento Absoluto de Donos de Naipes e Contadores de Coral
+  // MOTOR ESTABILIZADO PROFESSIONAL EDITION: Gravação com Buffers Ricos e Salvamento Absoluto de Donos de Naipes e Contadores de Coral
   updateInstrumentCount: async (
     comumId,
     eventId,
@@ -529,17 +530,17 @@ export const eventService = {
 
     const rawId = instId.toLowerCase().trim(); // [Funcionamento]: Converte o ID do instrumento para letras minúsculas e remove espaços residuais nas bordas.
 
-    // 🚀 REDIRECIONAMENTO DE CANOS REGIONAL & FILTRO DE FANTASMAS: Higieniza o ID unificado forçando a passagem segura pelo dicionário estático contendo chaves de 3 letras.
+    // [Funcionamento]: Sanitiza e centraliza a árvore do JSON no nó pai correto em minúsculo, liquidando criações como 'tub'.
     let targetId =
       rawId === "irmas" || rawId === "irmaos"
         ? "coral"
-        : INSTRUMENT_ID_MAP[rawId] || rawId; // [Funcionamento]: Sanitiza e centraliza a árvore do JSON no nó pai correto em minúsculo, liquidando criações como 'tub'.
+        : INSTRUMENT_ID_MAP[rawId] || rawId; // [Funcionamento]: Mantém o controle de paridade estável de ID.
 
     const timerKey = `${eventId}_${targetId}`; // [Funcionamento]: Constrói uma chave única na memória RAM combinando o ID do ensaio e do instrumento para agrupar as batidas de teclado.
 
-    // 🚀 CORREÇÃO SUPREMA DA INJEÇÃO SUJA: Passa o campo original enviado pela tela pelo mapa estático. Se o front mandar "tub" como campo a atualizar, ele é interceptado e vira um subcampo limpo de sistema.
+    // [Funcionamento]: Passa o campo original enviado pela tela pelo mapa estático. Se o front mandar "tub" como campo a atualizar, ele é interceptado e vira um subcampo limpo de sistema.
     const rawField = field?.toLowerCase().trim(); // [Funcionamento]: Limpa o texto da propriedade de entrada.
-    const sanitizedField = INSTRUMENT_ID_MAP[rawField] ? "comum" : field; // [Funcionamento]: 🚀 SEGURO ATÔMICO: Se o campo for uma sigla de instrumento (ex: "tub"), intercepta e força a virar o subcampo operacional legítimo "comum"!
+    const sanitizedField = INSTRUMENT_ID_MAP[rawField] ? "comum" : field; // [Funcionamento]: SEGURO ATÔMICO: Se o campo for uma sigla de instrumento (ex: "tub"), intercepta e força a virar o subcampo operacional legítimo "comum"!
 
     // [Funcionamento]: Se o ID de clique original for irmas ou irmaos, repassa a sub-chave correta para o campo a ser atualizado dentro do Coral.
     const fieldToUpdate =
@@ -554,10 +555,10 @@ export const eventService = {
     if (!updateBuffers[timerKey]) updateBuffers[timerKey] = {}; // [Funcionamento]: Se a represa (Buffer) desse instrumento estiver vazia na RAM, inicializa uma nova gaveta limpa.
     updateBuffers[timerKey][fieldToUpdate] = val; // [Funcionamento]: Armazena temporariamente o novo número digitado pelo usuário na RAM local, respondendo instantaneamente ao toque.
 
-    // 🚀 INJEÇÃO DE GOVERNANÇA (CARIMBAGEM RICA): Guarda as informações do operador logado dentro do Buffer para não perdê-las no delay de 400ms
+    // [Funcionamento]: Guarda as informações do operador logado dentro do Buffer para não perdê-las no delay de 400ms.
     if (userData && userData.uid) {
       // [Funcionamento]: Se o crachá do secretário ativo contiver um código de login legítimo.
-      // 🚀 CAPTURA DE ASSINATURA POR GÊNERO REGIONAL: Se for clique em irmas/irmaos, assina na vaga correspondente da comarca.
+      // [Funcionamento]: Se for clique em irmas/irmaos, assina na vaga correspondente da comarca.
       if (rawId === "irmas" || rawId === "irmaos") {
         updateBuffers[timerKey][`responsibleId_${rawId}`] = userData.uid; // [Funcionamento]: Assina o ID na vaga de gênero do buffer.
         updateBuffers[timerKey][`responsibleName_${rawId}`] =
@@ -567,7 +568,7 @@ export const eventService = {
         updateBuffers[timerKey]["responsibleName"] =
           userData.name || userData.responsavel || "Secretaria"; // [Funcionamento]: Carimba o Nome por extenso do responsável na gaveta da RAM mestre.
       }
-    } // [Funcionamento]: Encerra o salvamento das credenciais do dono del naipe no buffer.
+    } // [Funcionamento]: Encerra o salvamento das credenciais do dono do naipe no buffer.
 
     if (section) {
       // [Funcionamento]: Se a seção do naipe (ex: CORDAS, MADEIRAS) for passada pela tela do contador.
@@ -583,8 +584,8 @@ export const eventService = {
 
     debounceTimers[timerKey] = setTimeout(async () => {
       // [Funcionamento]: Abre uma contagem regressiva de 400 milissegundos na memória RAM. Quando você parar de digitar, ele executa o bloco abaixo.
-      const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza o documento físico del ensaio ativo na coleção global do Firestore.
-      const bufferCopy = { ...updateBuffers[timerKey] }; // [Funcionamento]: Clona de forma isolada todos os dados represados na RAM para liberar o buffer para los próximos cliques.
+      const eventRef = doc(db, "events_global", eventId); // [Funcionamento]: Localiza o documento físico do ensaio ativo na coleção global do Firestore.
+      const bufferCopy = { ...updateBuffers[timerKey] }; // [Funcionamento]: Clona de forma isolada todos os dados represados na RAM para liberar o buffer para os próximos cliques.
 
       delete updateBuffers[timerKey]; // [Funcionamento]: Esvazia e limpa a represa física da RAM desse instrumento para as próximas contagens.
       delete debounceTimers[timerKey]; // [Funcionamento]: Deleta o temporizador gasto da memória para fechar o ciclo do circuito.
@@ -594,7 +595,7 @@ export const eventService = {
         const finalUpdates = {}; // [Funcionamento]: Cria a sacola final de propriedades que serão enviadas para o servidor do Firebase.
         const baseKey = `counts.${targetId}`; // [Funcionamento]: Monta o caminho técnico do objeto no banco (ex: 'counts.violino' ou 'counts.coral').
 
-        // 🚀 CÁLCULO ATÔMICO CUMULATIVO REAL DE TOTALIZADOR DO CORAL COM LEITURA DA NUVEM (FIM DA FIAÇÃO PARTIDA)
+        // [Funcionamento]: Se o identificador de destino for o Coral, executa a mesclagem atômica lendo o documento físico para impedir pulverizações.
         if (targetId === "coral") {
           // [Funcionamento]: Se o identificador de destino for o Coral, executa a mesclagem atômica lendo o documento físico para impedir pulverizações.
           const docSnapSnapshot = await getDoc(eventRef); // [Funcionamento]: Lê o estado instantâneo atualizado do ensaio direto do Firestore antes de somar.
@@ -608,19 +609,19 @@ export const eventService = {
           const finalIrmas =
             typeof bufferCopy["irmas"] !== "undefined"
               ? bufferCopy["irmas"]
-              : bancoIrmas; // 🚀 SOLUÇÃO DO UNDEFINED: Se o clique atual não trouxe as irmãs, herda o valor real do banco in vez de zerar!
+              : bancoIrmas; // [Funcionamento]: SOLUÇÃO DO UNDEFINED: Se o clique atual não trouxe as irmãs, herda o valor real do banco em vez de zerar!
           const finalIrmaos =
             typeof bufferCopy["irmaos"] !== "undefined"
               ? bufferCopy["irmaos"]
-              : bancoIrmaos; // 🚀 SOLUÇÃO DO UNDEFINED: Se o clique atual não trouxe os irmãos, herda o valor real do banco in vez de zerar!
+              : bancoIrmaos; // [Funcionamento]: SOLUÇÃO DO UNDEFINED: Se o clique atual não trouxe os irmãos, herda o valor real do banco em vez de zerar!
           const somaTotalAbsoluta = finalIrmas + finalIrmaos; // [Funcionamento]: Realiza a soma matemática legítima das duas metade da irmandade.
 
           bufferCopy["irmas"] = finalIrmas; // [Funcionamento]: Re-injeta o valor unificado estável corrigido no payload de irmãs.
           bufferCopy["irmaos"] = finalIrmaos; // [Funcionamento]: Re-injeta o valor unificado estável corrigido no payload de irmãos.
-          bufferCopy["total"] = somaTotalAbsoluta; // [Funcionamento]: Grava o total absoluto corrigido imune a concorrência assíncrona. Envia sem o `.comum` intruso!
+          bufferCopy["total"] = somaTotalAbsoluta; // [Funcionamento]: Grava o total absoluto corrigido imune a concorrência assíncrona.
         } // [Funcionamento]: Encerra a blindagem especial do Coral contra pulverização de dados.
 
-        // 🚀 ELEVAÇÃO ATÔMICA DA VALIDAÇÃO DO CARD (PROTEÇÃO DE TETO CONTRA ZERADOS): Se o campo atual for da 'comum' e o valor for maior do que o total físico do ensaio aberto, sobe o Total de forma automática para destravar a tela principal de trás!
+        // [Funcionamento]: Se o campo atual for da 'comum' e o valor for maior do que o total físico do ensaio aberto, sobe o Total de forma automática!
         if (fieldToUpdate === "comum") {
           // [Funcionamento]: Avalia se a gravação pertence ao nó dos músicos da casa (Toque Azul ou digitação avulsa).
           const docSnapshotParaTeto = await getDoc(eventRef); // [Funcionamento]: Realiza uma leitura rápida de segurança do documento na nuvem para ler a estrutura de setas vigentes.
@@ -631,7 +632,7 @@ export const eventService = {
             parseInt(dadosAtuaisInstrumento?.total) || 0; // [Funcionamento]: Isola os músicos totais salvos nas setas pretas do painel.
           if (val > totalAtualDoBanco) {
             // [Funcionamento]: Se a contagem nominal de cabeças da comum ultrapassar o limite das setas pretas.
-            bufferCopy["total"] = val; // [Funcionamento]: Força a elevação automática do totalizador para o mesmo número de cabeças presentes, impedindo o reset síncrono para zero.
+            bufferCopy["total"] = val; // [Funcionamento]: Força a elevação automática do totalizador para o mesmo número de cabeças presentes.
           } // [Funcionamento]: Termina a barreira de teto.
         } // [Funcionamento]: Encerra o interceptador de proteção.
 
@@ -640,7 +641,7 @@ export const eventService = {
           finalUpdates[`${baseKey}.${f}`] = bufferCopy[f]; // [Funcionamento]: Monta o caminho absoluto no banco de dados injetando a propriedade correspondente perfeitamente aninhada.
         }); // [Funcionamento]: Encerra a varredura das chaves colhidas do buffer.
 
-        finalUpdates[`${baseKey}.updatedAt`] = Date.now(); // [Funcionamento]: Carimba o relógio Unix preciso no nó individual do instrumento (Cura das piscadas de concorrência).
+        finalUpdates[`${baseKey}.updatedAt`] = Date.now(); // [Funcionamento]: Carimba o relógio Unix preciso no nó individual do instrumento.
         finalUpdates[`updatedAt`] = Date.now(); // [Funcionamento]: Atualiza o relógio na raiz do ensaio global para avisar o painel que o documento mudou.
 
         await updateDoc(eventRef, finalUpdates); // [Funcionamento]: Dispara a gravação atômica rica de um único tiro (`updateDoc`) no Firestore, salvando números, donos de naipes e totais sincronizados.
@@ -701,7 +702,7 @@ export const eventService = {
   }, // [Funcionamento]: Encerra o método saveAtaData.
 
   addMusicoComum: async (comumId, musicoPayload) => {
-    // [Funcionamento]: Cadastra a ficha cadastral de um Executar novo músico na lista nominal fixa da igreja comum.
+    // [Funcionamento]: Cadastra a ficha cadastral de um novo músico na lista nominal fixa da igreja comum.
     if (!comumId || !musicoPayload.nome || !musicoPayload.instrumentoId)
       throw new Error("Parâmetros incompletos."); // [Funcionamento]: Trava contra cadastros incompletos sem nome ou instrumento amarrados.
     try {
@@ -726,7 +727,7 @@ export const eventService = {
       await setDoc(novaFichaRef, payloadSaneado); // [Funcionamento]: Grava fisicamente a ficha do irmão no Firestore.
       return novaFichaRef.id; // [Funcionamento]: Devolve o ID da nova ficha criada para o aplicativo.
     } catch (e) {
-      // [Funcionamento]: Cadastra a ficha cadastral de um Executar novo músico na lista nominal fixa da igreja comum.
+      // [Funcionamento]: Cadastra a ficha cadastral de um novo músico na lista nominal fixa da igreja comum.
       console.error("Erro ao adicionar músico comum:", e); // [Funcionamento]: Emite a falha no log técnico.
       throw new Error("Erro ao salvar músico."); // [Funcionamento]: Avisa a tela sobre a falha.
     } // [Funcionamento]: Encerra o bloco catch.

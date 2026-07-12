@@ -130,7 +130,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         if (isMounted) setLoading(false); // Explicação: Desativa a tela de carregamento principal liberando o app.
       }
     }; // Explicação: Encerra o scope della subrotina assíncrona.
-    loadInstruments(); // Explicação: Executa a sequência de carregamento declarada acima.
+    loadInstruments(); // Explicação: Executa a sequência de carregamento declared acima.
     return () => {
       isMounted = false;
     }; // Explicação: Desliga a flag ao desmontar a página por segurança.
@@ -315,6 +315,15 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     const ehEnsaioDaMinhaCasa = minhaComumLegitima === eventComumId; // Explicação: Compara se o ensaio aberto na tela pertence à igreja dele.
     const ehEventoLocal = ataData?.scope !== "regional"; // Explicação: Verifica se o escopo não é uma reunião regional centralizada de comarca.
 
+    // 🚀 AJUSTE DE LIBERAÇÃO REGIONAL PARA O GEM LOCAL: Se o escopo for amplo e o irmão for GEM Local da mesma Regional administrativa, libera a caneta na hora!
+    if (
+      level === "gem_local" &&
+      !ehEventoLocal &&
+      ataData?.regionalId === userData?.regionalId
+    ) {
+      return true; // Explicação: Destrava as opacidades e botões do David Ribeiro para atuar nos naipes da Flat-List Regional!
+    }
+
     // 🚀 AJUSTE DE LIBERAÇÃO DA INTERFACE: Permite cliques se o usuário for cadastrado nesta igreja (Básico ou GEM Local) in ensaio local comum.
     if (
       (level === "gem_local" || level === "basico") &&
@@ -337,7 +346,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (subInstId === "irmas" || subInstId === "irmaos")
       return masterData?.[`responsibleId_${subInstId}`] === myUID; // Explicação: Trata permissões específicas de divisão de gênero para o caso do Coral.
     return masterData?.responsibleId === myUID; // Explicação: Retorna se o ID do responsible confere com whom está logado no aparelho.
-  }; // Explicação: Encerra o método de checagem isEditingEnabled.
+  }; // Explicação: Encerra the método de checagem isEditingEnabled.
 
   const handleUpdateInstrument = (
     id,
@@ -384,7 +393,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     const totalMaximoPermitido =
       parseInt(localCounts?.[targetId]?.total) ||
       parseInt(localCounts?.[idCru]?.total) ||
-      999; // Explicação: Confere se há contagem física ou destrava em 999 de tolerância para instrumentos fixos.
+      999; // Explicação: Confere se hay contagem física ou destrava em 999 de tolerância para instrumentos fixos.
 
     let numeroLimpo = Math.max(0, parseInt(valorNumeroDireto) || 0); // Explicação: Limpa o text digitado e transforma em número inteiro positivo.
 
@@ -448,7 +457,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     try {
       // Explicação: Tenta rodar a transação.
       await updateDoc(docMusicoRef, {
-        presente: novoStatusPresenca,
+        present: novoStatusPresenca,
         updatedAt: Date.now(),
       }); // Explicação: Grava a presença do músico isolado no banco.
 
@@ -482,13 +491,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
       await updateDoc(eventRef, {
         // Explicação: Persiste os totais calculados na chamada do lote mestre do Firestore.
-        [`counts.${targetId}.comum`]: totalPresentesEfetivo, // Explicação: Guarda o valor atual de músicos presentes.
+        [`counts.${targetId}.comum`]: totalPresentesEfetivo, // Explicação: Guarda o valor active de músicos presentes.
         [`counts.${targetId}.modoContagem`]: "nominal", // Explicação: Marca o modo de contagem como nominal passo a passo.
         updatedAt: Date.now(), // Explicação: Carimba o horário de salvamento.
       }); // Explicação: Conclui a alteração remota.
 
       setLocalCounts((prev) => ({
-        // Explicação: Atualiza os estados locais da tela imediatamente.
+        // Explicação: Updates os estados locais da tela imediatamente.
         ...prev, // Explicação: Preserva os demais naipes e cabeçalhos.
         [targetId]: {
           ...prev[targetId],
@@ -773,7 +782,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                 </button>
               </div>
 
-              {/* PORTA 1: DIGITAÇÃO DIRETA AVULSA NO TOPO COM EVENTO BLUR SEGURO (ANTI-PISCA) */}
+              {/* PORTA 1: DIGITAÇÃO DIRETA AVULSA NO TOPO WITH EVENTO BLUR SEGURO (ANTI-PISCA) */}
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mt-3 shrink-0 flex flex-col gap-1.5 text-left">
                 <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1 text-left leading-none">
                   Digitar quantidade diretamente se preferir (Avulso)

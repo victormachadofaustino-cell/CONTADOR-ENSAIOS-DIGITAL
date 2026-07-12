@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react"; // Explicação: Importa a base do React, os ganchos de estado local, escutas de efeitos e cache de memória RAM.
-// PRESERVAÇÃO: Importações originais mantidas e adicionada a dependência Users do Lucide
+// PRESERVAÇÃO: Importação mantida conforme estrutura do projeto
 import {
   Minus,
   Plus,
@@ -12,8 +12,8 @@ import {
 } from "lucide-react"; // Explicação: Importa os ícones de botões e escudos.
 
 /**
- * InstrumentCard v11.4 - PROFESSIONAL PRECISION INPUT SHIELD EDITION
- * v11.4 - Acopla estados locais espelhos com travas de foco active para extinguir as piscadas de digitação manual e fiação síncrona do visor comum.
+ * InstrumentCard v11.5 - PROFESSIONAL PRECISION INPUT SHIELD EDITION
+ * v11.5 - 🚀 FIX DEFINITIVO REGIONAL: Resgata a propriedade 'disabled' do barramento pai para acender o botão ASSUMIR para todos os GEM/Local.
  */
 const InstrumentCard = ({
   inst, // Explicação: Dados fixos do instrumento (nome, id, section).
@@ -29,6 +29,7 @@ const InstrumentCard = ({
   onBlur, // Explicação: Avisa o sistema para liberar o campo após a digitação [v10.0].
   onOpenChecklistNominal, // Explicação: Conexão reativa para acionar o painel flutuante de chamada nominal por extenso.
   comumId, // Explicação: ID da localidade activa do ensaio repassada para batimento territorial de poder.
+  disabled, // 🚀 CORREÇÃO CRÍTICA: Injetada a extração da propriedade de controle vinda do componente pai.
 }) => {
   // Explicação: Inicia a estrutura do componente do cartão individual do instrumento.
   // BLINDAGEM CRÍTICA: Se não houver dados básicos, não desenha nada para evitar erro no app.
@@ -57,24 +58,24 @@ const InstrumentCard = ({
   // LÓGICA DE POSSE INDIVIDUALIZED: Identifica quem é o "dono da caneta" agora.
   const myUID = userData?.uid || userData?.id; // Explicação: Captura o ID único do usuário atual.
 
-  // 🚀 REFAZIMENTO DA TRAVA DE TURNO REGIONAL: Se você assumir o naipe inteiro ou a sub-chave, ganha o direito de contar na hora!
+  // Explicação: Se você assumir o naipe inteiro ou a sub-chave, ganha o direito de contar na hora!
   const isMyTurn =
     subId === "irmas" || subId === "irmaos"
       ? data?.[`responsibleId_${subId}`] === myUID ||
-        data?.responsibleId === myUID // 🚀 CORRIGIDO: Valida se você é dono da ala ou da zeladoria macro regional.
+        data?.responsibleId === myUID // Explicação: Valida se você é dono da ala ou da zeladoria macro regional.
       : data?.responsibleId === myUID; // Explicação: Caso contrário, segue a regra padrão de ID de responsável do instrumento comum.
 
-  // 🚀 REFAZIMENTO DA TRAVA DE TURNO CONCORRENTE: Detecta se outro irmão possui a caneta dessa linha no ecrã.
+  // Explicação: Detecta se outro irmão possui a caneta dessa linha no ecrã.
   const isOtherTurn =
     subId === "irmas" || subId === "irmaos"
       ? (data?.[`responsibleId_${subId}`] &&
           data?.[`responsibleId_${subId}`] !== myUID) ||
         (data?.responsibleId &&
           data?.responsibleId !== myUID &&
-          data?.[`responsibleId_${subId}`] !== myUID) // 🚀 CORRIGIDO: Protege contra concorrência macro.
+          data?.[`responsibleId_${subId}`] !== myUID) // Explicação: Protege contra concorrência macro.
       : data?.responsibleId && data?.responsibleId !== myUID; // Explicação: Regra de barreira de concorrência comum.
 
-  // 🚀 CALCULO DO TARGET ID COMPATÍVEL: Alinha chaves de forma idêntica para o Coral, Órgão ou instrumentos nativos.
+  // Explicação: Alinha chaves de forma idêntica para o Coral, Órgão ou instrumentos nativos.
   const targetId =
     sectionName?.toUpperCase() === "IRMANDADE"
       ? "coral"
@@ -82,7 +83,7 @@ const InstrumentCard = ({
         ? "orgao"
         : inst.id; // Explicação: Isola a string estável para mapeamento das gavetas.
 
-  // --- 🚀 INTEGRAÇÃO DA REGRA DE OURO VISUAL: LIBERAÇÃO DO ACESSO GEM/LOCAL ---
+  // --- INTERBALEAMENTO DA MATRIZ TERRITORIAL ---
   const podeModificarAqui = useMemo(() => {
     // Explicação: Memoriza o cálculo de direitos territoriais para evitar re-processamentos lentos.
     const level = userData?.accessLevel; // Explicação: Captura o nível hierárquico textual gravado no token.
@@ -90,9 +91,10 @@ const InstrumentCard = ({
     if (level === "regional_cidade")
       return userData?.cidadeId === userData?.activeCityId; // Explicação: Nível de cidade valida a sua própria comarca.
 
-    // 🚀 CORREÇÃO DA MATRIZ TERRITORIAL: Valida o privilégio local cruzando com o ID carimbado direto no corpo do evento.
     if (level === "gem_local" || level === "basico") {
-      // Explicação: Secretários locais ou auxiliares da própria igreja comum.
+      // 🚀 CONFIANÇA EM CASCATA REGIONAL: Se a listagem for regional, herda a validação de RegionalId calculada com sucesso pelo pai!
+      if (isRegional) return !disabled;
+
       const minhaIgreja = userData?.comumId || userData?.activeComumId; // Explicação: Descobre o código da igreja de origem do obreiro.
       const igrejaDoEvento = comumId || data?.comumId; // Explicação: Captura a classificação da igreja dona do ensaio.
       return (
@@ -100,14 +102,13 @@ const InstrumentCard = ({
       ); // Explicação: Retorna verdadeiro se as igrejas forem idênticas.
     }
     return false; // Explicação: Bloqueia acessos não cadastrados por padrão.
-  }, [userData, comumId, data]); // Explicação: Recalcula se o usuário, a localidade ou os dados mudarem.
+  }, [userData, comumId, data, isRegional, disabled]); // Explicação: Recalcula se as chaves de rede sofrerem alterações.
 
-  // 🚀 LIBERAÇÃO SOBERANA DE EDIÇÃO: Se o ensaio estiver aberto e você for o dono da aba ou membro autorizado da casa, los botões PRECISAM acender.
+  // Explicação: Se o ensaio estiver aberto e você for o dono da aba ou membro autorizado da casa, os botões acendem.
   const canEdit = !isClosed && (isMyTurn || (podeModificarAqui && !isRegional)); // Explicação: Garante direitos imediatos para cliques em ensaios locais comuns da sua própria igreja.
 
   // SANEAMENTO DE DADOS: Transforma os valores do banco em números inteiros para evitar erros de soma.
   const total = parseInt(data?.total) || 0; // Explicação: Converte e limpa o valor numérico total de músicos.
-  // 🚀 RECONEXÃO DO CANO DO VISOR AZUL (CURA TÉCNICA): Ajustada a fiação síncrona para que o visor azul pesque o dado direto do nó unificado ou de fallbacks protegidos na RAM, tirando o visor do zero absoluto!
   const comuneVal =
     parseInt(data?.comum) || parseInt(data?.[targetId]?.comum) || 0; // Explicação: Converte e limpa de forma tolerante a chaves cruzadas o valor de músicos da casa.
   const enc = parseInt(data?.enc) || 0; // Explicação: Converte e limpa o valor numérico de encarregados locais presentes.
@@ -120,7 +121,6 @@ const InstrumentCard = ({
 
   // Explicação: Cálculo automático de visitas em tempo real (Total menos os da casa).
   const visitas = Math.max(0, total - comuneVal); // Explicação: Executa a subtração Total menos Comum impedindo que fiquem visitas negativas.
-  // Explicação: Bloqueia campos de detalhe (comum/liderança) se o Total for zero ou se o usuário não possuir direito de escrita.
   const isSubFieldDisabled = !canEdit || total === 0; // Explicação: Trava os botões se o total estiver zerado ou sem permissão de crachá.
 
   // VERIFICAÇÃO DE MODO DE OPERAÇÃO: Detecta se o número comum veio de gravação de chamadas nominais anteriores.
@@ -157,7 +157,7 @@ const InstrumentCard = ({
     onUpdate(inst.id, field, finalValue, sectionName, payloadAdicional); // Explicação: Envia o valor higienizado para o banco de dados.
   }; // Explicação: Encerra o método handleUpdate.
 
-  // 🚀 LÓGICA DE INTERCEPTAÇÃO DO CORAL NUMÉRICO STABILIZED: Conecta o clique à propriedade 'coral' original em minúsculo com recálculo atômico de total na hora
+  // LÓGICA DE INTERCEPTAÇÃO DO CORAL NUMÉRICO STABILIZED
   const handleUpdateCoralDireto = (genero, novoValor) => {
     // Explicação: Manipulador de escrita específico para as divisões de gênero do Coral.
     if (!canEdit) return; // Explicação: Ignora cliques se o painel estiver bloqueado.
@@ -167,7 +167,6 @@ const InstrumentCard = ({
     const novoIrmaos = genero === "irmaos" ? valorLimpo : irmaos; // Explicação: Computa o valor reativo dos irmãos.
     const novoTotalAbsoluto = novoIrmas + novoIrmaos; // Explicação: Força a soma real das duas fractions.
 
-    // 🚀 RECONEXÃO DE CANOS: Dispara o onUpdate mirando no ID 'coral' oficial em minúsculo do Firestore, injetando o total somado
     onUpdate("coral", genero, valorLimpo, sectionName, {
       total: novoTotalAbsoluto,
       comum: novoTotalAbsoluto, // Explicação: Contadores de coral espelham o total na casa por padrão.
@@ -175,11 +174,10 @@ const InstrumentCard = ({
     }); // Explicação: Despacha as instruções atualizadas para o motor.
   }; // Explicação: Termina o handleUpdateCoralDireto.
 
-  // 🚀 INTERCEPTADOR DE CHAMADA NOMINAL DINÂMICO (CAMINHO 2 SANNEADO)
+  // INTERCEPTADOR DE CHAMADA NOMINAL DINÂMICO
   const handleOpenChecklistSaneado = () => {
     // Explicação: Abre o modal de chamada nominal com segurança.
     if (!onOpenChecklistNominal) return; // Explicação: Aborta se o atalho reativo não foi injetado.
-    // 🚀 SOLUÇÃO DO BUG DA TUBA TRAVADA: Injeta o 'targetId' correto por extenso para o modal calcular os tetos com sucesso e destravar as contagens.
     onOpenChecklistNominal({
       ...inst,
       id: targetId, // Explicação: Força a ID legítima extensa unificada (ex: "tuba") para pacificar o validador.
@@ -238,7 +236,7 @@ const InstrumentCard = ({
           !isClosed && ( // Explicação: Botão para assumir a posse da contagem em eventos Regionais.
             <button
               type="button" // Explicação: Marca o elemento como botão padrão de controle.
-              disabled={!podeModificarAqui} // Explicação: Bloqueia o clique se o usuário for de fora da jurisdição.
+              disabled={!podeModificarAqui} // 🚀 DESTRAVADO: Agora o David Ribeiro consegue clicar livremente no botão ASSUMIR!
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleOwnership();
@@ -262,7 +260,6 @@ const InstrumentCard = ({
       <div className="flex flex-col gap-2.5 w-full text-left">
         {" "}
         {/* Explicação: Caixa empilhadora das caixas de contagem numéricas ocupando largura total. */}
-        {/* 🚀 TRAVA E FIAÇÃO DO CORAL NUMÉRICO REMODELADA: Conecta as setas diretamente à função saneada que grava com sucesso no Firebase */}
         {isIrmandade && !isRegional ? ( // Explicação: Desenha caixas separadas para Irmãs e Irmãos no Local.
           <div className="flex gap-2 h-28 w-full items-stretch text-left">
             {" "}
@@ -429,7 +426,7 @@ const InstrumentCard = ({
   );
 };
 
-// Componente da Caixinha de Número com Setas (🚀 FIX PROFESSIONAL: Injetado estado local isolado contra piscadas de digitação)
+// Componente da Caixinha de Número com Setas
 const CounterBox = ({
   label,
   color,
@@ -445,14 +442,12 @@ const CounterBox = ({
 
   // 📡 PROTETOR DE CONCORRÊNCIA: Sincroniza o visor apenas quando a nuvem mudar de verdade lá fora
   useEffect(() => {
-    // 💥 REGRA DE PROTOCOLO SÊNIOR: Se o cursor do teclado do irmão estiver pescando dentro deste campo de texto, proíbe o Firestore de apagar a digitação ativa!
     if (document.activeElement !== document.getElementById(`input-${label}`)) {
       setLocalVal(val); // Explicação: Sincroniza pacificamente se o campo estiver ocioso.
     }
   }, [val, label]); // Explicação: Monitora as trocas numéricas do barramento global.
 
   const triggerChange = (novoValor) => {
-    // Explicação: Função intermediária que unifica a resposta da tela e do banco.
     const valorLimpo = Math.max(0, parseInt(novoValor) || 0); // Explicação: Evita números quebrados ou negativos.
     setLocalVal(valorLimpo); // Explicação: Atualiza o visor local na mesma hora (efeito de clique imediato).
     onChange(valorLimpo); // Explicação: Despacha o dado para a represa do motor de debounce.
