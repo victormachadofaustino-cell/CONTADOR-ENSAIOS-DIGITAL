@@ -104,7 +104,7 @@ const EventModals = ({
     });
   };
 
-  const onConfirmAction = () => {
+  const onConfirmAction = () => { // [Funcionamento]: Função disparada ao clicar no botão de confirmar agendamento de ensaio.
     if (invitedUsers.length > 0) { // [Funcionamento]: Se o lote de convites regionais possuir registros selecionados.
       const updatedRecents = [...invitedUsers, ...recentUsers] // [Funcionamento]: Mescla os novos convidados com as memórias de cliques passados do aparelho.
         .filter((v, i, a) => a.findIndex(t => t.uid === v.uid) === i) // [Funcionamento]: Executa uma varredura rigorosa para eliminar IDs duplicados.
@@ -114,13 +114,12 @@ const EventModals = ({
 
     const invitedIds = scope === 'regional' ? invitedUsers.map(u => u.uid) : []; // [Funcionamento]: Converte a malha de objetos em array simples de strings para as Security Rules lerem.
 
-    handleCreate({
-      scope,
-      comumId: selectedChurchId || userData?.comumId || '', // [Funcionamento]: Vincula a Comum ativa no topo do app para anular strings vazias na linha 235 do service.
-      cidadeId: userData?.cidadeId || userData?.activeCityId || '', // [Funcionamento]: Garante o preenchimento absoluto do código da cidade.
-      regionalId: userData?.regionalId || userData?.activeRegionalId || '', // [Funcionamento]: Garante o preenchimento absoluto do código da regional.
-      invitedUsers: invitedIds // [Funcionamento]: Despacha o array limpo de IDs para gravação atômica no banco mestre.
-    });
+    // CORREÇÃO SUPREMA: Removidos fallbacks do userData que injetavam Jundiaí e vazavam os dados. Deixamos a responsabilidade limpa para o EventsPage cruzar com a Comum selecionada.
+    handleCreate({ // [Funcionamento]: Dispara o salvamento delegando a montagem dos metadados geográficos para a página orquestradora.
+      scope, // [Funcionamento]: Informa se o evento nasce com abrangência local ou regional.
+      comumId: selectedChurchId || userData?.comumId || '', // [Funcionamento]: Passa o ID da comum ativa selecionada no cabeçalho.
+      invitedUsers: invitedIds // [Funcionamento]: Despacha o array limpo de IDs de obreiros convidados.
+    }); // [Funcionamento]: Conclui o envio do pacote limpo de criação.
 
     setScope('local'); // [Funcionamento]: Reseta a chave de escopo do formulário.
     setInvitedUsers([]); // [Funcionamento]: Esvazia a RAM de convites.
@@ -148,7 +147,7 @@ const EventModals = ({
               
               <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-5 shrink-0 leading-none tracking-tighter select-none">Novo Registro</h3>
               
-              {/* Contêiner de Rolagem Interna da Ficha Técnica de Cadastro */}
+              {/* Contêiner de Rolagem Interna da Ficha Técnico de Cadastro */}
               <div className="space-y-4 overflow-y-auto no-scrollbar pr-1 flex-1 min-h-0">
                 {optionsScope.length > 1 && (
                   <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
