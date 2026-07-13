@@ -12,7 +12,7 @@ import {
   query,
   where,
   orderBy,
-} from "@/shared/api/firebase";
+} from "./shared/api/firebase";
 import {
   User,
   LogOut,
@@ -39,8 +39,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
-import { useAuth } from "@/app/providers/AuthContext";
-import { authService } from "@/shared/api/authService";
+import { useAuth } from "./app/providers/AuthContext";
+import { authService } from "./shared/api/authService";
 
 const ProfileMenu = ({
   isOpen,
