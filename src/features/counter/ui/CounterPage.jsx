@@ -19,12 +19,12 @@ import {
   where,
   getDoc,
   writeBatch,
-} from "@/shared/api/firebase"; // Explicação: CONEXÃO COM O FIREBASE: Mantém a importação estável de todos os motores de dados.
-import { eventService } from "@/shared/api/eventService"; // Explicação: Importa o motor de salvamento de contagens.
+} from "./shared/api/firebase"; // Explicação: CONEXÃO COM O FIREBASE: Mantém a importação estável de todos os motores de dados.
+import { eventService } from "./shared/api/eventService"; // Explicação: Importa o motor de salvamento de contagens.
 import { useCounterSync } from "../model/useCounterSync"; // Explicação: 🚀 INJEÇÃO ARQUITETURAL: Importa o nosso novo motor isolado de sincronização e buffers de rede.
-import AtaPage from "@/pages/AtaPage"; // Explicação: Importa a página de preenchimento da Ata.
-import DashEventPage from "@/features/dashboard/ui/DashEventPage"; // Explicação: Importa o painel de gráficos local.
-import DashEventRegionalPage from "@/features/dashboard/ui/DashEventRegionalPage"; // Explicação: Importa o painel de gráficos regional.
+import AtaPage from "./pages/AtaPage"; // Explicação: Importa a página de preenchimento da Ata.
+import DashEventPage from "./features/dashboard/ui/DashEventPage"; // Explicação: Importa o painel de gráficos local.
+import DashEventRegionalPage from "./features/dashboard/ui/DashEventRegionalPage"; // Explicação: Importa o painel de gráficos regional.
 import toast from "react-hot-toast"; // Explicação: Importa as notificações de aviso da tela.
 import {
   ChevronLeft,
@@ -39,15 +39,15 @@ import {
   X,
 } from "lucide-react"; // Explicação: Desenhos dos ícones dos botões importados do lucide-react.
 import { motion, AnimatePresence } from "framer-motion"; // Explicação: Sistema de animations fluidas.
-import { useAuth } from "@/app/providers/AuthContext"; // Explicação: Puxa os dados e permissões do usuário logado.
+import { useAuth } from "./app/providers/AuthContext"; // Explicação: Puxa os dados e permissões do usuário logado.
 
 // IMPORTAÇÃO DOS NOVOS COMPONENTES MODULARES
 import CounterSection from "./CounterSection"; // Explicação: Componente que agrupa instrumentos (ex: Cordas).
-import OwnershipModal from "@/features/events/ui/components/OwnershipModal"; // Explicação: Janela de "Deseja assumir esta seção?".
+import OwnershipModal from "./features/events/ui/components/OwnershipModal"; // Explicação: Janela de "Deseja assumir esta seção?".
 import ExtraInstrumentModal from "./ExtraInstrumentModal"; // Explicação: Janela para adicionar instrumentos na hora.
 import CounterRegional from "./CounterRegional"; // Explicação: Modo de contagem em massa para eventos regionais.
 import CounterFooter from "./CounterFooter"; // Explicação: Traz o nosso novo RODAPÉ ISOLADO e fixado na base absoluta da tela.
-import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus"; // Explicação: Importa o hook que verifica o status da conexão.
+import { useOnlineStatus } from "./shared/hooks/useOnlineStatus"; // Explicação: Importa o hook que verifica o status da conexão.
 
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   // Explicação: Inicia a estrutura da página de contagem.
