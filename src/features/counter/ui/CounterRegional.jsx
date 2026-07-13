@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react"; // Explicação: Ferramentas básicas para criar a tela e memorizar cálculos.
 import { motion, AnimatePresence } from "framer-motion"; // Explicação: Ferramentas para animações suaves de abrir e fechar as famílias.
 import { Plus, UserPlus, ChevronDown, Users, Calculator } from "lucide-react"; // Explicação: Ícones visuais (mais, seta, pessoas).
-import { db, doc, writeBatch } from "@/shared/api/firebase"; // Explicação: Conexão com o banco de dados do Google.
+import { db, doc, writeBatch } from "../../../shared/api/firebase"; // Explicação: Conexão com o banco de dados do Google.
 import toast from "react-hot-toast"; // Explicação: Avisos flutuantes na tela.
-import { eventService } from "@/shared/api/eventService"; // Para salvar a opção de dedução
+import { eventService } from "../../../shared/api/eventService"; // Para salvar a opção de dedução
 // PRESERVAÇÃO: Importação mantida conforme estrutura do projeto
 import InstrumentCard from "./InstrumentCard"; // Explicação: Importa o cartão individual de cada instrumento.
 

@@ -5,10 +5,10 @@ import {
   onSnapshot,
   query,
   orderBy,
-} from "@/shared/api/firebase"; // Conecta ao banco de dados para ler as regionais.
+} from "../shared/api/firebase"; // Conecta ao banco de dados para ler as regionais.
 import { ChevronDown, RefreshCw, MapPin } from "lucide-react"; // Ícones para as setas e botões.
-import { useAuth } from "@/app/providers/AuthContext"; // Puxa o "Cérebro" do app para saber quem você é.
-import ProfileMenu from "@/components/ProfileMenu"; // Importa o menu de perfil para outras funções.
+import { useAuth } from "../app/providers/AuthContext"; // Puxa o "Cérebro" do app para saber quem você é.
+import ProfileMenu from "./ProfileMenu"; // Importa o menu de perfil para outras funções.
 import toast from "react-hot-toast"; // Ferramenta para mostrar os balões de aviso.
 
 const Header = ({ onChurchChange, onRegionalChange }) => {

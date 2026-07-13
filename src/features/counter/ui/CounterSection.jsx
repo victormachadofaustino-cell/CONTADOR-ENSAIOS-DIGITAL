@@ -10,7 +10,7 @@ import {
   Calculator, // Ícone para a nova funcionalidade
 } from "lucide-react"; // Explicação: Importa os ícones de setas, cadeados e escudos.
 import InstrumentCard from "./InstrumentCard"; // Explicação: Importa o componente que desenha cada instrumento individualmente.
-import { eventService } from "@/shared/api/eventService"; // Para salvar a opção de dedução
+import { eventService } from "../../../shared/api/eventService"; // Para salvar a opção de dedução
 import toast from "react-hot-toast"; // Para notificações
 
 /**

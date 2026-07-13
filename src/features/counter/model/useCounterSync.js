@@ -8,8 +8,8 @@ import {
   getDocs,
   query,
   where,
-} from "../../../shared/api/firebase"; // Explicação: Importa os conectores oficiais e métodos de consultas do SDK do Firebase Firestore.
-import { eventService } from "../../../shared/api/eventService"; // Explicação: Importa o serviço mestre de salvamento e envio estabilizado de pacotes de rede.
+} from "../../shared/api/firebase"; // Explicação: Importa os conectores oficiais e métodos de consultas do SDK do Firebase Firestore.
+import { eventService } from "../../shared/api/eventService"; // Explicação: Importa o serviço mestre de salvamento e envio estabilizado de pacotes de rede.
 import toast from "react-hot-toast"; // Explicação: Importa o sistema de avisos flutuantes para reportar mensagens de alertas.
 
 // DICIONÁRIO DE TRADUÇÃO GEOGRÁFICA DE SIGLAS PARA NOMES COMPLETOS
