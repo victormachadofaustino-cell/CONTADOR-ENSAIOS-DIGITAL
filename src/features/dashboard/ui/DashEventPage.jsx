@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect } from "react"; // [Funcionamento]: Traz as ferramentas oficiais do React para gerenciar memória, estados e efeitos de escuta.
-import { useAuth } from "../../app/providers/AuthContext"; // [Funcionamento]: Conecta ao sistema de login para ler o "Crachá Eletrônico" (Custom Claims) do usuário ativo.
-import { hasPermission } from "../../shared/config/permissions"; // [Funcionamento]: Importa a tabela de segurança para decidir quem pode exportar relatórios.
-import { pdfEventService } from "../../shared/api/pdfEventService"; // [Funcionamento]: Importa o serviço responsável por construir o documento impresso em PDF.
-import { whatsappService } from "../../shared/api/whatsappService"; // [Funcionamento]: Importa o formatador automatizado de mensagens para o WhatsApp.
-import { db } from "../../shared/api/firebase"; // [Funcionamento]: Conexão cirúrgica com o banco de dados sem requisições redundantes.
+import { useAuth } from "../../../app/providers/AuthContext"; // [Funcionamento]: Conecta ao sistema de login para ler o "Crachá Eletrônico" (Custom Claims) do usuário ativo.
+import { hasPermission } from "../../../shared/config/permissions"; // [Funcionamento]: Importa a tabela de segurança para decidir quem pode exportar relatórios.
+import { pdfEventService } from "../../../shared/api/pdfEventService"; // [Funcionamento]: Importa o serviço responsável por construir o documento impresso em PDF.
+import { whatsappService } from "../../../shared/api/whatsappService"; // [Funcionamento]: Importa o formatador automatizado de mensagens para o WhatsApp.
+import { db } from "../../../shared/api/firebase"; // [Funcionamento]: Conexão cirúrgica com o banco de dados sem requisições redundantes.
 import { collection, doc, onSnapshot } from "firebase/firestore"; // [Funcionamento]: Importa o escutador em tempo real e o direcionador de coleções do Firebase.
 import toast from "react-hot-toast"; // [Funcionamento]: Importa o sistema de balões de aviso flutuantes para a interface.
 import {
