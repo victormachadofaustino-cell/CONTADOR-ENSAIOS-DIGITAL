@@ -9,24 +9,24 @@ import {
   orderBy,
   where,
   onAuthStateChanged,
-} from "@/shared/api/firebase"; // Explicação: Importa as ferramentas de conexão em tempo real com o banco de dados Firebase.
-import { authService } from "@/shared/api/authService"; // Explicação: Importa o serviço responsável pelas ações de login e encerramento de sessão.
-import { LOCALIDADE_PADRAO } from "@/shared/config/config"; // Explicação: Importa as configurações de território iniciais e padrões do sistema.
+} from "./shared/api/firebase"; // Explicação: Importa as ferramentas de conexão em tempo real com o banco de dados Firebase.
+import { authService } from "./shared/api/authService"; // Explicação: Importa o serviço responsável pelas ações de login e encerramento de sessão.
+import { LOCALIDADE_PADRAO } from "./shared/config/config"; // Explicação: Importa as configurações de território iniciais e padrões do sistema.
 import toast, { Toaster } from "react-hot-toast"; // Explicação: Importa o sistema de avisos flutuantes e alertas de sucesso ou erro na tela.
 import { motion, AnimatePresence } from "framer-motion"; // Explicação: Importa as ferramentas responsáveis por criar transições e animações suaves na tela.
 
-import DashPage from "@/features/dashboard/ui/DashPage"; // Explicação: Importa a página de relatórios gráficos e resumos estatísticos.
-import SettingsPage from "@/pages/SettingsPage"; // Explicação: Importa a página central de configurações e zeladoria de comuns.
-import CounterPage from "@/features/counter/ui/CounterPage"; // Explicação: Importa a tela do contador de presença nominal (o coração do app).
-import EventsPage from "@/features/events/ui/EventsPage"; // Explicação: Importa a página que gerencia e lista as ordens de ensaios e cultos.
-import LoginPage from "@/pages/auth/LoginPage"; // Explicação: 🚀 CORRIGIDO DEFINITIVO: Ajustado para o padrão rigoroso 'from' removendo o termo fantasma.
-import CapaEntrada from "@/pages/CapaEntrada"; // Explicação: Importa a tela de abertura animada (Splash Screen) do sistema.
-import Header from "@/components/Header"; // Explicação: Importa o cabeçalho superior com seletores territoriais de GPS.
-import Tickets from "@/shared/ui/Tickets"; // Explicação: Importa o sistema integrado de chamados e suporte ao usuário.
-import Footer from "@/shared/ui/Footer"; // Explicação: Traz o nosso novo rodapé isolado e fixado na base da tela.
+import DashPage from "./features/dashboard/ui/DashPage"; // Explicação: Importa a página de relatórios gráficos e resumos estatísticos.
+import SettingsPage from "./pages/SettingsPage"; // Explicação: Importa a página central de configurações e zeladoria de comuns.
+import CounterPage from "./features/counter/ui/CounterPage"; // Explicação: Importa a tela do contador de presença nominal (o coração do app).
+import EventsPage from "./features/events/ui/EventsPage"; // Explicação: Importa a página que gerencia e lista as ordens de ensaios e cultos.
+import LoginPage from "./pages/auth/LoginPage"; // Explicação: 🚀 CORRIGIDO DEFINITIVO: Ajustado para o padrão rigoroso 'from' removendo o termo fantasma.
+import CapaEntrada from "./pages/CapaEntrada"; // Explicação: Importa a tela de abertura animada (Splash Screen) do sistema.
+import Header from "./components/Header"; // Explicação: Importa o cabeçalho superior com seletores territoriais de GPS.
+import Tickets from "./shared/ui/Tickets"; // Explicação: Importa o sistema integrado de chamados e suporte ao usuário.
+import Footer from "./shared/ui/Footer"; // Explicação: Traz o nosso novo rodapé isolado e fixado na base da tela.
 
-import { useAuth } from "@/app/providers/AuthContext"; // Explicação: Importa o Cérebro Central de Autenticação que distribui os crachás eletrônicos.
-import { eventService } from "@/shared/api/eventService"; // Explicação: 🚀 INJEÇÃO ARQUITETURAL: Importa o serviço estabilizado de eventos para consumo do ouvinte descentralizado territorial.
+import { useAuth } from "./app/providers/AuthContext"; // Explicação: Importa o Cérebro Central de Autenticação que distribui os crachás eletrônicos.
+import { eventService } from "./shared/api/eventService"; // Explicação: 🚀 INJEÇÃO ARQUITETURAL: Importa o serviço estabilizado de eventos para consumo do ouvinte descentralizado territorial.
 
 const CARGOS_ADMIN = [
   "Encarregado Regional",
