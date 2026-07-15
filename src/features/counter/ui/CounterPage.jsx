@@ -2,7 +2,7 @@ import React, {
   useState,
   useEffect,
   useRef,
-  useCallback,
+  /* useCallback, */
   useMemo,
 } from "react"; // Explicação: Importa as ferramentas de memória e sincronização do React.
 // PRESERVAÇÃO: Importações originais mantidas com a adição cirúrgica do 'where' que faltava
@@ -17,7 +17,7 @@ import {
   query,
   orderBy,
   where,
-  getDoc,
+  /* getDoc, */
   writeBatch,
 } from "../../../shared/api/firebase"; // Explicação: CONEXÃO COM O FIREBASE: Mantém a importação estável de todos os motores de dados.
 import { eventService } from "../../../shared/api/eventService"; // Explicação: Importa o motor de salvamento de contagens.
@@ -61,8 +61,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     eventComumId,
     eventDateRaw,
     isCountsLocked,
-    focusedField,
-    setFocusedField,
     lastLocalUpdateRef,
     handleFocus,
     handleBlur,
@@ -119,6 +117,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             ); // Explicação: Salva a configuração local de instrumentos.
         } // Explicação: Encerra a consulta privativa local.
       } catch (e) {
+        console.error("Falha no carregamento de instrumentos:", e);
       } finally {
         // Explicação: Ignora falhas silenciosas de carregamento.
         if (isMounted) setLoading(false); // Explicação: Desativa a tela de carregamento principal liberando o app.
@@ -139,20 +138,17 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       return;
     }
 
-    const idCru = instrumentoFocadoChecklist.id;
-    const idSiglaReal = idCru.length > 4 ? MAPA_TRADUTOR_EXTENSO[idCru] : idCru;
-    const idExtensoReal =
-      idCru.length <= 4 ? MAPA_TRADUTOR_EXTENSO[idCru] : idCru;
+    // 🚀 ROBUST ID LOOKUP: Garante que tanto a sigla quanto o nome por extenso sejam usados na busca,
+    // tratando o mapa de tradução de forma segura para evitar inconsistências.
+    const idCru = instrumentoFocadoChecklist.id.toLowerCase();
+    const idParceiro = MAPA_TRADUTOR_EXTENSO[idCru] || idCru;
+    const arrayFiltroValido = [...new Set([idCru, idParceiro])];
 
     const llamadaRef = collection(
       db,
       "events_global",
       currentEventId,
       "chamada_musicos",
-    );
-
-    const arrayFiltroValido = [idExtensoReal, idSiglaReal, idCru].filter(
-      (v) => v !== undefined && v !== null && v !== "",
     );
 
     const q = query(
@@ -180,12 +176,14 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       setValorNumeroDireto("");
       return;
     }
-    const idCru = instrumentoFocadoChecklist.id;
-    const idExtensoReal =
-      idCru.length <= 4 ? MAPA_TRADUTOR_EXTENSO[idCru] : idCru;
-    const valorAtualBanco = localCounts?.[idExtensoReal || idCru]?.comum || 0;
+    // 🚀 LEITURA CANÔNICA: Garante que a leitura do valor do banco de dados seja sempre feita
+    // usando o ID canônico (nome por extenso) do instrumento.
+    const idLimpo = instrumentoFocadoChecklist.id.toLowerCase();
+    const idCanonico =
+      idLimpo.length <= 3 ? MAPA_TRADUTOR_EXTENSO[idLimpo] || idLimpo : idLimpo;
+    const valorAtualBanco = localCounts?.[idCanonico]?.comum || 0;
     setValorNumeroDireto(valorAtualBanco > 0 ? String(valorAtualBanco) : "");
-  }, [instrumentoFocadoChecklist, localCounts, MAPA_TRADUTOR_EXTENSO]);
+  }, [instrumentoFocadoChecklist, localCounts]);
 
   const allInstruments = useMemo(() => {
     // Explicação: Junta a matriz nacional com as edições da igreja para montar a listagem oficial organizada.
@@ -233,13 +231,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       "fgt",
     ]; // Explicação: Lista técnica de segurança das siglas de 3 letras que pertencem aos instrumentos nativos fixos.
 
-    let base = instrumentsNacionais.map((instBase) => {
+    const base = instrumentsNacionais.map((instBase) => {
       // Explicação: Percorre a matriz de instrumentos padrão nacional.
       // 🚀 PACIFICAÇÃO ABSOLUTA DE CRUZAMENTO SÊNIOR: Procura as customizações locais cruzando tanto a palavra por extenso quanto a sigla curta usando o dicionário, liquidando o descompasso "tub" vs "tuba".
       const override = instrumentsConfig.find(
         (local) =>
           local.id?.toLowerCase().trim() ===
-            instBase.id?.toLowerCase().trim() ||
+            (instBase.id?.toLowerCase().trim() || "") ||
           MAPA_TRADUTOR_EXTENSO[local.id?.toLowerCase().trim()] ===
             instBase.id?.toLowerCase().trim(),
       ); // Explicação: Tenta achar se o usuário editou este instrumento no cadastro daquela igreja de forma tolerante a abreviações.
@@ -260,9 +258,14 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       return {
         id: id, // Explicação: Copia a ID do item avulso.
         name:
+          // 🚀 CORREÇÃO DE NOME EXTRA: Garante que o nome do instrumento seja extraído corretamente.
+          // Prioriza a configuração local, depois o campo 'name' do próprio objeto,
+          // e por fim, extrai o nome da chave dinâmica (ex: 'extra_pocket_123' -> 'POCKET').
           configLocalSeExistir?.name ||
           localCounts[id].name ||
-          id.replace("extra_", "").toUpperCase(), // 🚀 HERANÇA DE PROPRIEDADE: Puxa o nome textual cadastrado na Comum.
+          (id.startsWith("extra_")
+            ? id.substring("extra_".length, id.lastIndexOf("_")).toUpperCase()
+            : id.toUpperCase()), // 🚀 HERANÇA DE PROPRIEDADE: Puxa o nome textual cadastrado na Comum.
         section: (
           configLocalSeExistir?.section ||
           localCounts[id].section ||
@@ -383,13 +386,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     allInstruments,
   ]);
 
-  const handleUpdateInstrument = (
-    id,
-    field,
-    value,
-    section,
-    payloadExtra = {},
-  ) => {
+  const handleUpdateInstrument = (id, field, value, section) => {
     // Explicação: Executada a cada clique nos botões de + ou - ou ao digitar no input.
     updateCount(id, field, value, section, userData); // 🚀 REDIRECIONAMENTO CIRÚRGICO: Repassa a batida de botão para o nosso hook useCounterSync fazer o debounce de rede de forma estável.
   }; // Explicação: Encerra a função handleUpdateInstrument.
@@ -421,8 +418,11 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     lastLocalUpdateRef.current = Date.now(); // Explicação: Ativa o escudo anti-sobrescrita local de 3 segundos.
 
     const idCru = instrumentoFocadoChecklist.id; // Explicação: Captura o ID de clique (ex: "tuba" ou "vln").
+    // 🚀 CORREÇÃO DO BUG DA TUBA: Garante que siglas (IDs curtos) sejam sempre traduzidas para o ID completo (ex: "tub" -> "tuba"), evitando a criação de campos incorretos no banco de dados.
+    // A lógica agora verifica o comprimento do ID para traduzir apenas siglas, e não nomes completos.
+    const idLimpo = idCru.toLowerCase();
     const targetId =
-      idCru.length <= 4 ? MAPA_TRADUTOR_EXTENSO[idCru] || idCru : idCru; // Explicação: 🚀 SOLUÇÃO DO BUG 1: Fallback tolerante adicionado caso o mapa não possua o espelhamento exato.
+      idLimpo.length <= 3 ? MAPA_TRADUTOR_EXTENSO[idLimpo] || idCru : idCru;
 
     // 🚀 BARREIRA ANTI-ZERO PARA TUBA: Garante que se o total mestre estiver zerado ou ausente por erro de mapeamento, herda um limite alto seguro para não travar a digitação.
     const totalMaximoPermitido = // Explicação: Puxa o teto físico real do instrumento para validar a digitação.
@@ -461,13 +461,10 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           comum: numeroLimpo,
           modoContagem: "numerico",
         }, // Explicação: 🚀 ALINHAMENTO SIMULTÂNEO: Injeta o número na chave oficial por extenso.
-        [idCru]: {
-          ...prev[idCru],
-          comum: numeroLimpo,
-          modoContagem: "numerico",
-        }, // 🚀 ALINHAMENTO SIMULTÂNEO: Atualiza simultaneamente a chave de clique original do cartão para destravar a tela de trás.
+        // A atualização da chave de clique original ('idCru') foi removida para prevenir a criação de chaves duplicadas (ex: 'tub') no estado local, o que causava a renderização de cartões de instrumento extras. A atualização agora é feita apenas na chave canônica ('targetId').
       })); // Explicação: Conclui o update visual otimista da tela mestre.
     } catch (e) {
+      console.error("Erro ao salvar quantidade avulsa:", e);
       // Explicação: Captura falhas de conexão.
       toast.error("Erro ao salvar quantidade avulsa."); // Explicação: Emite um alerta discreto em caso de pane de rede.
     } // Explicação: Termina o tratamento de erros.
@@ -484,8 +481,11 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     if (novoStatusPresenca) {
       // Explicação: Só valida a barreira se estiver tentando marcar um músico como PRESENTE.
       const idCru = instrumentoFocadoChecklist.id;
+      // 🚀 CORREÇÃO DE CONSISTÊNCIA: Garante que a tradução de ID use sempre minúsculas para evitar falhas de mapeamento (ex: 'Tub' vs 'tub').
+      // A lógica agora verifica o comprimento do ID para traduzir apenas siglas, e não nomes completos.
+      const idLimpo = idCru.toLowerCase();
       const targetId =
-        idCru.length <= 4 ? MAPA_TRADUTOR_EXTENSO[idCru] || idCru : idCru;
+        idLimpo.length <= 3 ? MAPA_TRADUTOR_EXTENSO[idLimpo] || idCru : idCru;
       const totalMaximoPermitido =
         parseInt(localCounts?.[targetId]?.total) ||
         parseInt(localCounts?.[idCru]?.total) ||
@@ -534,8 +534,13 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         (m) => m.presente,
       ).length;
       const idCru = instrumentoFocadoChecklist.id;
+      // 🚀 CORREÇÃO DE CONSISTÊNCIA: Garante que a tradução de ID use sempre minúsculas para evitar falhas de mapeamento.
+      // A lógica agora verifica o comprimento do ID para traduzir apenas siglas, e não nomes completos.
+      const idLimpoBatch = idCru.toLowerCase();
       const targetId =
-        idCru.length <= 4 ? MAPA_TRADUTOR_EXTENSO[idCru] || idCru : idCru;
+        idLimpoBatch.length <= 3
+          ? MAPA_TRADUTOR_EXTENSO[idLimpoBatch] || idCru
+          : idCru;
       const eventRef = doc(db, "events_global", currentEventId);
       batch.update(eventRef, {
         [`counts.${targetId}.comum`]: totalPresentesEfetivo,
@@ -555,11 +560,6 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
         ...prev,
         [targetId]: {
           ...prev[targetId],
-          comum: totalPresentesEfetivo,
-          modoContagem: "nominal",
-        },
-        [idCru]: {
-          ...prev[idCru],
           comum: totalPresentesEfetivo,
           modoContagem: "nominal",
         },
@@ -618,7 +618,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       }); // Explicação: Envia a inicialização do instrumento extra para o banco de dados.
       setExtraInstrumentSection(null); // Explicação: Fecha o modal de inserção de instrumento extra.
       toast.success("Instrumento adicionado!"); // Explicação: Alerta o usuário do sucesso della criação.
-    } catch (e) {} // Explicação: Abafa erros silenciosos.
+    } catch (e) {
+      console.error("Erro ao adicionar instrumento extra:", e);
+    } // Explicação: Abafa erros silenciosos.
   }; // Explicação: Encerra a função handleAddExtraInstrument.
 
   // 🚀 REFAZIMENTO CIRÚRGICA DA CONDICIONAL: SEPARA O CLIQUE DO TÍTULO VISUAL DO CLIQUE NO BOTÃO "ASSUMIR" DA PÍLULA
@@ -664,7 +666,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -40, opacity: 0 }}
-            className="absolute top-0 left-0 right-0 bg-amber-500 text-white p-2 text-center z-[100] shadow-lg"
+            className="absolute top-0 left-0 right-0 bg-amber-500 text-white p-2 text-center z-100 shadow-lg"
           >
             <p className="text-xs font-bold">
               Você está offline. As alterações serão salvas quando a conexão
@@ -697,7 +699,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
               {ataData?.scope === "regional" && (
                 <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse" />
               )}
-              <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-[150px] text-center">
+              <h2 className="text-[10px] font-black text-slate-400 uppercase italic tracking-widest truncate max-w-37.5 text-center">
                 {ataData?.comumNome || "Localidade"}
               </h2>
             </div>
@@ -737,7 +739,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                   <motion.div
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className="mb-4 bg-blue-600 text-white p-4 rounded-[2rem] flex items-center justify-center gap-3 shadow-lg shadow-blue-100"
+                    className="mb-4 bg-blue-600 text-white p-4 rounded-4xl flex items-center justify-center gap-3 shadow-lg shadow-blue-100"
                   >
                     <Lock size={16} className="shrink-0" />
                     <span className="text-[9px] font-black uppercase italic tracking-widest leading-none">
@@ -821,6 +823,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                 isAdmin={true}
                 ataData={ataData}
                 allEvents={allEvents}
+                instrumentsConfig={instrumentsConfig}
               />
             ))}
         </div>
@@ -831,7 +834,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       {/* INTERFACE MODAL UNIFICADA BRANCO/AZUL COM COMENTÁRIOS VALIDADOS EM BLOCKS */}
       <AnimatePresence>
         {instrumentoFocadoChecklist && (
-          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-[100] animate-in navigate-fade duration-200">
+          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in navigate-fade duration-200">
             <motion.div
               initial={{ scale: 0.94, y: 10 }}
               animate={{ scale: 1, y: 0 }}
@@ -874,7 +877,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                   }
                   type="number"
                   inputMode="numeric"
-                  className="w-full bg-white p-3 rounded-xl border border-slate-200 text-xs font-black text-slate-950 uppercase italic outline-none focus:border-indigo-600 min-h-[40px] text-center"
+                  className="w-full bg-white p-3 rounded-xl border border-slate-200 text-xs font-black text-slate-950 uppercase italic outline-none focus:border-indigo-600 min-h-10 text-center"
                   placeholder="EX: 0, 5, 12..."
                   value={valorNumeroDireto}
                   onChange={(e) =>

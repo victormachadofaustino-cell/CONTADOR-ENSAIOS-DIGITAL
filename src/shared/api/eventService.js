@@ -227,7 +227,11 @@ export const eventService = {
         }
       } else {
         // Instrumentos simples
-        initialCounts[id] = { total: 0, updatedAt: Date.now() };
+        initialCounts[id] = {
+          total: 0,
+          section: sectionName,
+          updatedAt: Date.now(),
+        };
         if (!isRegional) {
           initialCounts[id].comum = 0;
           initialCounts[id].enc = 0;

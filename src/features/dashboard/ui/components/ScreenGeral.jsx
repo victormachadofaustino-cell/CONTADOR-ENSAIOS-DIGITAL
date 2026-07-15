@@ -25,7 +25,13 @@ import {
   Legend,
 } from "recharts"; // [Funcionamento]: Componentes gráficos que constroem as linhas históricas e as barras empilhadas no celular.
 
-const ScreenGeral = ({ stats, renderDelta, activeModal, setActiveModal }) => {
+const ScreenGeral = ({
+  stats,
+  renderDelta,
+  activeModal,
+  setActiveModal,
+  ataData,
+}) => {
   // [Funcionamento]: Declara a tela que desenha os Cards Grandes e Gráficos de Tendência.
 
   // 🧮 INTEGRAÇÃO DE BI INTELIGENTE: TRATAMENTO DE DADOS WITH CUSTO ZERO DE COTA
@@ -107,15 +113,30 @@ const ScreenGeral = ({ stats, renderDelta, activeModal, setActiveModal }) => {
             {/* [Funcionamento]: Legenda cinza. */}
           </div>{" "}
           {/* [Funcionamento]: Termina cabeçalho. */}
-          <div className="flex justify-between items-end w-full mt-2">
+          <div className="flex justify-between items-end w-full mt-2 gap-2">
             {" "}
             {/* [Funcionamento]: Une número e ícone na base. */}
             <span className="text-3xl font-[1000] text-slate-950 tracking-tighter leading-none italic">
               {stats.orquestra}
             </span>{" "}
             {/* [Funcionamento]: Número de instrumentistas. */}
-            <ChevronRight size={14} className="text-slate-300 mb-0.5" />{" "}
-            {/* [Funcionamento]: Ícone de seta lateral cinza. */}
+            <div className="flex items-center gap-2">
+              <div className="text-right leading-tight">
+                <p className="text-[9px] font-bold text-slate-400 tracking-tight">
+                  Músicos:{" "}
+                  <span className="font-black text-slate-600">
+                    {stats.musicos || 0}
+                  </span>
+                </p>
+                <p className="text-[9px] font-bold text-slate-400 tracking-tight">
+                  Org:{" "}
+                  <span className="font-black text-slate-600">
+                    {stats.organistas || 0}
+                  </span>
+                </p>
+              </div>
+              <ChevronRight size={14} className="text-slate-300" />
+            </div>
           </div>{" "}
           {/* [Funcionamento]: Termina rodapé do card. */}
         </button>{" "}

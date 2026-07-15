@@ -132,7 +132,11 @@ export const useCounterSync = (currentEventId, counts) => {
   const updateCount = (id, field, value, section, userData) => {
     // Explicação: Método que processa e despacha a soma ou subtração de músicos de linha.
     if (ataData?.status === "closed" || isCountsLocked) return; // Explicação: Trava de portaria: bloqueia mutações se a ata ou contagem estiverem trancadas.
-    let idSaneado = id; // Explicação: Inicializa a variável de ID limpa de envio.
+    // 🚀 CORREÇÃO CENTRALIZADA: Garante que qualquer ID de instrumento (ex: 'tub', 'vln') seja traduzido para seu formato canônico (ex: 'tuba', 'violino') antes de qualquer operação de escrita. A lógica agora verifica o comprimento do ID para evitar a tradução incorreta de nomes completos para abreviações (ex: 'tuba' -> 'tub').
+    const idLimpo = id.toLowerCase();
+    const idTraduzido =
+      idLimpo.length <= 3 ? MAPA_TRADUTOR_EXTENSO[idLimpo] || id : id;
+    let idSaneado = idTraduzido; // Explicação: Inicializa a variável de ID limpa de envio já com a tradução.
     lastLocalUpdateRef.current = Date.now(); // Explicação: Renova a marcação Unix del clique local para travar o escudo de 8 segundos anti-sobrescrita.
 
     setLocalCounts((prev) => {
@@ -142,7 +146,7 @@ export const useCounterSync = (currentEventId, counts) => {
           ? "coral"
           : section?.toUpperCase() === "ORGANISTAS"
             ? "orgao"
-            : id; // Explicação: Ajustado para minúsculo padrão para acoplar no 'coral' legítimo do banco.
+            : idTraduzido; // Explicação: Ajustado para usar o ID canônico, prevenindo inconsistências.
       const parsedValue = Math.max(0, parseInt(value) || 0); // Explicação: Garante que o valor processado seja um número inteiro positivo limpo.
 
       // 🚀 INTERCEPTADOR ATÔMICO DO CORAL REATIVO SANEADO: Agora operando 100% em paridade de caixa baixa com o Firestore.

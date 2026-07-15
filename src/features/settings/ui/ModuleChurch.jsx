@@ -97,7 +97,12 @@ const ModuleChurch = ({ localData, onUpdate }) => {
     const current = formData.diasSelecao || [];
     const updated = current.includes(idx)
       ? current.filter((i) => i !== idx)
-      : [...current, idx]; // Explicação: Se o dia já existia, remove. Se não, adiciona na lista.
+      : [...current, idx];
+
+    // Explicação: Atualiza o estado local do formulário para refletir a mudança imediatamente na UI.
+    // Isso garante que a seleção do dia apareça ou desapareça instantaneamente, melhorando a experiência do usuário.
+    setFormData((prev) => ({ ...prev, diasSelecao: updated }));
+
     try {
       await updateDoc(doc(db, "comuns", localData.id), {
         diasSelecao: updated,

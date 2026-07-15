@@ -28,6 +28,7 @@ const DashEventPage = ({
   isAdmin,
   eventId,
   allEvents = [],
+  instrumentsConfig,
 }) => {
   // [Funcionamento]: Início do componente Maestro que gerencia o painel do ensaio.
   const { userData } = useAuth(); // [Funcionamento]: Recupera o Crachá Eletrônico do usuário conectado de forma local (Custo Zero de cota).
@@ -65,13 +66,12 @@ const DashEventPage = ({
         snapshot.forEach((docSnap) => {
           // [Funcionamento]: Varre documento por documento reativamente.
           const dados = docSnap.data(); // [Funcionamento]: Puxa o JSON puro interno do Firestore.
+          // 🚀 CORREÇÃO DE DADOS: Inclui todos os dados do músico (incluindo instrumentoId) para uso posterior.
           listaMusicos.push({
-            // [Funcionamento]: Salva os dados do músico no vetor temporário.
-            id: docSnap.id, // [Funcionamento]: Carimba a ID única gerada pelo Firebase.
-            nome: dados.nome || "", // [Funcionamento]: Salva o nome do irmão oficializado ou em ensaio.
-            instrumentoNome: dados.instrumentoNome || "SOLISTA", // [Funcionamento]: Resgata o nome por extenso do naipe dele.
-            presente: dados.presente === true, // [Funcionamento]: Força o booleano seguro
-          }); // [Funcionamento]: Fecha a inclusão de dados.
+            id: docSnap.id,
+            ...dados,
+            presente: dados.presente === true,
+          });
         }); // [Funcionamento]: Termina a varredura do snapshot.
         setChamadaNominal(listaMusicos); // [Funcionamento]: Atualiza a esteira de presença dinamicamente
       },
@@ -158,7 +158,16 @@ const DashEventPage = ({
       deltaCoral: 0,
       deltaHinos: 0,
       deltaEncarregados: 0,
-      musicosPresentesLista: chamadaNominal,
+      // 🚀 ENRIQUECIMENTO DE DADOS: Anexa a 'section' (família) a cada músico presente,
+      // usando os dados de 'counts' para garantir o agrupamento correto na tela de presença.
+      musicosPresentesLista: chamadaNominal.map((musico) => {
+        const instId = (musico.instrumentoId || "").toLowerCase().trim();
+        const section = counts?.[instId]?.section;
+        return {
+          ...musico,
+          section: section,
+        };
+      }),
       historicoGrafico: [],
     }; // [Funcionamento]: Inicializa a árvore limpa de acumuladores de BI.
 
@@ -555,6 +564,7 @@ const DashEventPage = ({
           userData,
           counts,
           comumFullData || ataData,
+          instrumentsConfig,
         ); // [Funcionamento]: Dispara a montagem do PDF.
         toast.success("PDF gerado com sucesso!"); // [Funcionamento]: Balão informativo de sucesso.
       } else {
@@ -691,6 +701,7 @@ const DashEventPage = ({
               renderDelta={renderDelta}
               activeModal={activeModal}
               setActiveModal={setActiveModal}
+              ataData={ataData}
             />
           </motion.div>
         )}
