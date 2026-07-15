@@ -11,6 +11,7 @@ import {
   doc,
   onSnapshot,
   collection,
+  setDoc,
   updateDoc,
   auth,
   getDocs,
@@ -742,14 +743,22 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
               !isClosed && (
                 <button
                   type="button"
-                  onClick={() =>
-                    updateDoc(doc(db, "countsLocked", currentEventId), {
-                      countsLocked: !isCountsLocked,
-                      updatedAt: Date.now(),
-                      "aria-label": isCountsLocked
-                        ? "Desbloquear contagem"
-                        : "Bloquear contagem",
-                    })
+                  onClick={() => {
+                    // JUSTIFICATIVA: Trocado updateDoc por setDoc com merge para criar o documento se não existir,
+                    // corrigindo o erro "No document to update" na primeira utilização do cadeado.
+                    setDoc(
+                      doc(db, "countsLocked", currentEventId),
+                      {
+                        countsLocked: !isCountsLocked,
+                        updatedAt: Date.now(),
+                      },
+                      { merge: true },
+                    );
+                  }}
+                  aria-label={
+                    isCountsLocked
+                      ? "Desbloquear contagem"
+                      : "Bloquear contagem"
                   }
                   className={`p-3 rounded-2xl active:scale-90 transition-all border cursor-pointer ${isCountsLocked ? "bg-blue-600 text-white border-blue-700 shadow-lg" : "bg-slate-50 text-slate-400 border-slate-100"}`}
                 >

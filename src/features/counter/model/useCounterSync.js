@@ -44,7 +44,10 @@ const MAPA_TRADUTOR_EXTENSO = {
 
 export const useCounterSync = (currentEventId, counts) => {
   // Explicação: Declara o gancho Custom Hook que gerencia a reatividade de rede del contador de presenças.
-  const [localCounts, setLocalCounts] = useState({}); // Explicação: Estado que armazena o mapa espelho de contagens que o usuário visualiza na tela.
+  // JUSTIFICATIVA DA CORREÇÃO: O estado agora é inicializado com os 'counts' recebidos via props.
+  // Isso garante que a tela já comece com os dados corretos, enquanto o listener em tempo real (onSnapshot)
+  // assume a responsabilidade de atualizações futuras, eliminando a necessidade de um useEffect separado e conflituoso.
+  const [localCounts, setLocalCounts] = useState(counts || {}); // Explicação: Estado que armazena o mapa espelho de contagens que o usuário visualiza na tela.
   const [ataData, setAtaData] = useState(null); // Explicação: Armazena as informações litúrgicas compiladas da ata do ensaio corrente.
   const [eventComumId, setEventComumId] = useState(null); // Explicação: Identificador físico da igreja comum onde o evento está sediado.
   const [eventDateRaw, setEventDateRaw] = useState(""); // Explicação: String de data bruta do ensaio extraída direto do documento do servidor.
@@ -53,37 +56,10 @@ export const useCounterSync = (currentEventId, counts) => {
 
   const lastLocalUpdateRef = useRef(0); // Explicação: Guarda a marcação temporal Unix em milissegundos do último clique do operador neste aparelho.
 
-  // v10.9.2: MONITOR DA SINCRONIZAÇÃO OTIMISTA E CONTROLE DE FOCO CONTRA PISCADAS
-  useEffect(() => {
-    // Explicação: Efeito que intercepta a chegada de novas contagens do Firebase e decide se mescla ou aguarda.
-    const isFreshLocalUpdate = Date.now() - lastLocalUpdateRef.current < 8000; // Explicação: Confere se o celular sofreu clique nos últimos 8 segundos para blindar as alterações locais da RAM.
-
-    // 🚀 TRAVA SOBERANA ANTI-SOBRESCRITA: Se o rádio amador do Firebase ou o fechamento de modal tentarem re-injetar dados antigos durante a janela ativa de mutação de 8 segundos, veta a sincronização reversa de frames vazios!
-    if (isFreshLocalUpdate) return; // Explicação: Aborta e protege a RAM local se houver ações e atualizações assíncronas em andamento.
-
-    if (counts) {
-      // Explicação: Se houver dados novos na nuvem e o operador não estiver metralhando botões locais.
-      if (focusedField) {
-        // Explicação: Se o teclado físico ou virtual estiver aberto editando uma caixa de texto.
-        const [instId, field] = focusedField.split("_"); // Explicação: Recorta a chave para isolar o ID do instrumento e o subcampo.
-        setLocalCounts((prev) => {
-          // Explicação: Mescla de forma cirúrgica protegendo a digitação atual do usuário.
-          const newCounts = { ...counts }; // Explicação: Clona integralmente a sacola atual de dados do Firebase.
-          if (newCounts[instId]) {
-            // Explicação: Se o instrumento ativo constar no novo pacote de rede.
-            newCounts[instId] = {
-              ...newCounts[instId],
-              [field]: prev[instId]?.[field],
-            }; // Explicação: Preserva o valor intermediário da RAM do input para não sumir o texto.
-          } // Explicação: Fim da emenda protetora.
-          return newCounts; // Explicação: Aplica o resultado unificado estável na tela.
-        }); // Explicação: Encerra o setState.
-      } else {
-        // Explicação: Caso o usuário esteja apenas assistindo a tela sem inputs ativos.
-        setLocalCounts(counts); // Explicação: Sincroniza a tela mestre imediatamente com os dados do servidor.
-      } // Explicação: Fim da triagem de foco de teclado.
-    } // Explicação: Encerra a condicional anti-sobrescrita.
-  }, [counts, focusedField]); // Explicação: Re-avalia a barreira se chegarem novas atualizações de banco ou troca de foco.
+  // JUSTIFICATIVA DA REMOÇÃO: O useEffect que existia aqui foi removido por completo. Ele criava uma "condição de corrida"
+  // ao tentar sincronizar a tela usando a prop 'counts', que podia estar desatualizada. Isso causava a "piscada"
+  // ao focar um campo. A lógica de sincronização agora está centralizada e protegida dentro do listener onSnapshot,
+  // que é a fonte única e correta dos dados em tempo real.
 
   // MONITOR REATIVO MESTRE DE DOCUMENTO DO ENSAIO
   useEffect(() => {
@@ -111,12 +87,13 @@ export const useCounterSync = (currentEventId, counts) => {
         setAtaData(ataConsolidada); // Explicação: Injeta o objeto estruturado no estado local de atas.
         setEventComumId(data.comumId); // Explicação: Atualiza o ID da localidade.
         setEventDateRaw(data.date || ""); // Explicação: Salva a data bruta.
-        setIsCountsLocked(data.countsLocked || false); // Explicação: Liga ou desliga o status de cadeado de contagem.
 
         const isFreshLocalUpdate =
           Date.now() - lastLocalUpdateRef.current < 8000; // Explicação: Recalcula o delay de clique de segurança de 8 segundos.
-        if (!isFreshLocalUpdate) {
-          // Explicação: Se o operador estiver parado sem cliques recentes.
+        // JUSTIFICATIVA DA CORREÇÃO: Adicionada a verificação `!focusedField`.
+        // Isso impede a "piscada" do contador, pois agora o sistema não sobrescreverá os dados locais
+        // se o usuário estiver com um campo de texto focado, pronto para digitar.
+        if (!isFreshLocalUpdate && !focusedField) {
           setLocalCounts(data.counts || {}); // Explicação: Sobrescreve o layout local com a malha real do servidor.
         } // Explicação: Fim da injeção protetora.
       } // Explicação: Encerra a verificação de documento existente.
@@ -127,6 +104,23 @@ export const useCounterSync = (currentEventId, counts) => {
       unsubEvent();
     }; // Explicação: Corta e limpa a conexão com a nuvem ao sair do painel do contador.
   }, [currentEventId]); // Explicação: Reinicia o canal se mudar o ensaio focado no lobby.
+
+  // v12.0: MONITOR REATIVO DEDICADO PARA O CADEADO DE CONTAGEM
+  useEffect(() => {
+    // JUSTIFICATIVA: Cria um ouvinte separado e dedicado para o documento de bloqueio na coleção 'countsLocked'.
+    // Isso resolve o bug do cadeado inoperante, pois agora o estado `isCountsLocked` é atualizado em tempo real
+    // quando o documento correspondente no Firestore é alterado.
+    if (!currentEventId) return;
+    const lockRef = doc(db, "countsLocked", currentEventId);
+    const unsubLock = onSnapshot(lockRef, (doc) => {
+      if (doc.exists()) {
+        setIsCountsLocked(doc.data().countsLocked || false);
+      } else {
+        setIsCountsLocked(false); // Se o documento não existe, a contagem não está bloqueada.
+      }
+    });
+    return () => unsubLock(); // Limpa o ouvinte ao desmontar.
+  }, [currentEventId]);
 
   // SUBROTINA DE ATUALIZAÇÃO INCREMENTAL DE BOTÕES + / - E INPUTS DE QUANTIDADES
   const updateCount = (id, field, value, section, userData) => {

@@ -311,7 +311,27 @@ export const pdfEventService = {
     ); // Soma músicos e organistas
     totalsY += 6;
     doc.setFontSize(10);
-    doc.text(`TOTAL GERAL DE PRESENTES: ${stats.geral}`, margin, totalsY); // Soma total de toda irmandade
+
+    // AJUSTE PARA DEDUÇÃO DE MINISTÉRIO QUE TOCA
+    const allMinisterioParaContagem = [
+      ...(ataData?.presencaLocalFull || []),
+      ...(ataData?.visitantes || []),
+    ];
+    const ministerioTocando = allMinisterioParaContagem.filter(
+      (p) => p.tocando === true,
+    ).length;
+    const ministerioNaoTocando =
+      allMinisterioParaContagem.length - ministerioTocando;
+
+    // Recalcula o total geral para não contar duplamente o ministério que toca.
+    const totalGeralAjustado =
+      stats.musicos + stats.organistas + stats.irmandade + ministerioNaoTocando;
+
+    doc.text(
+      `TOTAL GERAL DE PRESENTES: ${totalGeralAjustado}`,
+      margin,
+      totalsY,
+    ); // Soma total de toda irmandade
 
     // 4.2 DESENHO DO RESUMO MINISTERIAL
     const ministerioCounts = {
@@ -649,7 +669,7 @@ export const pdfEventService = {
     );
   },
 
-  generateVisitsReport: async (visitors, ataData, comumFullData) => {
+  generateVisitsReport: async (visitors, ataData, comumFullData, userData) => {
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "mm",
@@ -658,28 +678,44 @@ export const pdfEventService = {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 10;
 
-    // 1. CABEÇALHO
-    // CORREÇÃO: Prioriza o dado vivo de 'comumFullData' como fonte única da verdade para o nome da comum e da cidade,
-    // evitando o uso de dados históricos potencialmente desatualizados de 'ataData'.
-    const localidadePura = comumFullData?.comum || "Localidade";
-    const cidadeNome = comumFullData?.cidadeNome || "Cidade";
-    const title = `Relatório de Visitas [${toTitleCase(
-      localidadePura,
-    )} - ${toTitleCase(cidadeNome)}]`;
+    // 1. CABEÇALHO (Inspirado no modelo da Ata para consistência visual)
+    const localidadePura =
+      comumFullData?.comum || ataData?.comumNome || userData?.comum;
+    const comumNomeFormatado = toTitleCase(localidadePura || "");
 
+    const cidadeNome = toTitleCase(
+      comumFullData?.cidadeNome || ataData?.cidadeNome || userData?.cidadeNome,
+    );
+
+    // CORREÇÃO: Garante que "Regional" só apareça se houver um nome a ser exibido.
+    const regionalPura = userData?.activeRegionalName || userData?.regional;
+    const regionalNome = regionalPura
+      ? `Regional ${toTitleCase(regionalPura)}`
+      : "";
     doc.setFont("times", "bold");
     doc.setFontSize(14);
-    doc.text(title, pageWidth / 2, 15, {
+    doc.text("Relatório de Visitas", pageWidth / 2, 15, {
       align: "center",
     });
+    doc.setFontSize(11);
+    doc.text("CONGREGAÇÃO CRISTÃ NO BRASIL", pageWidth / 2, 21, {
+      align: "center",
+    });
+    doc.setFont("times", "normal");
     doc.setFontSize(10);
-    doc.text(
-      `Período de Análise: ${new Date().getFullYear()}`,
-      pageWidth / 2,
-      21,
-      { align: "center" },
-    );
-    doc.line(margin, 25, pageWidth - margin, 25);
+
+    const localInfo = [comumNomeFormatado, cidadeNome]
+      .filter(Boolean)
+      .join(" - ");
+    if (localInfo) {
+      doc.text(localInfo, pageWidth / 2, 27, { align: "center" });
+    }
+    doc.setFontSize(9);
+    // CORREÇÃO: Só desenha a linha da regional se a informação existir.
+    if (regionalNome) {
+      doc.text(regionalNome, pageWidth / 2, 32, { align: "center" });
+    }
+    doc.line(margin, 35, pageWidth - margin, 35);
 
     // 2. PREPARAR E ORDENAR DADOS
     const monthNames = [
@@ -747,7 +783,7 @@ export const pdfEventService = {
     let isGray = false;
 
     autoTable(doc, {
-      startY: 30,
+      startY: 38,
       head: head,
       body: body,
       theme: "grid",

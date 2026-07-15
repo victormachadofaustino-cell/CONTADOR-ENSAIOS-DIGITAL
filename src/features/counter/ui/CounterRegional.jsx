@@ -344,8 +344,7 @@ const CounterRegional = ({
                     )}
 
                     {/* BOTÃO INSTRUMENTO EXTRA */}
-                    {!isClosed &&
-                      !isIrmandade &&
+                    {!isIrmandade &&
                       !isOrganistas &&
                       isEditingEnabled(section) && (
                         <button

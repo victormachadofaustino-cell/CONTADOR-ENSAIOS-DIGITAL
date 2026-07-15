@@ -158,19 +158,19 @@ const CounterSection = ({
                 className={`text-[7px] font-black uppercase italic tracking-widest text-left ${isOwner ? "text-blue-600" : "text-slate-400"}`}
               >
                 {" "}
-                {/* Explicação: Formata a etiqueta de identificação em letras minúsculas espaçadas de estilo técnico. */}
-                {isOwner ? "Sua Zeladoria" : `Resp: ${responsibleName}`}{" "}
-                {/* Explicação: Imprime de forma amigável a posse da aba de contagem. */}
+                {/* JUSTIFICATIVA DA CORREÇÃO: A lógica foi alterada para sempre exibir o nome do responsável,
+                    eliminando o texto "Sua Zeladoria". Isso atende à solicitação de UX para que o nome
+                    de quem está no comando seja sempre visível, de forma clara e consistente. */}
+                Resp: {responsibleName || "Indefinido"}
               </span>
             </div>
           )}
         </button>
         {/* CENTRO/DIREITA: Ação de Assumir e Totais */}
         <div className="flex items-center gap-3 shrink-0">
-          {" "}
           {/* Explicação: Agrupa a pílula de posse e os números totais na extrema direita do cabeçalho. */}
           {/* BOTÃO DE POSSE (Ajustado v2.6.2: Só aparece para o GEM se o evento for LOCAL) */}
-          {canChangeOwnership && ( // Explicação: Condicional que avalia as regras hierárquicas de privilégio regional antes de mostrar o botão.
+          {canChangeOwnership && ( // Explicação: Condicional que avalia as regras hierárququicas de privilégio regional antes de mostrar o botão.
             <button
               type="button" // Explicação: Declara o tipo do elemento como botão comum de ação.
               onClick={(e) => {
@@ -300,7 +300,7 @@ const CounterSection = ({
                   onUpdate={(id, f, v) =>
                     handleUpdateInstrument(isCoral ? id : targetId, f, v, sec)
                   }
-                  isClosed={deEdicaoTrancada} // Explicação: O cartão obedece ao motor central reativo, acendendo os botões para GEM/Básico.
+                  disabled={deEdicaoTrancada} // Explicação: O cartão obedece ao motor central reativo, acendendo os botões para GEM/Básico.
                   onToggleOwnership={() => handleToggleGroup(sec)} // Explicação: Atalho interno para disparar troca de zeladoria.
                   isRegional={isRegionalEvent} // Explicação: Repassa a flag se o evento ativo é regional ou local.
                   userData={{ uid: myUID }} // Explicação: Entrega as credenciais do usuário para o cartão.

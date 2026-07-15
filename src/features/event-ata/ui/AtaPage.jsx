@@ -438,6 +438,17 @@ const AtaPage = ({ eventId, comumId }) => {
     }
   };
 
+  // NOVO: Alterna o status 'tocando' do ministério local/regional.
+  const handleToggleTocandoLocal = (membroIndex) => {
+    if (isInputDisabled) return;
+    const updatedPresenca = [...(ataData.presencaLocalFull || [])];
+    const membro = updatedPresenca[membroIndex];
+    if (membro) {
+      membro.tocando = !membro.tocando;
+      handleChange({ ...ataData, presencaLocalFull: updatedPresenca });
+    }
+  };
+
   const togglePresencaLocal = (m) => {
     // Explicação: Marca presença do músico local.
     if (isInputDisabled) return;
@@ -633,25 +644,36 @@ const AtaPage = ({ eventId, comumId }) => {
         badge={isRegionalScope ? badgeMinisterioRegional : badgeMinisterioLocal}
       >
         {isRegionalScope ? (
-          <MinistryAccordion
-            eventId={eventId}
-            regionalId={eventMeta?.regionalId || ""}
-            cidadeId={eventMeta?.cidadeId || ""}
-            comumId={comumId || ""}
-            presencaAtual={ataData.presencaLocalFull || []}
-            onChange={(novaLista) =>
-              handleChange({ ...ataData, presencaLocalFull: novaLista })
-            }
-            isInputDisabled={isInputDisabled}
-            userData={userData}
-            isReady={!!eventMeta}
-          />
+          <>
+            <MinistryAccordion
+              eventId={eventId}
+              regionalId={eventMeta?.regionalId || ""}
+              cidadeId={eventMeta?.cidadeId || ""}
+              comumId={comumId || ""}
+              presencaAtual={ataData.presencaLocalFull || []}
+              onChange={(novaLista) =>
+                handleChange({ ...ataData, presencaLocalFull: novaLista })
+              }
+              isInputDisabled={isInputDisabled}
+              userData={userData}
+              isReady={!!eventMeta}
+            />
+            {/* Lista de presentes com checkbox "Tocando" */}
+            <AtaMinisterioLocal
+              localMinisterio={ataData.presencaLocalFull || []}
+              isInputDisabled={isInputDisabled}
+              onToggleTocando={handleToggleTocandoLocal}
+              isRegional={true}
+            />
+          </>
         ) : (
           <AtaMinisterioLocal
             localMinisterio={localMinisterio}
             presencaLocal={ataData.presencaLocal}
+            presencaLocalFull={ataData.presencaLocalFull}
             isInputDisabled={isInputDisabled}
             togglePresencaLocal={togglePresencaLocal}
+            onToggleTocando={handleToggleTocandoLocal}
           />
         )}
       </Accordion>

@@ -22,7 +22,6 @@ const InstrumentCard = ({
   onUpdate, // Explicação: Função para salvar a nova contagem.
   onToggleOwnership, // Explicação: Função para assumir a posse do instrumento.
   userData, // Explicação: Dados do contador logado (crachá).
-  isClosed, // Explicação: Verifica se o ensaio está encerrado.
   isRegional, // Explicação: Verifica se o layout é o regional (em lista).
   labelLideranca, // Explicação: Texto customizado para o campo de encarregados.
   sectionName, // Explicação: Nome da família (Cordas, Madeiras...).
@@ -100,7 +99,10 @@ const InstrumentCard = ({
   }, [userData, comumId, data, isRegional, disabled]); // Explicação: Recalcula se as chaves de rede sofrerem alterações.
 
   // Explicação: Se o ensaio estiver aberto e você for o dono da aba ou membro autorizado da casa, os botões acendem.
-  const canEdit = !isClosed && (isMyTurn || (podeModificarAqui && !isRegional)); // Explicação: Garante direitos imediatos para cliques em ensaios locais comuns da sua própria igreja.
+  // JUSTIFICATIVA DA CORREÇÃO: A lógica foi simplificada para `podeModificarAqui || isMyTurn`.
+  // Isso corrige o problema do usuário "Master" que precisava "Assumir" para editar em ensaios regionais.
+  // Agora, qualquer usuário com permissão inerente (`podeModificarAqui`) pode editar diretamente.
+  const canEdit = !disabled && (podeModificarAqui || isMyTurn);
 
   // SANEAMENTO DE DADOS: Transforma os valores do banco em números inteiros para evitar erros de soma.
   const total = parseInt(data?.total) || 0; // Explicação: Converte e limpa o valor numérico total de músicos.
@@ -218,17 +220,22 @@ const InstrumentCard = ({
                 className={`text-[7px] font-black uppercase italic tracking-wider whitespace-normal text-left ${isMyTurn ? "text-blue-600" : "text-slate-400"}`}
               >
                 {" "}
-                {/* Explicação: Rótulo com o nome do obreiro zelador atual do painel em formato estendido. */}
-                {isMyTurn
-                  ? "No seu comando"
-                  : `Com: ${data?.[`responsibleName_${subId}`] || data?.responsibleName || data?.[targetId]?.responsibleName || "Colaborador"}`}{" "}
-                {/* Explicação: Imprime dinamicamente a assinatura de posse territorial. */}
+                {/* JUSTIFICATIVA DA CORREÇÃO: A lógica foi unificada para sempre exibir o nome do responsável,
+                    seja o próprio usuário ou outro, eliminando os textos genéricos "No seu comando" ou "Colaborador"
+                    para uma experiência mais clara e consistente. */}
+                Com:{" "}
+                {data?.[`responsibleName_${subId}`] ||
+                  data?.responsibleName ||
+                  data?.[targetId]?.responsibleName ||
+                  "Ninguém"}
               </span>
             </div>
           )}
         </div>
         {isRegional &&
-          !isClosed && ( // Explicação: Botão para assumir a posse da contagem em eventos Regionais.
+          // JUSTIFICATIVA DA CORREÇÃO: A variável `isClosed` não era passada como propriedade, causando um erro de referência.
+          // A propriedade `disabled` já contém a lógica de bloqueio (incluindo se o ensaio está fechado), tornando-a a substituta correta.
+          !disabled && ( // Explicação: Botão para assumir a posse da contagem em eventos Regionais.
             <button
               type="button" // Explicação: Marca o elemento como botão padrão de controle.
               disabled={!podeModificarAqui} // 🚀 DESTRAVADO: Agora o David Ribeiro consegue clicar livremente no botão ASSUMIR!
@@ -498,7 +505,10 @@ const CounterBox = ({
             className={`bg-transparent w-full text-center font-[900] outline-none italic tracking-tighter leading-none px-1 ${isMain ? "text-4xl" : "text-2xl"} ${disabled ? "text-slate-200" : "text-inherit"}`}
             value={localVal} // 🚀 BLINDAGEM DE UI: O campo agora lê a RAM local estável, destruindo qualquer possibilidade de "piscada".
             onFocus={(e) => {
-              e.target.select();
+              // JUSTIFICATIVA DA CORREÇÃO: O uso de setTimeout garante que a seleção do texto
+              // ocorra após o React concluir o ciclo de renderização do foco, resolvendo de forma
+              // robusta o problema do "zero à esquerda" que persistia em alguns cenários.
+              setTimeout(() => e.target.select(), 0);
               onFocus && onFocus();
             }} // Explicação: Seleciona o texto inteiro ao clicar para agilizar a re-digitação.
             onBlur={() => {
