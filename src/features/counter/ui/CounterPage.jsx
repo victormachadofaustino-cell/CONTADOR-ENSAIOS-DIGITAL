@@ -49,6 +49,13 @@ import CounterRegional from "./CounterRegional"; // Explicação: Modo de contag
 import CounterFooter from "./CounterFooter"; // Explicação: Traz o nosso novo RODAPÉ ISOLADO e fixado na base absoluta da tela.
 import { useOnlineStatus } from "../../../shared/hooks/useOnlineStatus"; // Explicação: Importa o hook que verifica o status da conexão.
 
+// FUNÇÃO DE UTILIDADE GLOBAL PARA FEEDBACK TÁTIL
+const triggerHapticFeedback = (duration = 10) => {
+  if (window.navigator && window.navigator.vibrate) {
+    window.navigator.vibrate(duration);
+  }
+};
+
 const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   // Explicação: Inicia a estrutura da página de contagem.
   const { userData } = useAuth(); // Explicação: Puxa o crachá eletrônico do usuário logado (Custom Claims).
@@ -78,6 +85,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const [showOwnershipModal, setShowOwnershipModal] = useState(null); // Explicação: Controla la janela de "Assumir Seção".
   const [extraInstrumentSection, setExtraInstrumentSection] = useState(null); // Explicação: Caixa que armazena qual naipe receberá um instrumento extra inserido dinamicamente.
 
+  const [isInputInvalid, setIsInputInvalid] = useState(false); // Explicação: Estado para validação em tempo real do input do modal.
   // NOVOS ESTADOS PARA SUPORTE DA JANELA FLUTUANTE DE CHECKLIST NOMINAL POR INSTRUMENTO
   const [instrumentoFocadoChecklist, setInstrumentoFocadoChecklist] =
     useState(null); // Explicação: Salva qual instrumento o usuário clicou para fazer a chamada nominal (ex: viola).
@@ -137,6 +145,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       // e atendendo à necessidade do usuário de manter a posição.
       return;
     }
+    setIsInputInvalid(false); // Explicação: Reseta o estado de validação ao abrir o modal.
 
     // 🚀 ROBUST ID LOOKUP: Garante que tanto a sigla quanto o nome por extenso sejam usados na busca,
     // tratando o mapa de tradução de forma segura para evitar inconsistências.
@@ -182,7 +191,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
     const idCanonico =
       idLimpo.length <= 3 ? MAPA_TRADUTOR_EXTENSO[idLimpo] || idLimpo : idLimpo;
     const valorAtualBanco = localCounts?.[idCanonico]?.comum || 0;
-    setValorNumeroDireto(valorAtualBanco > 0 ? String(valorAtualBanco) : "");
+    setValorNumeroDireto(String(valorAtualBanco)); // 5. Clareza na Exibição do Valor Zero: Mostra "0" em vez de vazio.
   }, [instrumentoFocadoChecklist, localCounts]);
 
   const allInstruments = useMemo(() => {
@@ -393,6 +402,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
 
   // INTELIGÊNCIA DIRETA COM TRAVA DE TETO VERDADEIRA: LEITURA SOBERANA DO NÓ POR EXTENSO E PROCESSO BUFFERIZADO (ANTI-PISCA)
   const handleUpdateNumeroDiretoModal = (novoValor) => {
+    // 1. Feedback Visual Imediato (Validação em Tempo Real)
     // Explicação: Atualiza instantaneamente a tela local ao digitar e armazena o valor bruto para evitar quebras visuais.
     if (
       !currentEventId ||
@@ -401,11 +411,29 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       !instrumentoFocadoChecklist
     )
       return; // Explicação: Trava defensiva sanitária de barreira.
+
+    // Lógica de validação em tempo real
+    const idCru = instrumentoFocadoChecklist.id;
+    const idLimpo = idCru.toLowerCase();
+    const targetId =
+      idLimpo.length <= 3 ? MAPA_TRADUTOR_EXTENSO[idLimpo] || idCru : idCru;
+    const totalMaximoPermitido =
+      parseInt(localCounts?.[targetId]?.total) ||
+      parseInt(localCounts?.[idCru]?.total) ||
+      0;
+    const numeroDigitado = parseInt(novoValor) || 0;
+
+    if (totalMaximoPermitido > 0 && numeroDigitado > totalMaximoPermitido) {
+      setIsInputInvalid(true);
+    } else {
+      setIsInputInvalid(false);
+    }
+
     setValorNumeroDireto(novoValor); // Explicação: Atualiza instantaneamente o caractere digitado na caixinha de texto.
   }; // Explicação: Encerra o manipulador de alteração direta.
 
   // 🚀 DISPARO DEFINITIVO DE GRAVAÇÃO NO ONBLUR: Economiza escrita do Firestore e remove totalmente o efeito de piscar as contagens
-  const handleBlurNumeroDiretoModal = async () => {
+  const handleBlurNumeroDiretoModal = async (isClearAction = false) => {
     // Explicação: Salva em definitivo no banco apenas quando o usuário encerra a digitação e remove o foco.
     if (
       !currentEventId ||
@@ -430,7 +458,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       parseInt(localCounts?.[idCru]?.total) ||
       0; // Explicação: Se não houver total, o limite da comum é 0.
 
-    let numeroLimpo = Math.max(0, parseInt(valorNumeroDireto) || 0); // Explicação: Limpa o text digitado e transforma em número inteiro positivo.
+    let numeroLimpo = isClearAction
+      ? 0
+      : Math.max(0, parseInt(valorNumeroDireto) || 0); // Explicação: Limpa o text digitado e transforma em número inteiro positivo.
 
     if (numeroLimpo > totalMaximoPermitido) {
       // Explicação: Se o valor digitado passar do teto máximo permitido das setas de controle.
@@ -441,7 +471,8 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       }); // Explicação: Emite aviso visual reutilizando o mesmo ID fixo para impedir empilhamentos de Toasts.
     } // Explicação: Encerra o bloco de validação de teto físico.
 
-    setValorNumeroDireto(numeroLimpo > 0 ? String(numeroLimpo) : ""); // Explicação: Alinha o texto do input com o valor higienizado final.
+    setIsInputInvalid(false); // Reseta a validação ao salvar.
+    setValorNumeroDireto(String(numeroLimpo)); // 5. Clareza na Exibição do Valor Zero: Mostra "0" em vez de vazio.
     const eventRef = doc(db, "events_global", currentEventId); // Explicação: Conecta com a rota física do ensaio no Firebase.
 
     try {
@@ -474,6 +505,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
   const handleTogglePresencaMusico = async (musico) => {
     // Explicação: Executada quando o secretário toca no card do irmão.
     if (!currentEventId || isCountsLocked || isClosed) return; // Explicação: Trava de barreira operacional.
+    triggerHapticFeedback(); // 4. Feedback Tátil
 
     const novoStatusPresenca = !musico.presente; // Explicação: Inverte de presente para ausente ou vice-versa.
 
@@ -552,9 +584,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
       await batch.commit();
 
       // Se o lote foi bem-sucedido, atualiza os contadores locais
-      setValorNumeroDireto(
-        totalPresentesEfetivo > 0 ? String(totalPresentesEfetivo) : "",
-      );
+      setValorNumeroDireto(String(totalPresentesEfetivo));
 
       setLocalCounts((prev) => ({
         ...prev,
@@ -683,6 +713,7 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
           <button
             type="button"
             onClick={onBack}
+            aria-label="Voltar"
             className="bg-slate-100 p-3 rounded-2xl text-slate-500 active:scale-90 transition-all z-10 cursor-pointer"
           >
             <ChevronLeft size={22} strokeWidth={3} />
@@ -715,6 +746,9 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
                     updateDoc(doc(db, "countsLocked", currentEventId), {
                       countsLocked: !isCountsLocked,
                       updatedAt: Date.now(),
+                      "aria-label": isCountsLocked
+                        ? "Desbloquear contagem"
+                        : "Bloquear contagem",
                     })
                   }
                   className={`p-3 rounded-2xl active:scale-90 transition-all border cursor-pointer ${isCountsLocked ? "bg-blue-600 text-white border-blue-700 shadow-lg" : "bg-slate-50 text-slate-400 border-slate-100"}`}
@@ -867,24 +901,42 @@ const CounterPage = ({ currentEventId, counts, onBack, allEvents }) => {
               </div>
 
               {/* PORTA 1: DIGITAÇÃO DIRETA AVULSA NO TOPO WITH EVENTO BLUR SEGURO (ANTI-PISCA) */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mt-3 shrink-0 flex flex-col gap-1.5 text-left">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mt-3 shrink-0 flex flex-col gap-1.5 text-left relative">
                 <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider pl-1 text-left leading-none">
                   Digitar quantidade diretamente se preferir (Avulso)
                 </label>
-                <input
-                  disabled={
-                    !isEditingEnabled(instrumentoFocadoChecklist.section)
-                  }
-                  type="number"
-                  inputMode="numeric"
-                  className="w-full bg-white p-3 rounded-xl border border-slate-200 text-xs font-black text-slate-950 uppercase italic outline-none focus:border-indigo-600 min-h-10 text-center"
-                  placeholder="EX: 0, 5, 12..."
-                  value={valorNumeroDireto}
-                  onChange={(e) =>
-                    handleUpdateNumeroDiretoModal(e.target.value)
-                  }
-                  onBlur={handleBlurNumeroDiretoModal}
-                />
+                <div className="relative w-full flex items-center">
+                  <input
+                    id="hybrid-input"
+                    disabled={
+                      !isEditingEnabled(instrumentoFocadoChecklist.section)
+                    }
+                    type="number"
+                    inputMode="numeric"
+                    className={`w-full bg-white p-3 rounded-xl border text-xs font-black text-slate-950 uppercase italic outline-none min-h-10 text-center transition-colors ${isInputInvalid ? "border-red-500 focus:border-red-500 ring-red-500/20 ring-2" : "border-slate-200 focus:border-indigo-600"}`}
+                    placeholder="0"
+                    value={valorNumeroDireto}
+                    onChange={(e) =>
+                      handleUpdateNumeroDiretoModal(e.target.value)
+                    }
+                    onBlur={() => handleBlurNumeroDiretoModal(false)}
+                  />
+                  {/* 2. Botão para Limpar o Campo (Clear Button) */}
+                  {valorNumeroDireto && valorNumeroDireto !== "0" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHapticFeedback();
+                        handleBlurNumeroDiretoModal(true);
+                        setValorNumeroDireto("0");
+                      }}
+                      className="absolute right-3 bg-slate-200 text-slate-500 w-5 h-5 rounded-full flex items-center justify-center active:scale-90 transition-all"
+                      aria-label="Limpar campo"
+                    >
+                      <X size={10} strokeWidth={3} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* PORTA 2: LISTA DE TOQUE */}

@@ -39,10 +39,10 @@ const ModuleAccess = ({ comumId, cargos }) => {
 
   // NOVA LÓGICA DE NÍVEIS (v2.2 - Estabilizada)
   const level = userData?.accessLevel;
-  const isMaster = userData?.isMaster;
-  const isComissao = userData?.isComissao;
-  const isRegionalCidade = userData?.isRegionalCidade;
-  const isGemLocal = userData?.isGemLocal;
+  const isMaster = level === "master";
+  const isComissao = isMaster || level === "comissao";
+  const isRegionalCidade = isComissao || level === "regional_cidade";
+  const isGemLocal = isRegionalCidade || level === "gem_local";
 
   const [users, setUsers] = useState([]); // Explicação: Lista de usuários que aparecem para aprovação.
   const [selectedUser, setSelectedUser] = useState(null); // Explicação: Usuário clicado para ver detalhes.
@@ -53,31 +53,34 @@ const ModuleAccess = ({ comumId, cargos }) => {
   // 1. MONITOR DE USUÁRIOS COM QUERY ATÔMICA (Economia de Cota)
   useEffect(() => {
     // Explicação: Vigia a lista de usuários respeitando o limite geográfico.
-    if (authLoading || !userData || !activeRegionalId) return; // Explicação: Interrompe se o sistema ainda estiver carregando.
+    if (authLoading || !userData) return; // Explicação: Interrompe se o sistema ainda estiver carregando.
 
     let isMounted = true; // Explicação: Controle para evitar vazamento de memória no componente.
     const qBase = collection(db, "users"); // Explicação: Aponta para a coleção de usuários no banco.
     let qUsers; // Explicação: Inicializa a variável que guardará a consulta filtrada.
 
     // Matriz de visibilidade conforme Jurisdição Territorial
-    if (isMaster || isComissao) {
+    if ((isMaster || isComissao) && activeRegionalId) {
       // Explicação: Master/Comissão veem todos da regional selecionada.
       qUsers = query(qBase, where("regionalId", "==", activeRegionalId)); // Explicação: Busca usuários da mesma regional administrativa.
-    } else if (isRegionalCidade) {
-      // Explicação: Regional de Cidade vê apenas sua cidade.
+    } else if (isRegionalCidade && userData.cidadeId) {
+      // Explicação: Regional de Cidade vê os usuários de sua cidade. O filtro por comum é feito no useMemo.
       qUsers = query(
         qBase,
         where("cidadeId", "==", userData.cidadeId), // Explicação: Busca cirúrgica restringindo apenas ao ID da própria cidade do gestor.
       );
-    } else if (isGemLocal) {
-      // Explicação: GEM vê apenas os músicos da sua própria igreja.
-      qUsers = query(
-        qBase,
-        where("comumId", "==", userData.comumId), // Explicação: Busca restringindo apenas ao ID da congregação comum do gestor.
-      );
+    } else if (isGemLocal && comumId) {
+      // Explicação: GEM Local (Secretário) vê apenas os usuários da sua própria igreja, usando o ID da comum ativa na tela.
+      qUsers = query(qBase, where("comumId", "==", comumId));
     } else {
       // Explicação: Básico não vê ninguém (apenas ele mesmo se necessário).
       qUsers = query(qBase, where("email", "==", userEmail)); // Explicação: Filtra estritamente pelo e-mail do próprio usuário básico.
+    }
+
+    if (!qUsers) {
+      // Se nenhuma query pôde ser construída (ex: aguardando IDs), mostra apenas o usuário logado.
+      setUsers(userData ? [{ id: user?.uid, ...userData }] : []);
+      return;
     }
 
     const unsubUsers = onSnapshot(
@@ -105,7 +108,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
       isMounted = false;
       unsubUsers();
     }; // Explicação: Limpa o monitor e desativa o canal quando a tela é fechada.
-  }, [authLoading, activeRegionalId, userData, userEmail, user?.uid]); // Explicação: Dependências que reiniciam o efeito se mudarem.
+  }, [authLoading, activeRegionalId, userData, userEmail, user?.uid, comumId]); // Explicação: Dependências que reiniciam o efeito se mudarem.
 
   const usersGrouped = useMemo(() => {
     // Explicação: Organiza os usuários por nome da igreja na lista.
@@ -338,6 +341,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
                 <button
                   onClick={() => setSelectedUser(null)}
                   className="p-2 bg-slate-100 rounded-xl text-slate-400 active:scale-90"
+                  aria-label="Fechar"
                 >
                   <X size={20} />
                 </button>

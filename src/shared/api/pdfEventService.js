@@ -648,4 +648,210 @@ export const pdfEventService = {
       `${dateParts[0]}-${dateParts[1]}-${dateParts[2]} - Ata ${localidadePura.toUpperCase()} - Ensaio Local.pdf`,
     );
   },
+
+  generateVisitsReport: async (visitors, ataData, comumFullData) => {
+    const doc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+    const pageWidth = doc.internal.pageSize.width;
+    const margin = 10;
+
+    // 1. CABEÇALHO
+    // CORREÇÃO: Prioriza o dado vivo de 'comumFullData' como fonte única da verdade para o nome da comum e da cidade,
+    // evitando o uso de dados históricos potencialmente desatualizados de 'ataData'.
+    const localidadePura = comumFullData?.comum ||;
+    const cidadeNome = comumFullData?.cidadeNome ||;
+    const title = `Relatório de Visitas [${toTitleCase(
+      localidadePura,
+    )} - ${toTitleCase(cidadeNome)}]`;
+
+    doc.setFont("times", "bold");
+    doc.setFontSize(14);
+    doc.text(title, pageWidth / 2, 15, {
+      align: "center",
+    });
+    doc.setFontSize(10);
+    doc.text(
+      `Período de Análise: ${new Date().getFullYear()}`,
+      pageWidth / 2,
+      21,
+      { align: "center" },
+    );
+    doc.line(margin, 25, pageWidth - margin, 25);
+
+    // 2. PREPARAR E ORDENAR DADOS
+    const monthNames = [
+      "Janeiro",
+      "Fevereiro",
+      "Março",
+      "Abril",
+      "Maio",
+      "Junho",
+      "Julho",
+      "Agosto",
+      "Setembro",
+      "Outubro",
+      "Novembro",
+      "Dezembro",
+    ];
+
+    const sortedVisitors = [...visitors].sort((a, b) => {
+      const dateA = new Date(`${a.eventDate}T00:00:00`);
+      const dateB = new Date(`${b.eventDate}T00:00:00`);
+      const monthA = dateA.getMonth();
+      const monthB = dateB.getMonth();
+      if (monthA !== monthB) {
+        return monthA - monthB;
+      }
+      return (a.nome || "").localeCompare(b.nome || "");
+    });
+
+    // 3. TABELA DE VISITANTES
+    const head = [
+      [
+        "Mês Registro",
+        "Nome",
+        "Contato",
+        "Instrumento",
+        "Ministério",
+        "Comum",
+        "Cidade/UF",
+        "Data Ensaio Local",
+        "Hora",
+        "Visita Paga",
+      ],
+    ];
+
+    const body = sortedVisitors.map((v) => {
+      const eventDate = v.eventDate
+        ? new Date(`${v.eventDate}T00:00:00`)
+        : null;
+      const monthName = eventDate ? monthNames[eventDate.getMonth()] : "N/I";
+      return [
+        monthName,
+        toTitleCase(v.nome),
+        v.contato || "---",
+        v.inst || "---",
+        v.min || "---",
+        toTitleCase(v.bairro || "---"),
+        v.cidadeUf || "---",
+        v.dataEnsaio || "---",
+        v.hora || "---",
+        "", // Coluna vazia para "Visita Paga"
+      ];
+    });
+
+    let lastMonth = "";
+    let isGray = false;
+
+    autoTable(doc, {
+      startY: 30,
+      head: head,
+      body: body,
+      theme: "grid",
+      headStyles: {
+        fillColor: [40, 40, 40],
+        textColor: 255,
+        halign: "center",
+        fontSize: 8,
+      },
+      styles: {
+        fontSize: 7,
+        font: "times",
+        cellPadding: 1.5,
+        overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { cellWidth: 20, halign: "center" },
+        1: { cellWidth: 45 },
+        2: { cellWidth: 22, halign: "center" },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 30 },
+        6: { cellWidth: 25 },
+        7: { cellWidth: 20, halign: "center" },
+        8: { cellWidth: 15, halign: "center" },
+        9: { cellWidth: 20 }, // Coluna "Visita Paga"
+      },
+      didParseCell: (data) => {
+        if (data.section === "body") {
+          const currentMonth = data.row.raw[0];
+          if (currentMonth !== lastMonth) {
+            lastMonth = String(currentMonth);
+            isGray = !isGray;
+          }
+          if (isGray) {
+            data.cell.styles.fillColor = [245, 245, 245];
+          }
+        }
+      },
+    });
+
+    // 4. TOTALIZADOR MENSAL
+    const monthlyCounts = Array(12).fill(0);
+    visitors.forEach((v) => {
+      if (v.eventDate) {
+        const monthIndex = new Date(`${v.eventDate}T00:00:00`).getMonth();
+        if (monthIndex >= 0 && monthIndex < 12) {
+          monthlyCounts[monthIndex]++;
+        }
+      }
+    });
+
+    let summaryY = doc.lastAutoTable.finalY + 10;
+
+    doc.setFont("times", "bold");
+    doc.setFontSize(10);
+    doc.text("Total de Visitas por Mês de Registro:", margin, summaryY);
+    summaryY += 7;
+
+    doc.setFont("times", "normal");
+    doc.setFontSize(9);
+
+    const col1X = margin + 5;
+    const col2X = pageWidth / 2 + 5;
+
+    for (let i = 0; i < 6; i++) {
+      const month1 = monthNames[i];
+      const count1 = monthlyCounts[i];
+      doc.text(
+        `${month1.toUpperCase()}: ${count1} visita(s)`,
+        col1X,
+        summaryY + i * 5,
+      );
+
+      const month2 = monthNames[i + 6];
+      const count2 = monthlyCounts[i + 6];
+      doc.text(
+        `${month2.toUpperCase()}: ${count2} visita(s)`,
+        col2X,
+        summaryY + i * 5,
+      );
+    }
+
+    // 5. RODAPÉ
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageWidth - margin,
+        doc.internal.pageSize.height - 5,
+        { align: "right" },
+      );
+      doc.text(
+        `Relatório de Visitas - Sistema de Gestão Digital © ${new Date().getFullYear()}`,
+        margin,
+        doc.internal.pageSize.height - 5,
+      );
+    }
+
+    // 6. SALVAR
+    doc.save(
+      `Relatorio_Visitantes_${new Date().toISOString().split("T")[0]}.pdf`,
+    );
+  },
 };

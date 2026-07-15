@@ -153,6 +153,7 @@ const DashEventPage = ({
       examinadorasTotal: 0,
       hinosP1: [],
       hinosP2: [],
+      hinosDetalhados: [], // 🚀 ADIÇÃO DA GAVETA MESTRA: Vetor que guardará a lista completa de hinos de todas as partes.
       deltaGeral: 0,
       deltaOrquestra: 0,
       deltaCoral: 0,
@@ -323,6 +324,7 @@ const DashEventPage = ({
     if (ataData?.partes && Array.isArray(ataData.partes)) {
       // [Funcionamento]: Valida se o array de partes litúrgicas veio preenchido da nuvem.
       let totalHinosApurados = 0; // [Funcionamento]: Cria o acumulador numérico na RAM local.
+      let todosOsHinosColetados = []; // 🚀 GAVETA TEMPORÁRIA: Acumulador para a lista completa de hinos.
       ataData.partes.forEach((parte) => {
         // [Funcionamento]: Passa varrendo etapa por etapa litúrgica cadastrada na Ata, independente de quantas existam.
         const hinosValidos =
@@ -330,12 +332,14 @@ const DashEventPage = ({
         totalHinosApurados += hinosValidos.length; // [Funcionamento]: Incrementa a quantidade de hinos desta etapa no acumulador mestre.
 
         // Mantém a compatibilidade das variáveis legadas dos cartões inferiores de sub-telas
+        todosOsHinosColetados.push(...hinosValidos); // 🚀 COLETA UNIVERSAL: Adiciona os hinos desta parte à lista mestra.
         if (parte.label?.includes("1ª") || parte.id === "parte_1")
           totals.hinosP1 = hinosValidos; // [Funcionamento]: Alinha o frame retrô da 1ª parte se for correspondente.
         if (parte.label?.includes("2ª") || parte.id === "parte_2")
           totals.hinosP2 = hinosValidos; // [Funcionamento]: Alinha o frame retrô da 2ª parte se for correspondente.
       }); // [Funcionamento]: Encerra o laço cumulativo dinâmico.
       totals.hinos = totalHinosApurados; // [Funcionamento]: Insere a somatória de todas as etapas litúrgicas reais no painel de relatórios, matando o bug!
+      totals.hinosDetalhados = todosOsHinosColetados; // 🚀 ATRIBUIÇÃO FINAL: Salva a lista completa na nova propriedade.
     } // [Funcionamento]: Termina a extração de hinologia.
 
     if (allEvents && allEvents.length > 0 && ataData?.comumId) {
@@ -649,6 +653,7 @@ const DashEventPage = ({
         {canExport && (
           <button
             onClick={handleGeneratePDF} // [Funcionamento]: Executa a compilação do relatório impresso.
+            aria-label="Gerar relatório em PDF" // 3. Acessibilidade Aprimorada (A11y)
             className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex flex-col items-center justify-center gap-0.5 px-3 shadow-sm font-black text-[10px] uppercase tracking-wider shrink-0 outline-none layout-touch min-w-[56px]" // [Funcionamento]: Estilização visual alinhada em altura ao card de lanche.
           >
             <FileText size={16} className="text-blue-600" />{" "}

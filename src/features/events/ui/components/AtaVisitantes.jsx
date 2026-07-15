@@ -21,7 +21,6 @@ const AtaVisitantes = ({
   isClosed,
   handleOpenVisitaModal,
   setVisitaToDelete,
-  onToggleTocando, // NOVA PROP: Função para alternar o status "tocando"
 }) => {
   return (
     <div className="space-y-4">
@@ -117,6 +116,7 @@ const AtaVisitantes = ({
                     <button
                       onClick={() => handleOpenVisitaModal(v, idx)} // Abre o modal com os dados para editar
                       className="p-3 text-slate-300 hover:text-blue-600 active:bg-blue-50 rounded-2xl transition-all shrink-0" // Botão do lápis cinza que fica azul
+                      aria-label={`Editar visitante ${v.nome}`}
                     >
                       <Pencil size={18} /> {/* Ícone de lápis para edição */}
                     </button>
@@ -126,6 +126,7 @@ const AtaVisitantes = ({
                         setVisitaToDelete(v.id || idx); // Marca este visitante para ser apagado
                       }}
                       className="p-3 text-slate-200 hover:text-red-500 active:bg-red-50 rounded-2xl transition-all shrink-0" // Botão da lixeira que fica vermelho
+                      aria-label={`Excluir visitante ${v.nome}`}
                     >
                       <Trash2 size={20} />{" "}
                       {/* Ícone de lixeira para exclusão */}

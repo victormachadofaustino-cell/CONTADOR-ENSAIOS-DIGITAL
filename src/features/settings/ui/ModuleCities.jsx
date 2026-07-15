@@ -104,6 +104,7 @@ const ModuleCities = ({ regionalId, onConfirmDelete }) => {
         />
         <button
           onClick={handleAdd}
+          aria-label="Adicionar cidade"
           className="bg-emerald-600 text-white px-5 rounded-2xl active:scale-90 transition-all shadow-lg"
         >
           <Plus size={20} />
@@ -127,12 +128,14 @@ const ModuleCities = ({ regionalId, onConfirmDelete }) => {
                 />
                 <button
                   onClick={() => handleUpdate(c.id)}
+                  aria-label="Confirmar edição"
                   className="text-emerald-500"
                 >
                   <Check size={18} />
                 </button>
                 <button
                   onClick={() => setEditingId(null)}
+                  aria-label="Cancelar edição"
                   className="text-red-400"
                 >
                   <X size={18} />
@@ -149,12 +152,14 @@ const ModuleCities = ({ regionalId, onConfirmDelete }) => {
                       setEditingId(c.id);
                       setEditValue(c.nome);
                     }}
+                    aria-label={`Editar cidade ${c.nome}`}
                     className="p-2 text-slate-300 hover:text-blue-500"
                   >
                     <Edit3 size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(c.id, c.nome)}
+                    aria-label={`Excluir cidade ${c.nome}`}
                     className="p-2 text-slate-300 hover:text-red-500"
                   >
                     <Trash2 size={14} />

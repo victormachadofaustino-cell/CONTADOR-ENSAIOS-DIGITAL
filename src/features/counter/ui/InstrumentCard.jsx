@@ -8,6 +8,7 @@ import {
   UserCheck,
   ShieldCheck,
   UserPlus,
+  X,
   Users,
 } from "lucide-react"; // Explicação: Importa os ícones de botões e escudos.
 
@@ -432,11 +433,18 @@ const CounterBox = ({
   onFocus,
   onOriginalBlur,
 }) => {
+  // 4. Feedback Tátil
+  const triggerHapticFeedback = (duration = 10) => {
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(duration);
+    }
+  };
+
   const [localVal, setLocalVal] = useState(val); // Explicação: Cria uma variável de estado local espelho para reter o número digitado na tela de forma independente.
 
   // 📡 PROTETOR DE CONCORRÊNCIA: Sincroniza o visor apenas quando a nuvem mudar de verdade lá fora
   useEffect(() => {
-    if (document.activeElement !== document.getElementById(`input-${label}`)) {
+    if (document.activeElement?.id !== `input-${label}`) {
       setLocalVal(val); // Explicação: Sincroniza pacificamente se o campo estiver ocioso.
     }
   }, [val, label]); // Explicação: Monitora as trocas numéricas do barramento global.
@@ -466,9 +474,13 @@ const CounterBox = ({
       <div className="flex items-center w-full h-full pt-3 justify-between">
         <button
           disabled={disabled}
+          aria-label="Diminuir" // 3. Acessibilidade Aprimorada (A11y)
           type="button"
-          onClick={() => triggerChange(localVal - 1)} // Explicação: Deduz um value usando o gatilho local instantâneo.
-          className={`w-8 h-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${disabled ? "opacity-20 pointer-events-none" : "active:bg-black/10"}`}
+          onClick={() => {
+            triggerHapticFeedback();
+            triggerChange(localVal - 1);
+          }} // Explicação: Deduz um value usando o gatilho local instantâneo.
+          className={`w-8 h-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${disabled ? "opacity-20 pointer-events-none" : "active:bg-black/10"}`} // 3. Acessibilidade Aprimorada (A11y)
         >
           <Minus
             size={isMain ? 14 : 11}
@@ -477,7 +489,7 @@ const CounterBox = ({
           />
         </button>
 
-        <div className="flex-1 flex flex-col items-center justify-center min-w-0">
+        <div className="relative flex-1 flex flex-col items-center justify-center min-w-0">
           <input
             id={`input-${label}`} // Explicação: Carimba uma identificação única para a trava de foco do cursor funcionar.
             disabled={disabled}
@@ -495,12 +507,30 @@ const CounterBox = ({
             }} // Explicação: Ao clicar fora, garante a consolidação final do valor represado no banco.
             onChange={(e) => triggerChange(e.target.value)} // Explicação: Dispara a troca imediata de digitação manual.
           />
+          {/* 2. Botão para Limpar o Campo (Clear Button) */}
+          {localVal > 0 && !disabled && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHapticFeedback();
+                triggerChange(0);
+              }}
+              className="absolute right-0 top-1/2 -translate-y-1/2 mr-1 bg-slate-200/50 text-slate-500 w-5 h-5 rounded-full flex items-center justify-center active:scale-90 transition-all"
+              aria-label="Limpar campo"
+            >
+              <X size={10} strokeWidth={3} />
+            </button>
+          )}
         </div>
 
         <button
           disabled={disabled || (maxLimit !== null && localVal >= maxLimit)}
+          aria-label="Aumentar" // 3. Acessibilidade Aprimorada (A11y)
           type="button"
-          onClick={() => triggerChange(localVal + 1)} // Explicação: Soma um valor usando o gatilho local instantâneo.
+          onClick={() => {
+            triggerHapticFeedback();
+            triggerChange(localVal + 1);
+          }} // Explicação: Soma um valor usando o gatilho local instantâneo.
           className={`w-8 h-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${disabled || (maxLimit !== null && maxLimit !== undefined && localVal >= maxLimit) ? "opacity-10 pointer-events-none" : "active:bg-black/10"}`}
         >
           <Plus

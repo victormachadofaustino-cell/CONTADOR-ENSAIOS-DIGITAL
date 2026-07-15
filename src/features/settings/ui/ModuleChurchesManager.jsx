@@ -225,6 +225,7 @@ const ModuleChurchesManager = ({
                           setEditValue(c.comum);
                         }}
                         className="p-3 text-slate-300 hover:text-blue-500 transition-colors active:scale-90"
+                        aria-label={`Editar ${c.comum}`}
                       >
                         <Edit3 size={14} />
                       </button>{" "}
@@ -232,6 +233,7 @@ const ModuleChurchesManager = ({
                       <button
                         onClick={() => handleDelete(c.id, c.comum)}
                         className="p-3 text-slate-300 hover:text-red-500 transition-colors active:scale-90"
+                        aria-label={`Excluir ${c.comum}`}
                       >
                         <Trash2 size={14} />
                       </button>{" "}

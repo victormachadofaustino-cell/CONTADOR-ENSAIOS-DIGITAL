@@ -43,6 +43,13 @@ import ModuleOrchestraBody from "../features/settings/ui/ModuleOrchestraBody"; /
 // 🚀 NOVA EMBUTIDURA DE PORTARIA: Importa o módulo visual que criaremos para gerenciar os níveis na lista suspensa
 import ModuleTestLevels from "../features/settings/ui/ModuleTestLevels";
 
+// FUNÇÃO DE UTILIDADE GLOBAL PARA FEEDBACK TÁTIL (MELHORIA DE EXPERIÊNCIA)
+const triggerHapticFeedback = (duration = 10) => {
+  if (window.navigator && window.navigator.vibrate) {
+    window.navigator.vibrate(duration);
+  }
+};
+
 const SettingsPage = () => {
   // Explicação: Inicia a construção da página principal de Configurações e Ajustes.
   const { userData, setContext } = useAuth(); // Explicação: Puxa as informações do usuário logado e a ferramenta de mudar o foco territorial do GPS.
@@ -664,6 +671,7 @@ const SettingsPage = () => {
                   onClick={() => {
                     setActiveModal(null);
                   }} // Explicação: Ao fechar o modal, limpa o estado ativo retornando à tela de base de forma limpa.
+                  aria-label="Fechar módulo" // 3. ACESSIBILIDADE: Garante que leitores de tela descrevam a função do botão.
                   className="w-11 h-11 bg-slate-50 hover:bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 outline-none transition-all active:scale-90 shrink-0"
                 >
                   <X size={16} strokeWidth={2.5} />
@@ -738,7 +746,10 @@ const MenuButton = ({ icon, title, moduleName, onClick }) => {
   // Explicação: Cria os botões limpos, compactos e interativos que abrem os painéis.
   return (
     <button
-      onClick={onClick}
+      onClick={() => {
+        triggerHapticFeedback(); // 4. FEEDBACK TÁTIL: Adiciona uma leve vibração ao toque para uma experiência mais responsiva.
+        onClick();
+      }}
       className="w-full bg-white rounded-2xl border border-slate-200/60 shadow-xs p-3.5 flex justify-between items-center outline-none transition-all active:bg-slate-50 active:scale-[0.99] min-h-[44px] group"
     >
       <div className="flex items-center gap-3 text-left leading-none min-w-0 flex-1">
