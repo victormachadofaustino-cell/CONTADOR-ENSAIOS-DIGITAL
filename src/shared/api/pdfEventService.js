@@ -661,8 +661,8 @@ export const pdfEventService = {
     // 1. CABEÇALHO
     // CORREÇÃO: Prioriza o dado vivo de 'comumFullData' como fonte única da verdade para o nome da comum e da cidade,
     // evitando o uso de dados históricos potencialmente desatualizados de 'ataData'.
-    const localidadePura = comumFullData?.comum ||;
-    const cidadeNome = comumFullData?.cidadeNome ||;
+    const localidadePura = comumFullData?.comum || "Localidade";
+    const cidadeNome = comumFullData?.cidadeNome || "Cidade";
     const title = `Relatório de Visitas [${toTitleCase(
       localidadePura,
     )} - ${toTitleCase(cidadeNome)}]`;
