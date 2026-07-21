@@ -6,23 +6,13 @@ import React, {
   useMemo,
 } from "react"; // Explicação: Importa as ferramentas básicas do React para criar a página.
 // PRESERVAÇÃO: Importações originais mantidas
-import {
-  db,
-  doc,
-  onSnapshot,
-  collection,
-  query,
-  where,
-  orderBy,
-  getDocs,
-} from "../../../shared/api/firebase"; // Explicação: Conecta com o banco de dados Firebase para buscar os dados.
+import { db, doc, onSnapshot, collection } from "../../../shared/api/firebase"; // Explicação: Conecta com o banco de dados Firebase para buscar os dados.
 import { eventService } from "../../../shared/api/eventService"; // Explicação: Importa o serviço que envia as atualizações para o banco de dados.
 import toast from "react-hot-toast"; // Explicação: Importa as notificações de aviso que aparecem no topo da tela.
-import { motion, AnimatePresence } from "framer-motion"; // Explicação: Importa as ferramentas de animação para deixar a tela suave.
+import { AnimatePresence } from "framer-motion"; // Explicação: Importa as ferramentas de animação para deixar a tela suave.
 import {
   Lock,
   ShieldCheck,
-  Info,
   X,
   User,
   Music,
@@ -30,7 +20,6 @@ import {
   Phone,
   Calendar,
   Clock,
-  Trash2,
   Users,
   ShieldAlert,
   RotateCcw,
@@ -54,6 +43,30 @@ import AtaOcorrencias from "../../events/ui/components/AtaOcorrencias.jsx"; // E
 import AtaPalavra from "../../events/ui/components/AtaPalavra.jsx"; // Explicação: Importa a parte de registro da pregação.
 import GuestManager from "../../events/ui/components/GuestManager.jsx"; // Explicação: Importa o sistema que gerencia os convidados externos.
 import MinistryAccordion from "../../events/ui/components/MinistryAccordion.jsx"; // Explicação: Importa a lista ministerial para eventos regionais.
+
+const pesosMinisterio = {
+  // Explicação: Ordem de cargos da CCB.
+  Ancião: 1,
+  Diácono: 2,
+  "Cooperador do Ofício": 3,
+  "Cooperador RJM": 4,
+  "Encarregado Regional": 5,
+  Examinadora: 6,
+  "Encarregado Local": 7,
+  "Secretário da Música": 8,
+  Instrutor: 9,
+  Músico: 10,
+};
+
+const ordenarLista = (lista, campoNome, campoRole) => {
+  // Explicação: Organiza listas por cargo.
+  return [...lista].sort((a, b) => {
+    const pesoA = pesosMinisterio[a[campoRole]] || 99;
+    const pesoB = pesosMinisterio[b[campoRole]] || 99;
+    if (pesoA !== pesoB) return pesoA - pesoB;
+    return (a[campoNome] || "").localeCompare(b[campoNome] || "");
+  });
+};
 
 const AtaPage = ({ eventId, comumId }) => {
   // Explicação: Inicia a construção da página usando os IDs do ensaio e da igreja.
@@ -97,23 +110,9 @@ const AtaPage = ({ eventId, comumId }) => {
   const [showConfirmLock, setShowConfirmLock] = useState(false); // Explicação: Modal de confirmação de fechamento.
   const [showConfirmReopen, setShowConfirmReopen] = useState(false); // Explicação: Modal de confirmação de reabertura.
   const [visitaToDelete, setVisitaToDelete] = useState(null); // Explicação: Guarda qual visita será excluída.
-  const [showVisitaModal, setShowVisitaModal] = useState(false); // Explicação: Controla a janela de cadastro de visitas.
 
   const [openSection, setOpenSection] = useState(null); // Explicação: Controla qual sanfona está aberta.
-  const [editIndex, setEditIndex] = useState(null); // Explicação: Controla se estamos editando uma visita existente.
   const saveTimeoutRef = useRef(null); // Explicação: Timer para salvar no banco sem travar a digitação.
-
-  const [newVisita, setNewVisita] = useState({
-    // Explicação: Modelo de dados para um novo visitante.
-    nome: "",
-    min: "",
-    inst: "",
-    bairro: "",
-    cidadeUf: "",
-    dataEnsaio: "",
-    hora: "",
-    contato: "",
-  });
 
   const [autoFillOracao, setAutoFillOracao] = useState(false); // Explicação: Atalho para copiar Atendimento para Oração.
   const [autoFillPalavra, setAutoFillPalavra] = useState(false); // Explicação: Atalho para copiar Atendimento para Palavra.
@@ -159,30 +158,6 @@ const AtaPage = ({ eventId, comumId }) => {
   ]);
 
   const isInputDisabled = !temPermissaoEditar; // Explicação: Trava os campos se o usuário não tiver permissão.
-
-  const pesosMinisterio = {
-    // Explicação: Ordem de cargos da CCB.
-    Ancião: 1,
-    Diácono: 2,
-    "Cooperador do Ofício": 3,
-    "Cooperador RJM": 4,
-    "Encarregado Regional": 5,
-    Examinadora: 6,
-    "Encarregado Local": 7,
-    "Secretário da Música": 8,
-    Instrutor: 9,
-    Músico: 10,
-  };
-
-  const ordenarLista = (lista, campoNome, campoRole) => {
-    // Explicação: Organiza listas por cargo.
-    return [...lista].sort((a, b) => {
-      const pesoA = pesosMinisterio[a[campoRole]] || 99;
-      const pesoB = pesosMinisterio[b[campoRole]] || 99;
-      if (pesoA !== pesoB) return pesoA - pesoB;
-      return (a[campoNome] || "").localeCompare(b[campoNome] || "");
-    });
-  };
 
   const badgeMinisterioLocal = useMemo(() => {
     // Explicação: Conta músicos da casa presentes.
@@ -244,6 +219,7 @@ const AtaPage = ({ eventId, comumId }) => {
       toast.success("Ata Reaberta com Sucesso!");
       setShowConfirmReopen(false);
     } catch (e) {
+      console.error("Erro ao reabrir ata:", e);
       toast.error("Erro ao reabrir ata.");
     }
   };
@@ -264,6 +240,7 @@ const AtaPage = ({ eventId, comumId }) => {
         newStatus === "open" ? "Ensaio Reaberto" : "Ensaio Lacrado ✅",
       );
     } catch (e) {
+      console.error("Falha ao processar status:", e);
       toast.error("Falha ao processar status.");
     }
   };
@@ -377,42 +354,6 @@ const AtaPage = ({ eventId, comumId }) => {
       np[pIdx].hinos[hIdx] = v;
       return handleChange({ ...ataData, partes: np });
     }
-  };
-
-  const handleOpenVisitaModal = (v = null, idx = null) => {
-    // Explicação: Abre janela de visita.
-    if (isInputDisabled) return;
-    if (v) {
-      setNewVisita(v);
-      setEditIndex(idx);
-    } else {
-      setNewVisita({
-        nome: "",
-        min: "",
-        inst: "",
-        bairro: "",
-        cidadeUf: "",
-        dataEnsaio: "",
-        hora: "",
-        contato: "",
-      });
-      setEditIndex(null);
-    }
-    setShowVisitaModal(true);
-  };
-
-  const handleSaveVisita = () => {
-    // Explicação: Salva o visitante.
-    if (isInputDisabled) return;
-    if (!newVisita.nome) return toast.error("Informe o nome");
-    let updated = [...(ataData.visitantes || [])];
-    if (editIndex !== null) updated[editIndex] = newVisita;
-    else updated.push({ ...newVisita, id: Date.now() });
-    handleChange({
-      ...ataData,
-      visitantes: ordenarLista(updated, "nome", "min"),
-    });
-    setShowVisitaModal(false);
   };
 
   const handleConfirmDeleteVisita = () => {
@@ -566,7 +507,7 @@ const AtaPage = ({ eventId, comumId }) => {
                 <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic leading-none mb-1">
                   Liturgia Regional
                 </p>
-                <h4 className="text-sm font-[900] text-slate-950 uppercase italic tracking-tighter">
+                <h4 className="text-sm font-black text-slate-950 uppercase italic tracking-tighter">
                   Palavra Pregada
                 </h4>
               </div>
@@ -627,7 +568,6 @@ const AtaPage = ({ eventId, comumId }) => {
           visitantes={ataData.visitantes}
           isInputDisabled={isInputDisabled}
           isClosed={isClosed || isBasico}
-          handleOpenVisitaModal={handleOpenVisitaModal}
           setVisitaToDelete={setVisitaToDelete}
           onToggleTocando={handleToggleTocando}
         />
@@ -680,7 +620,7 @@ const AtaPage = ({ eventId, comumId }) => {
 
       {/* BOTÃO DE FECHAMENTO */}
       {!isBasico && (
-        <div className="max-w-[200px] mx-auto opacity-80 hover:opacity-100 transition-opacity">
+        <div className="max-w-50 mx-auto opacity-80 hover:opacity-100 transition-opacity">
           <AtaLacreStatus
             isClosed={isClosed}
             isGemLocal={isGemLocal}
@@ -720,103 +660,6 @@ const AtaPage = ({ eventId, comumId }) => {
           >
             Deseja destravar este ensaio para novas edições?
           </Modal>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showVisitaModal && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 text-left">
-            <motion.div
-              initial={{ y: 50, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar text-left relative"
-            >
-              <button
-                onClick={() => setShowVisitaModal(false)}
-                className="absolute top-8 right-8 text-slate-300 active:scale-95 transition-all"
-              >
-                <X size={24} />
-              </button>
-              <h3 className="text-2xl font-[900] text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">
-                Dados da Visita
-              </h3>
-              <div className="space-y-4">
-                <Field
-                  label="Nome Completo *"
-                  val={newVisita.nome}
-                  disabled={isInputDisabled}
-                  onChange={(v) => setNewVisita({ ...newVisita, nome: v })}
-                />
-                <Select
-                  label="Ministério / Cargo *"
-                  val={newVisita.min}
-                  options={referenciaMinisterio}
-                  disabled={isInputDisabled}
-                  onChange={(v) => setNewVisita({ ...newVisita, min: v })}
-                />
-                <Field
-                  label="Instrumento"
-                  val={newVisita.inst}
-                  disabled={isInputDisabled}
-                  onChange={(v) => setNewVisita({ ...newVisita, inst: v })}
-                  icon={<Music size={10} />}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Bairro"
-                    val={newVisita.bairro}
-                    disabled={isInputDisabled}
-                    onChange={(v) => setNewVisita({ ...newVisita, bairro: v })}
-                    icon={<MapPin size={10} />}
-                  />
-                  <Field
-                    label="Cidade/UF"
-                    val={newVisita.cidadeUf}
-                    disabled={isInputDisabled}
-                    onChange={(v) =>
-                      setNewVisita({ ...newVisita, cidadeUf: v })
-                    }
-                  />
-                </div>
-                <Field
-                  label="Celular / Contato"
-                  val={newVisita.contato}
-                  disabled={isInputDisabled}
-                  onChange={(v) => setNewVisita({ ...newVisita, contato: v })}
-                  icon={<Phone size={10} />}
-                />
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <Field
-                    label="Data Ensaio"
-                    val={newVisita.dataEnsaio}
-                    disabled={isInputDisabled}
-                    onChange={(v) =>
-                      setNewVisita({ ...newVisita, dataEnsaio: v })
-                    }
-                    icon={<Calendar size={10} />}
-                    placeholder="3 Sábado"
-                  />
-                  <Field
-                    label="Horário"
-                    val={newVisita.hora}
-                    disabled={isInputDisabled}
-                    onChange={(v) => setNewVisita({ ...newVisita, hora: v })}
-                    icon={<Clock size={10} />}
-                    placeholder="00:00"
-                  />
-                </div>
-                {!isInputDisabled && (
-                  <button
-                    onClick={handleSaveVisita}
-                    disabled={!newVisita.nome || !newVisita.min}
-                    className={`w-full py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all ${!newVisita.nome || !newVisita.min ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white shadow-blue-100"}`}
-                  >
-                    Salvar Registro
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
     </div>

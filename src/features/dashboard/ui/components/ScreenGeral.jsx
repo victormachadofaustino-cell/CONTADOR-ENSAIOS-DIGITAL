@@ -1,4 +1,4 @@
-import React from "react"; // [Funcionamento]: Importa a base do React para gerenciar e renderizar os elementos visuais na tela.
+import React, { useMemo } from "react"; // [Funcionamento]: Importa a base do React para gerenciar e renderizar os elementos visuais na tela.
 import { AnimatePresence, motion } from "framer-motion"; // [Funcionamento]: Motor de animações elásticas que faz os modais surgirem de forma centralizada e suave.
 import {
   BookOpen,
@@ -25,13 +25,7 @@ import {
   Legend,
 } from "recharts"; // [Funcionamento]: Componentes gráficos que constroem as linhas históricas e as barras empilhadas no celular.
 
-const ScreenGeral = ({
-  stats,
-  renderDelta,
-  activeModal,
-  setActiveModal,
-  ataData,
-}) => {
+const ScreenGeral = ({ stats, activeModal, setActiveModal, ataData }) => {
   // [Funcionamento]: Declara a tela que desenha os Cards Grandes e Gráficos de Tendência.
 
   // 🧮 INTEGRAÇÃO DE BI INTELIGENTE: TRATAMENTO DE DADOS WITH CUSTO ZERO DE COTA
@@ -64,13 +58,25 @@ const ScreenGeral = ({
     }); // [Funcionamento]: Termina o mapeamento.
   }, [stats.historicoGrafico]); // [Funcionamento]: Protege a memória do celular re-executando apenas se o array histórico mudar.
 
+  // 🚀 AJUSTE DINÂMICO: Prepara os dados para o gráfico de hinos no modal, lendo todas as partes da ata.
+  const hinosPorParte = useMemo(() => {
+    if (!ataData?.partes || !Array.isArray(ataData.partes)) return [];
+    return ataData.partes
+      .map((parte, index) => ({
+        name: parte.label || `${index + 1}ª Parte`,
+        "Nº de Hinos":
+          parte.hinos?.filter((h) => h && h.trim() !== "").length || 0,
+      }))
+      .filter((p) => p["Nº de Hinos"] > 0); // Exibe apenas as partes que tiveram hinos.
+  }, [ataData]);
+
   return (
     // [Funcionamento]: Palco visual secundário da aba Geral.
     <div className="space-y-4 animate-fadeIn text-left w-full">
       {" "}
       {/* [Funcionamento]: Empilhamento vertical estável para perfeita leitura mobile-first. */}
-      {/* 🏆 CARD MASTER: PÚBLICO GERAL PRESENTADO */}
-      <div className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-xs">
+      {/* 🏆 CARD MASTER: PÚBLICO GERAL PRESENTE */}
+      <div className="bg-white p-5 rounded-4xl border border-slate-200/70 shadow-xs">
         {" "}
         {/* [Funcionamento]: Card master superior branco. */}
         <div className="flex justify-between items-start">
@@ -100,7 +106,7 @@ const ScreenGeral = ({
         {/* Card Orquestra Interativo */}
         <button
           onClick={() => setActiveModal("orquestra")}
-          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-[84px] flex flex-col justify-between layout-touch"
+          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-21 flex flex-col justify-between layout-touch"
         >
           {" "}
           {/* [Funcionamento]: Botão tátil ergonômico de clique do cartão de orquestra. */}
@@ -144,7 +150,7 @@ const ScreenGeral = ({
         {/* Card Coral Interativo */}
         <button
           onClick={() => setActiveModal("coral")}
-          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-[84px] flex flex-col justify-between layout-touch"
+          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-21 flex flex-col justify-between layout-touch"
         >
           {" "}
           {/* [Funcionamento]: Botão do cartão do coral. */}
@@ -173,7 +179,7 @@ const ScreenGeral = ({
         {/* Card Hinos Interativo */}
         <button
           onClick={() => setActiveModal("hinos")}
-          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-[84px] flex flex-col justify-between layout-touch"
+          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-21 flex flex-col justify-between layout-touch"
         >
           {" "}
           {/* [Funcionamento]: Botão do cartão de hinos lançados. */}
@@ -202,7 +208,7 @@ const ScreenGeral = ({
         {/* Card Encarregados Interativo */}
         <button
           onClick={() => setActiveModal("encarregados")}
-          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-[84px] flex flex-col justify-between layout-touch"
+          className="bg-white p-4 rounded-3xl border border-slate-200/70 text-left hover:border-indigo-500/40 active:scale-98 transition-all outline-none min-h-21 flex flex-col justify-between layout-touch"
         >
           {" "}
           {/* [Funcionamento]: Botão do cartão de liderança técnica. */}
@@ -231,7 +237,7 @@ const ScreenGeral = ({
       </div>{" "}
       {/* [Funcionamento]: Fecha a malha de cartões. */}
       {/* 📈 SEÇÃO GRÁFICA 1: LINHAS HISTÓRICAS DE TENDÊNCIA COM LEGENDA VISÍVEL */}
-      <div className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-xs">
+      <div className="bg-white p-5 rounded-4xl border border-slate-200/70 shadow-xs">
         {" "}
         {/* [Funcionamento]: Quadro do gráfico de linhas. */}
         <div className="flex items-center gap-2 mb-4">
@@ -337,8 +343,8 @@ const ScreenGeral = ({
         {/* [Funcionamento]: Fecha palco do gráfico 1. */}
       </div>{" "}
       {/* [Funcionamento]: Fecha caixa de linha histórica. */}
-      {/* 📊 SEÇÃO GRÁFICA 2: REVISÃO DE BARRAS EMPILHADAS WITH NOMENCLATURA ATUALIZADA (COMUM VS VISITA) */}
-      <div className="bg-white p-5 rounded-[2rem] border border-slate-200/70 shadow-xs">
+      {/* 📊 SEÇÃO GRÁFICA 2: REVISÃO DE BARRAS EMPILHADAS COM NOMENCLATURA ATUALIZADA (COMUM VS VISITA) */}
+      <div className="bg-white p-5 rounded-4xl border border-slate-200/70 shadow-xs">
         {" "}
         {/* [Funcionamento]: Quadro do gráfico de apoio de visitas. */}
         <div className="flex items-center gap-2 mb-4">
@@ -475,7 +481,7 @@ const ScreenGeral = ({
                 {/* [Funcionamento]: Texto de identificação. */}
                 <button
                   onClick={() => setActiveModal(null)}
-                  className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 outline-none min-h-[44px] min-w-[44px]"
+                  className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 outline-none min-h-11 min-w-11"
                 >
                   {" "}
                   {/* [Funcionamento]: Botão circular de fechar com o 'X'. */}
@@ -653,74 +659,53 @@ const ScreenGeral = ({
               )}
               {/* 🚀 CONTEÚDO 3: MODAL DE HINOS COMPLETAMENTE AUTOMATIZADO E DINÂMICO (FIM DA LIMITAÇÃO DE DUAS PARTES VITE) */}
               {activeModal === "hinos" && ( // [Funcionamento]: Se o modal ativo for o do histórico de hinologia ensaiada.
-                <div className="space-y-3 text-[11px] font-bold text-slate-600 uppercase">
-                  {" "}
-                  {/* [Funcionamento]: Container cumulativo de pílulas numéricas de hinos. */}
-                  {ataData?.partes &&
-                  Array.isArray(ataData.partes) &&
-                  ataData.partes.length > 0 ? ( // [Funcionamento]: Validação sanitária de segurança: se houver blocos de etapas salvos no ensaio atual.
-                    ataData.partes.map((parte, index) => {
-                      // [Funcionamento]: 🚀 LAÇO COMPACTO SÊNIOR: Percorre linearmente cada etapa litúrgica cadastrada, listando de forma ilimitada todas elas!
-                      const hinosDaEtapa =
-                        parte.hinos?.filter((h) => h && h.trim() !== "") || []; // [Funcionamento]: Isola e limpa os hinos vazios digitados na etapa ativa do loop.
-                      const arrayCoresDeFundo = [
-                        "bg-indigo-50 text-indigo-700",
-                        "bg-amber-50 text-amber-700",
-                        "bg-emerald-50 text-emerald-700",
-                        "bg-rose-50 text-rose-700",
-                        "bg-violet-50 text-violet-700",
-                      ]; // [Funcionamento]: Matriz de paletas Tailwind para alternar cores das etapas.
-                      const estiloCorEstilo =
-                        arrayCoresDeFundo[index % arrayCoresDeFundo.length]; // [Funcionamento]: Aplica a cor correspondente usando o resto da divisão matemática pelo índice.
-
-                      return (
-                        // [Funcionamento]: Desenha o bloco individual da etapa litúrgica processada.
-                        <div
-                          key={parte.id || index}
-                          className="p-2.5 bg-slate-50 rounded-xl border border-slate-100"
-                        >
-                          {" "}
-                          {/* [Funcionamento]: Caixa cinza de proteção ergonômica da etapa. */}
-                          <span className="text-[9px] font-black text-slate-400 block mb-1.5 italic tracking-wide">
-                            {parte.label || `${index + 1}ª Parte`} (
-                            {hinosDaEtapa.length} Hinos)
-                          </span>{" "}
-                          {/* [Funcionamento]: Nome textual da etapa (ex: '3ª Parte (Hinos de Jovens)'). */}
-                          <div className="flex flex-wrap gap-1">
-                            {" "}
-                            {/* [Funcionamento]: Caixa horizontal de pílulas alinhadas com quebra automática de linha mobile. */}
-                            {hinosDaEtapa.length > 0 ? ( // [Funcionamento]: Se houver partituras salvas nesta etapa litúrgica específica.
-                              hinosDaEtapa.map(
-                                (
-                                  h,
-                                  idx, // [Funcionamento]: Varre número por número gerando o distintivo visual.
-                                ) => (
-                                  <span
-                                    key={idx}
-                                    className={`px-2.5 py-1 rounded-md font-black text-[11px] ${estiloCorEstilo}`}
-                                  >
-                                    {h}
-                                  </span> // [Funcionamento]: Desenha o número do hino colorido em destaque.
-                                ),
-                              ) // [Funcionamento]: Fecha o sub-laço de números.
-                            ) : (
-                              // [Funcionamento]: Se o array de números estiver vazio.
-                              <span className="text-slate-400 normal-case font-bold text-[10px] pl-0.5">
-                                Nenhum hino lançado nesta etapa
-                              </span> // [Funcionamento]: Mensagem amigável de campo ocioso.
-                            )}
-                          </div>{" "}
-                          {/* [Funcionamento]: Fecha container horizontal de pílulas. */}
-                        </div> // [Funcionamento]: Fecha caixa protetora da etapa.
-                      ); // [Funcionamento]: Termina retorno do bloco individual do map.
-                    }) // [Funcionamento]: Encerra a varredura elástica cumulativa de partes.
-                  ) : (
-                    // [Funcionamento]: Caso o documento mestre do ensaio na nuvem não possua o nó litúrgico estruturado.
-                    <span className="text-slate-400 normal-case font-bold text-[10px] text-center block py-4">
-                      Nenhum bloco de hinos estruturado para este ensaio
-                    </span> // [Funcionamento]: Texto amigável de erro estrutural.
-                  )}
-                </div> // [Funcionamento]: Fecha container de hinologia.
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={hinosPorParte}
+                    margin={{ top: 20, right: 5, left: -25, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="#E2E8F0"
+                    />
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fontWeight: 700, fill: "#64748B" }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "#94A3B8" }}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: "1.2rem",
+                        border: "none",
+                        fontWeight: 800,
+                        fontSize: 11,
+                      }}
+                    />
+                    <Bar
+                      dataKey="Nº de Hinos"
+                      fill="#f59e0b"
+                      radius={[4, 4, 0, 0]}
+                    >
+                      <LabelList
+                        dataKey="Nº de Hinos"
+                        position="top"
+                        style={{
+                          fill: "#78350f",
+                          fontSize: 11,
+                          fontWeight: 900,
+                        }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               )}
               {/* 🛡️ CONTEÚDO 4: MODAL ENCARREGADOS COMPLETAMENTE ATUALIZADO */}
               {activeModal === "encarregados" && ( // [Funcionamento]: Se o modal ativo for o de liderança técnica.

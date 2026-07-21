@@ -59,7 +59,7 @@ const MetricCardsGroup = ({
       {/* 1. CARD: ORQUESTRA ATIVA (COMUM X VISITAS) */}
       <BigNumberCard
         id="orquestra"
-        label="Orquestra Ativa"
+        label="Músicos"
         total={tM}
         avg={avgM}
         icon={<Music size={16} />}

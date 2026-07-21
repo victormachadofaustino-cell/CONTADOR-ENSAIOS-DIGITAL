@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from "react"; // Explicação: Ferramentas básicas para criar a tela e memorizar cálculos.
-import { motion, AnimatePresence } from "framer-motion"; // Explicação: Ferramentas para animações suaves de abrir e fechar as famílias.
+import React, { useState } from "react"; // Explicação: Ferramentas básicas para criar a tela e memorizar cálculos.
+import { AnimatePresence } from "framer-motion"; // Explicação: Ferramentas para animações suaves de abrir e fechar as famílias.
 import { Plus, UserPlus, ChevronDown, Users, Calculator } from "lucide-react"; // Explicação: Ícones visuais (mais, seta, pessoas).
-import { db, doc, writeBatch } from "../../../shared/api/firebase"; // Explicação: Conexão com o banco de dados do Google.
 import toast from "react-hot-toast"; // Explicação: Avisos flutuantes na tela.
 import { eventService } from "../../../shared/api/eventService"; // Para salvar a opção de dedução
 // PRESERVAÇÃO: Importação mantida conforme estrutura do projeto
@@ -153,7 +152,7 @@ const CounterRegional = ({
                   className={`w-2 h-10 rounded-full ${getSectionColor(section)}`}
                 />
                 <div className="leading-none text-left">
-                  <p className="text-[13px] font-[900] text-slate-950 uppercase italic tracking-tighter mb-1 leading-none">
+                  <p className="text-[13px] font-black text-slate-950 uppercase italic tracking-tighter mb-1 leading-none">
                     {section}
                   </p>
                   <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none">
@@ -170,7 +169,7 @@ const CounterRegional = ({
                     Total
                   </span>
                   <div className="bg-slate-950 px-3 py-1 rounded-xl shadow-lg border border-white/10">
-                    <span className="text-xs font-[900] text-white italic leading-none">
+                    <span className="text-xs font-black text-white italic leading-none">
                       {totalNaipe}
                     </span>
                   </div>
@@ -217,65 +216,105 @@ const CounterRegional = ({
                     )}
 
                     {isIrmandade ? ( // Explicação: Bifurcação lógica: Desenha o layout especial para Irmãs e Irmãos (Coral).
-                      <div className="space-y-3 text-left">
-                        <InstrumentCard
-                          key="irmas_row"
-                          inst={{
-                            id: "irmas",
-                            nome: "IRMÃS",
-                            label: "IRMÃS",
-                            section: "IRMANDADE",
-                          }} // Explicação: Entrega o objeto fixo de mapeamento de gênero.
-                          data={masterData} // Explicação: Passa o mapa de dados e responsáveis do Coral unificado.
-                          onUpdate={onUpdate} // Explicação: Vincula a ação de alteração numérica de contadores.
-                          onToggleOwnership={() =>
-                            onToggleSection(
-                              masterId,
-                              masterData?.responsibleId_irmas === userData?.uid,
-                              "irmas",
-                            )
-                          } // Explicação: Dispara a posse individual da ala feminina.
-                          userData={userData} // Explicação: Repassa o crachá do secretário ativo para controle.
-                          disabled={
-                            typeof isEditingEnabled === "function"
-                              ? !isEditingEnabled(section, "irmas")
-                              : isClosed
-                          } // 🚀 BLINDAGEM DE FILTRO REGIONAL: Consome a função mestre da tela para acender os botões do GEM Local!
-                          isRegional={true} // Explicação: Força a flag de comportamento regional para ocultar Toques Azuis locais.
-                          sectionName={section} // Explicação: Repassa o nome textual do naipe correspondente.
-                          onFocus={onFocus} // Explicação: Protege o campo contra zeragem externa durante digitação ativa.
-                          onBlur={onBlur} // Explicação: Desativa a trava de foco liberando novas escutas do onSnapshot.
-                        />
-                        <InstrumentCard
-                          key="irmaos_row"
-                          inst={{
-                            id: "irmaos",
-                            nome: "IRMÃOS",
-                            label: "IRMÃOS",
-                            section: "IRMANDADE",
-                          }}
-                          data={masterData}
-                          onUpdate={onUpdate}
-                          onToggleOwnership={() =>
-                            onToggleSection(
-                              masterId,
-                              masterData?.responsibleId_irmaos ===
-                                userData?.uid,
-                              "irmaos",
-                            )
-                          } // Explicação: Dispara a posse individual da ala masculina.
-                          userData={userData}
-                          disabled={
-                            typeof isEditingEnabled === "function"
-                              ? !isEditingEnabled(section, "irmaos")
-                              : isClosed
-                          } // 🚀 BLINDAGEM DE FILTRO REGIONAL: Consome a função mestre da tela para acender os botões do GEM Local!
-                          isRegional={true}
-                          sectionName={section}
-                          onFocus={onFocus}
-                          onBlur={onBlur}
-                        />
-                      </div>
+                      (() => {
+                        const dataForIrmasCard = { ...masterData };
+                        if (ataData?.deduzirOrganistas) {
+                          const organistasTotal =
+                            parseInt(localCounts?.orgao?.total) || 0;
+                          dataForIrmasCard.irmas = Math.max(
+                            0,
+                            (parseInt(masterData.irmas) || 0) - organistasTotal,
+                          );
+                        }
+
+                        const handleIrmasUpdate = (
+                          id,
+                          field,
+                          value,
+                          ...rest
+                        ) => {
+                          let finalValue = value;
+                          if (field === "irmas" && ataData?.deduzirOrganistas) {
+                            const organistasTotal =
+                              parseInt(localCounts?.orgao?.total) || 0;
+                            const irmaosCount =
+                              parseInt(masterData.irmaos) || 0;
+                            const valorCorrigidoIrmas = value + organistasTotal;
+                            const novoTotalAbsoluto =
+                              valorCorrigidoIrmas + irmaosCount;
+                            rest[1] = {
+                              ...(rest[1] || {}),
+                              total: novoTotalAbsoluto,
+                              comum: novoTotalAbsoluto,
+                            };
+                            finalValue = valorCorrigidoIrmas;
+                          }
+                          onUpdate(id, field, finalValue, ...rest);
+                        };
+
+                        return (
+                          <div className="space-y-3 text-left">
+                            <InstrumentCard
+                              key="irmas_row"
+                              inst={{
+                                id: "irmas",
+                                nome: "IRMÃS",
+                                label: "IRMÃS",
+                                section: "IRMANDADE",
+                              }} // Explicação: Entrega o objeto fixo de mapeamento de gênero.
+                              data={dataForIrmasCard} // Explicação: Passa o mapa de dados, com a dedução já aplicada para exibição.
+                              onUpdate={handleIrmasUpdate}
+                              onToggleOwnership={() =>
+                                onToggleSection(
+                                  masterId,
+                                  masterData?.responsibleId_irmas ===
+                                    userData?.uid,
+                                  "irmas",
+                                )
+                              } // Explicação: Dispara a posse individual da ala feminina.
+                              userData={userData} // Explicação: Repassa o crachá do secretário ativo para controle.
+                              disabled={
+                                typeof isEditingEnabled === "function"
+                                  ? !isEditingEnabled(section, "irmas")
+                                  : isClosed
+                              } // 🚀 BLINDAGEM DE FILTRO REGIONAL: Consome a função mestre da tela para acender os botões do GEM Local!
+                              isRegional={true} // Explicação: Força a flag de comportamento regional para ocultar Toques Azuis locais.
+                              sectionName={section} // Explicação: Repassa o nome textual do naipe correspondente.
+                              onFocus={onFocus} // Explicação: Protege o campo contra zeragem externa durante digitação ativa.
+                              onBlur={onBlur} // Explicação: Desativa a trava de foco liberando novas escutas do onSnapshot.
+                            />
+                            <InstrumentCard
+                              key="irmaos_row"
+                              inst={{
+                                id: "irmaos",
+                                nome: "IRMÃOS",
+                                label: "IRMÃOS",
+                                section: "IRMANDADE",
+                              }}
+                              data={masterData}
+                              onUpdate={onUpdate}
+                              onToggleOwnership={() =>
+                                onToggleSection(
+                                  masterId,
+                                  masterData?.responsibleId_irmaos ===
+                                    userData?.uid,
+                                  "irmaos",
+                                )
+                              } // Explicação: Dispara a posse individual da ala masculina.
+                              userData={userData}
+                              disabled={
+                                typeof isEditingEnabled === "function"
+                                  ? !isEditingEnabled(section, "irmaos")
+                                  : isClosed
+                              } // 🚀 BLINDAGEM DE FILTRO REGIONAL: Consome a função mestre da tela para acender os botões do GEM Local!
+                              isRegional={true}
+                              sectionName={section}
+                              onFocus={onFocus}
+                              onBlur={onBlur}
+                            />
+                          </div>
+                        );
+                      })()
                     ) : isOrganistas ? ( // Explicação: Bifurcação lógica: Desenha o layout especial focado no Órgão eletrônico.
                       <div className="space-y-3 text-left">
                         <InstrumentCard
@@ -350,7 +389,7 @@ const CounterRegional = ({
                         <button
                           type="button" // Explicação: Evita disparos co laterais de formulários HTML.
                           onClick={() => onAddExtra(section)} // Explicação: Abre o modal para cadastrar novos itens dinâmicos extras criados em tempo de execução.
-                          className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all cursor-pointer hover:text-indigo-600 hover:border-indigo-200" // Explicação: Design Mobile-First com feedback tátil ativo e stacking vertical em telas estreitas.
+                          className="w-full py-4 mt-2 border-2 border-dashed border-slate-200 rounded-4xl flex items-center justify-center gap-3 text-slate-400 active:scale-95 transition-all cursor-pointer hover:text-indigo-600 hover:border-indigo-200" // Explicação: Design Mobile-First com feedback tátil ativo e stacking vertical em telas estreitas.
                         >
                           <Plus size={16} strokeWidth={3} />
                           <span className="text-[9px] font-black uppercase italic tracking-widest">

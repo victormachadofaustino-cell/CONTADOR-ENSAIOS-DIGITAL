@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react"; // Explicação: Importa a base do React, os ganchos de estado local, escutas de efeitos e cache de memória RAM.
+import React, { useState } from "react"; // Explicação: Importa a base do React, os ganchos de estado local, escutas de efeitos e cache de memória RAM.
 // PRESERVAÇÃO: Importações originais mantidas e adicionada a dependência Users do Lucide
 import {
   ChevronDown,
@@ -22,7 +22,6 @@ const CounterSection = ({
   allInstruments, // Explicação: Lista de todos os instrumentos disponíveis.
   localCounts, // Explicação: Números vindos do banco de dados.
   myUID, // Explicação: ID do usuário logado.
-  activeGroup, // Explicação: Qual grupo está aberto no momento.
   handleToggleGroup, // Explicação: Função para abrir/fechar e assumir posse.
   handleUpdateInstrument, // Explicação: Função para salvar números.
   isEditingEnabled, // Explicação: Regra que dita se o botão de + e - funciona.
@@ -79,16 +78,16 @@ const CounterSection = ({
         const uniqueKey = `total_coral_sum`; // Explicação: Identificador da trava matemática.
         if (sumSpecialSections.has(uniqueKey)) return acc; // Explicação: Se já somou o bloco completo neste clique, retorna o acumulador intacto sem duplicar.
         sumSpecialSections.add(uniqueKey); // Explicação: Registra que a matemática de soma do coral foi efetuada no cabeçalho.
-        return acc + (parseInt(c?.irmaos) || 0) + (parseInt(c?.irmas) || 0); // Explicação: Soma Irmãs + Irmãos para o grupo unificado de Irmandade e calcula o Total correto.
+        const irmaosCount = parseInt(c?.irmaos) || 0;
+        let irmasCount = parseInt(c?.irmas) || 0;
+        if (ataData?.deduzirOrganistas) {
+          const organistasTotal = parseInt(localCounts?.orgao?.total) || 0;
+          irmasCount = Math.max(0, irmasCount - organistasTotal);
+        }
+        return acc + irmaosCount + irmasCount;
       } // Explicação: Fim della condicional do Coral.
       return acc + (parseInt(c?.total) || 0); // Explicação: Para os instrumentos normais enxutos, puxa e soma diretamente o campo 'total'.
     }, 0); // Explicação: Inicia o acumulador matemático do reduce com o valor zero.
-
-  // AJUSTE PARA DEDUÇÃO DE ORGANISTAS
-  if ((sec === "IRMANDADE" || sec === "CORAL") && ataData?.deduzirOrganistas) {
-    const organistasTotal = parseInt(localCounts?.orgao?.total) || 0;
-    sectionTotal = Math.max(0, sectionTotal - organistasTotal);
-  }
 
   // 🚀 CAIXA DE MEMÓRIA DOS CARDS: Conjunto temporário isolado na RAM exclusivo para o mapeamento visual de tela
   const cardSpecialSections = new Set(); // Explicação: Guarda as tags dos cartões já impressos na tela para evitar repetição visual.
@@ -127,7 +126,7 @@ const CounterSection = ({
   return (
     // Explicação: Desenha a caixa della seção na tela.
     <div
-      className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden ${extraSpacing} text-left`}
+      className={`bg-white rounded-4xl border border-slate-100 shadow-sm overflow-hidden ${extraSpacing} text-left`}
     >
       {" "}
       {/* Explicação: Container prêmio com cantos arredondados, fundo branco e espaçamento ergonômico. */}
@@ -140,7 +139,7 @@ const CounterSection = ({
           onClick={handleHeaderClick} // Explicação: Dispara a abertura ou recolhimento da sanfona ao clicar.
           className="flex flex-col items-start text-left leading-none gap-1 flex-1 min-w-0 cursor-pointer outline-none" // Explicação: Alinha os textos à esquerda empilhados sem espaçamento de linha bruto.
         >
-          <span className="font-[900] uppercase italic text-[12px] text-slate-950 tracking-tight truncate w-full text-left">
+          <span className="font-black uppercase italic text-[12px] text-slate-950 tracking-tight truncate w-full text-left">
             {" "}
             {/* Explicação: Estiliza o nome do naipe em destaque preto negrito de alta densidade visual. */}
             {sec}{" "}
@@ -209,7 +208,7 @@ const CounterSection = ({
             onClick={handleHeaderClick} // Explicação: Aciona a abertura ao clicar no quadrado numérico.
             className="flex items-center gap-2 cursor-pointer outline-none" // Explicação: Alinha o quadrado preto e a seta cinza lado a lado.
           >
-            <div className="bg-slate-950 text-white min-w-[38px] h-8 flex items-center justify-center rounded-xl font-[900] italic text-[12px] shadow-sm border border-white/10 px-2 leading-none">
+            <div className="bg-slate-950 text-white min-w-9.5 h-8 flex items-center justify-center rounded-xl font-black italic text-[12px] shadow-sm border border-white/10 px-2 leading-none">
               {" "}
               {/* Explicação: Quadrado de alta densidade preto prêmio contendo o número total somado em tempo real. */}
               {sectionTotal}{" "}
@@ -284,6 +283,20 @@ const CounterSection = ({
                 responsibleName: responsibleName, // Vincula o nome do dono para exibição interna.
               };
 
+              // AJUSTE VISUAL PARA DEDUÇÃO DE ORGANISTAS NO VALOR DO CARTÃO
+              const dataForCard = { ...instrumentData };
+              if (
+                (sec === "IRMANDADE" || sec === "CORAL") &&
+                ataData?.deduzirOrganistas
+              ) {
+                const organistasTotal =
+                  parseInt(localCounts?.orgao?.total) || 0;
+                dataForCard.irmas = Math.max(
+                  0,
+                  (parseInt(instrumentData.irmas) || 0) - organistasTotal,
+                );
+              }
+
               // GARGALO DE CONTROLE VISUAL RESOLVIDO: Inverte o motor de verificação para libertar e acender os botões.
               const deEdicaoTrancada = !isEditingEnabled(sec, inst.id); // Explicação: Aciona a checagem reativa unificada da mãe passando a rota de identificação mapeada.
 
@@ -295,11 +308,33 @@ const CounterSection = ({
                 <InstrumentCard
                   key={inst.id} // Explicação: Chave identificadora única exigida pelo React para controle de renderização rápida.
                   inst={sanitizedInst} // 🚀 RECONEXÃO DO CANO: Entrega o instrumento sanitizado para pacificar o visor azul da tela principal de trás!
-                  data={instrumentData} // Explicação: Passa o pacote numérico enxuto estruturado por nós.
-                  // 🚀 CANO HÍBRIDO BLINDADO: Se for Coral, envia o id original (irmas/irmaos) para salvar individual; se for Orquestra, força o targetId por extenso contra bugs visuais
-                  onUpdate={(id, f, v) =>
-                    handleUpdateInstrument(isCoral ? id : targetId, f, v, sec)
-                  }
+                  data={dataForCard} // Explicação: Passa o pacote numérico, com a dedução já aplicada para exibição.
+                  onUpdate={(id, field, value, ...rest) => {
+                    let finalValue = value;
+                    // CORREÇÃO DA REGRA DE NEGÓCIO: Ao salvar, adiciona de volta as organistas se a dedução estiver ativa.
+                    if (field === "irmas" && ataData?.deduzirOrganistas) {
+                      const organistasTotal =
+                        parseInt(localCounts?.orgao?.total) || 0;
+                      const irmaosCount = parseInt(instrumentData.irmaos) || 0;
+                      const valorCorrigidoIrmas = value + organistasTotal;
+                      const novoTotalAbsoluto =
+                        valorCorrigidoIrmas + irmaosCount;
+
+                      rest[1] = {
+                        ...(rest[1] || {}),
+                        total: novoTotalAbsoluto,
+                        comum: novoTotalAbsoluto,
+                      };
+                      finalValue = valorCorrigidoIrmas;
+                    }
+                    handleUpdateInstrument(
+                      isCoral ? id : targetId,
+                      field,
+                      finalValue,
+                      sec,
+                      ...rest,
+                    );
+                  }}
                   disabled={deEdicaoTrancada} // Explicação: O cartão obedece ao motor central reativo, acendendo os botões para GEM/Básico.
                   onToggleOwnership={() => handleToggleGroup(sec)} // Explicação: Atalho interno para disparar troca de zeladoria.
                   isRegional={isRegionalEvent} // Explicação: Repassa a flag se o evento ativo é regional ou local.

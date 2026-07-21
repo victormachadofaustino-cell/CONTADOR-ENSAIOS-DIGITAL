@@ -296,7 +296,7 @@ const InstrumentCard = ({
               color={isMyTurn ? "slate" : "white"} // Explicação: Define se a caixa acende em preto ou branco.
               val={displayVal} // Explicação: Entrega o valor numérico updated.
               onChange={(v) => handleUpdate(subId, v)} // Explicação: Conecta o clique de somar ao método traduzido.
-              disabled={!isMyTurn} // Explicação: Desativa os botões se a aba não for sua.
+n              disabled={!isMyTurn} // Explicação: Desativa os botões se a aba não for sua.
               isMain={true} // Explicação: Ativa fontes grandes de destaque de clique.
               onFocus={() => onFocus && onFocus(inst.id, subId)} // Explicação: Ativa proteção de digitação [v10.0].
               onOriginalBlur={() => onBlur && onBlur()} // Explicação: Libera proteção [v10.0].

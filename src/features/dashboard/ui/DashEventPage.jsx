@@ -14,7 +14,7 @@ import {
   FileText,
   Share2,
 } from "lucide-react"; // [Funcionamento]: Importa os ícones do menu de navegação do carrossel, o ícone de arquivo e o ícone de compartilhar.
-import { AnimatePresence, motion } from "framer-motion"; // [Funcionamento]: Motor de animation para transições suaves de deslize entre as telas.
+import { AnimatePresence } from "framer-motion"; // [Funcionamento]: Motor de animation para transições suaves de deslize entre as telas.
 
 // 📦 IMPORTAÇÃO DAS 4 TELAS ESPECIALIZADAS E DESMEMBRADAS
 import ScreenGeral from "./components/ScreenGeral.jsx"; // [Funcionamento]: Importa a Tela 1: Cards Interativos e Gráficos Históricos.
@@ -25,7 +25,6 @@ import ScreenResumo from "./components/ScreenResumo.jsx"; // [Funcionamento]: Im
 const DashEventPage = ({
   counts,
   ataData,
-  isAdmin,
   eventId,
   allEvents = [],
   instrumentsConfig,
@@ -312,8 +311,25 @@ const DashEventPage = ({
     processarPessoasAta(ataData?.presencaLocalFull, false); // [Funcionamento]: Roda o processamento de oficiais da casa.
     processarPessoasAta(ataData?.visitantes, true); // [Funcionamento]: Roda o processamento de oficiais visitantes de outras comuns.
 
-    totals.orquestra = totals.musicos + totals.organistas; // [Funcionamento]: Realiza a soma litúrgica unindo músicos de fileira e as irmãs organistas.
-    totals.geral = totals.orquestra + totals.irmandade; // [Funcionamento]: Realiza a soma do público geral unindo a orquestra e a irmandade sentada no coro/bancos.
+    totals.orquestra = totals.musicos + totals.organistas;
+
+    // AJUSTE 1: DEDUÇÃO DE ORGANISTAS DO CORAL (IRMANDADE)
+    if (ataData?.deduzirOrganistas) {
+      totals.irmandade = Math.max(0, totals.irmandade - totals.organistas);
+    }
+
+    // AJUSTE 2: DEDUÇÃO DO MINISTÉRIO QUE TOCA DO PÚBLICO GERAL
+    const allMinisterioParaContagem = [
+      ...(ataData?.presencaLocalFull || []),
+      ...(ataData?.visitantes || []),
+    ];
+    const ministerioTocando = allMinisterioParaContagem.filter(
+      (p) => p.tocando === true,
+    ).length;
+    const ministerioNaoTocando =
+      allMinisterioParaContagem.length - ministerioTocando;
+
+    totals.geral = totals.orquestra + totals.irmandade + ministerioNaoTocando;
     totals.encTotal =
       totals.encRegionalComum +
       totals.encRegionalVisita +
@@ -422,7 +438,7 @@ const DashEventPage = ({
             ev.createdAt &&
             ev.createdAt < atualCreatedAt,
         ) // [Funcionamento]: Isola relatórios passados excluindo o atual.
-        .sort((a, b) => (a.createdAt || 0) - (a.createdAt || 0)); // [Funcionamento]: Ordenação cronológica.
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // [Funcionamento]: Ordenação cronológica.
 
       const uEnsaio = ensaiosPassados[0]; // [Funcionamento]: Captura o documento do ensaio anterior imediato.
       if (uEnsaio) {
@@ -654,7 +670,7 @@ const DashEventPage = ({
           <button
             onClick={handleGeneratePDF} // [Funcionamento]: Executa a compilação do relatório impresso.
             aria-label="Gerar relatório em PDF" // 3. Acessibilidade Aprimorada (A11y)
-            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex flex-col items-center justify-center gap-0.5 px-3 shadow-sm font-black text-[10px] uppercase tracking-wider shrink-0 outline-none layout-touch min-w-[56px]" // [Funcionamento]: Estilização visual alinhada em altura ao card de lanche.
+            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-3xl border border-blue-100 flex flex-col items-center justify-center gap-0.5 px-3 shadow-sm font-black text-[10px] uppercase tracking-wider shrink-0 outline-none layout-touch min-w-14" // [Funcionamento]: Estilização visual alinhada em altura ao card de lanche.
           >
             <FileText size={16} className="text-blue-600" />{" "}
             {/* [Funcionamento]: Ícone técnico azul nativo da biblioteca Lucide. */}
@@ -668,25 +684,25 @@ const DashEventPage = ({
       <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 select-none">
         <button
           onClick={() => setCurrentScreen("geral")}
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "geral" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "geral" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
         >
           <LayoutGrid size={12} /> Geral
         </button>
         <button
           onClick={() => setCurrentScreen("presenca")}
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "presenca" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "presenca" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
         >
           <ClipboardList size={12} /> Presença
         </button>
         <button
           onClick={() => setCurrentScreen("equilibrio")}
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "equilibrio" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "equilibrio" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
         >
           <Scale size={12} /> Equilíbrio
         </button>
         <button
           onClick={() => setCurrentScreen("resumo")}
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "resumo" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "resumo" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`}
         >
           <PieChart size={12} /> Resumo
         </button>
@@ -695,7 +711,7 @@ const DashEventPage = ({
       {/* Janela Dinâmica */}
       <AnimatePresence mode="wait">
         {currentScreen === "geral" && (
-          <motion.div
+          <div
             key="geral"
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
@@ -708,33 +724,33 @@ const DashEventPage = ({
               setActiveModal={setActiveModal}
               ataData={ataData}
             />
-          </motion.div>
+          </div>
         )}
 
         {currentScreen === "presenca" && (
-          <motion.div
+          <div
             key="presenca"
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
           >
             <ScreenPresenca stats={stats} />
-          </motion.div>
+          </div>
         )}
 
         {currentScreen === "equilibrio" && (
-          <motion.div
+          <div
             key="equilibrio"
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
           >
             <ScreenEquilibrio stats={stats} getPerc={getPerc} />
-          </motion.div>
+          </div>
         )}
 
         {currentScreen === "resumo" && (
-          <motion.div
+          <div
             key="resumo"
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
@@ -748,7 +764,7 @@ const DashEventPage = ({
               handleGeneratePDF={handleGeneratePDF}
               isBasico={isBasico}
             />
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

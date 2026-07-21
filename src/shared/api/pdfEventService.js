@@ -245,12 +245,6 @@ export const pdfEventService = {
         if (data.row.raw.length === 1 && typeof data.row.raw[0] === "object") {
           data.cell.styles.cellPadding = 1;
         }
-        if (data.row.raw[0]?.content === "TOTAL ORQUESTRA") {
-          // CORREÇÃO: Aplica o estilo a cada célula da linha para evitar o erro 'Cannot set properties of undefined'.
-          data.cell.styles.fillColor = [40, 40, 40];
-          data.cell.styles.textColor = 255;
-          data.cell.styles.fontStyle = "bold";
-        }
       },
     });
 
@@ -349,7 +343,7 @@ export const pdfEventService = {
     ];
     allMinisterio.forEach((p) => {
       const cargo = p.role || p.min;
-      if (ministerioCounts.hasOwnProperty(cargo)) {
+      if (Object.prototype.hasOwnProperty.call(ministerioCounts, cargo)) {
         ministerioCounts[cargo]++;
       }
     });
@@ -632,7 +626,7 @@ export const pdfEventService = {
       headStyles: { fillColor: [40, 40, 40], textColor: 255 },
       columnStyles: { 1: { halign: "left", fontStyle: "bold" } }, // Destaca o nome do irmão em Negrito
       margin: { bottom: 35 },
-      didDrawPage: (data) => {
+      didDrawPage: () => {
         // RODAPÉ DA PÁGINA (Com endereço da igreja e QR Code)
         const footerY = pageHeight - 18;
         if (qrImageData) {

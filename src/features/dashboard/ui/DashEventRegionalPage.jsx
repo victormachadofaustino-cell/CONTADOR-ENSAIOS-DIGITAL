@@ -41,7 +41,7 @@ import ScreenMinisterio from "./components_regional/ScreenMinisterio.jsx"; // [F
 import ScreenEquilibrio from "./components_regional/ScreenEquilibrio.jsx"; // [Funcionamento]: Importa a Tela 3 com o design acústico de barras.
 import ScreenResumo from "./components_regional/ScreenResumo.jsx"; // [Funcionamento]: Importa a Tela 4 contendo a Palavra e a matriz de hinos.
 
-const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
+const DashEventRegionalPage = ({ counts, ataData }) => {
   // [Funcionamento]: Inicia o componente Maestro do painel regional.
   const { userData } = useAuth(); // [Funcionamento]: Identifica os metadados do usuário que está olhando o gráfico.
 
@@ -180,9 +180,26 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
     } // [Funcionamento]: Fim da validação de existência das contagens.
 
     totals.irmandade = totals.irmaos + totals.irmas; // [Funcionamento]: Consolida o público geral assentado unindo homens e mulheres.
-    totals.orquestra = totals.musicos + totals.organistas; // [Funcionamento]: Consolida a orquestra unindo músicos de fileira e as organistas.
+    totals.orquestra = totals.musicos + totals.organistas;
 
     const nomesProcessados = new Set(); // [Funcionamento]: Estrutura temporária para evitar duplicidades de nomes de oficiais.
+
+    // AJUSTE 1: DEDUÇÃO DE ORGANISTAS DO CORAL (IRMANDADE)
+    if (ataData?.deduzirOrganistas) {
+      totals.irmandade = Math.max(0, totals.irmandade - totals.organistas);
+    }
+
+    // AJUSTE 2: DEDUÇÃO DO MINISTÉRIO QUE TOCA DO PÚBLICO GERAL
+    const allMinisterioParaContagem = [
+      ...(ataData?.presencaLocalFull || []),
+      ...(ataData?.visitantes || []),
+    ];
+    const ministerioTocando = allMinisterioParaContagem.filter(
+      (p) => p.tocando === true,
+    ).length;
+    const ministerioNaoTocando =
+      allMinisterioParaContagem.length - ministerioTocando;
+
     const processarPessoas = (lista, isVisitante = false) => {
       // [Funcionamento]: Função interna que varre e classifica o oficialato nominal da ata.
       if (!lista || !Array.isArray(lista)) return; // [Funcionamento]: Aborta caso o vetor nominal venha vazio do banco.
@@ -257,11 +274,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       (totals.examinadorasCasa + totals.examinadorasVisitas); // [Funcionamento]: Totaliza o corpo de liderança local e de visitas.
     totals.encRegional = totals.encRegionalCasa + totals.encRegionalVisitas; // [Funcionamento]: Consolida o montante absoluto de Encarregados Regionais.
 
-    totals.geral =
-      totals.orquestra +
-      totals.irmandade +
-      totals.ministerio_total +
-      totals.encRegional; // [Funcionamento]: Operação final que dita o Total Geral de almas do ensaio.
+    totals.geral = totals.orquestra + totals.irmandade + ministerioNaoTocando;
     return totals; // [Funcionamento]: Retorna o JSON de dados pronto para o cache do useMemo.
   }, [counts, ataData]); // [Funcionamento]: O sensor re-executa a matemática se as variáveis do Firebase mudarem.
 
@@ -319,12 +332,6 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
     return []; // [Funcionamento]: Retorna vetor vazio por segurança.
   }, [ataData]); // [Funcionamento]: Vinculado ao ciclo de vida da ata.
 
-  const totalAncianos = stats.ancianosCasa + stats.ancianosVisitas; // [Funcionamento]: Acumulador de anciães totais.
-  const totalDiaconos = stats.diaconosCasa + stats.diaconosVisitas; // [Funcionamento]: Acumulador de diáconos totais.
-  const totalCoopOficio = stats.coopOficioCasa + stats.coopOficioVisitas; // [Funcionamento]: Acumulador de cooperadores totais.
-  const totalCoopJovens = stats.coopJovensCasa + stats.coopJovensVisitas; // [Funcionamento]: Acumulador de cooperadores de jovens totais.
-  const totalEncLocal = stats.encLocalCasa + stats.encLocalVisitas; // [Funcionamento]: Acumulador de encarregados locais totais.
-  const totalExaminadoras = stats.examinadorasCasa + stats.examinadorasVisitas; // [Funcionamento]: Acumulador de examinadoras totais.
   const totalPrincipais =
     stats.cordas + (stats.madeiras + stats.saxofones) + stats.metais; // [Funcionamento]: Soma absoluta das três principais famílias orquestrais.
   const getPerc = (val, total) =>
@@ -371,7 +378,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       ); // [Funcionamento]: Constrói o PDF.
       toast.dismiss(loadingToast); // [Funcionamento]: Apaga o aviso de carregamento.
       toast.success("Ata Regional Gerada!"); // [Funcionamento]: Balão informativo de sucesso.
-    } catch (error) {
+    } catch {
       toast.dismiss(loadingToast);
       toast.error("Erro ao gerar PDF.");
     } // [Funcionamento]: Captura e trata falhas bloqueando travamentos de UI.
@@ -493,7 +500,7 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
         {podeExportar && ( // [Funcionamento]: Exibe o botão de relatório impresso se ele possuir nível de acesso.
           <button
             onClick={handleGeneratePDF} // [Funcionamento]: Executa a compilação do documento impresso.
-            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-[1.5rem] border border-blue-100 flex flex-col items-center justify-center gap-0.5 px-3 shadow-sm font-black text-[10px] uppercase tracking-wider shrink-0 outline-none layout-touch min-w-[56px]" // [Funcionamento]: Estilização azul-clara litúrgica idêntica ao ensaio local.
+            className="bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-600 rounded-3xl border border-blue-100 flex flex-col items-center justify-center gap-0.5 px-3 shadow-sm font-black text-[10px] uppercase tracking-wider shrink-0 outline-none layout-touch min-w-14" // [Funcionamento]: Estilização azul-clara litúrgica idêntica ao ensaio local.
           >
             <FileText size={16} className="text-blue-600" />{" "}
             {/* [Funcionamento]: Desenho do arquivo técnico de PDF. */}
@@ -509,28 +516,28 @@ const DashEventRegionalPage = ({ counts, ataData, isAdmin, eventId }) => {
       <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 select-none">
         <button
           onClick={() => setCurrentScreen("geral")} // [Funcionamento]: Altera o carrossel reativo para mostrar os cards gerais.
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "geral" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "geral" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
         >
           <LayoutGrid size={12} /> Geral{" "}
           {/* [Funcionamento]: Ícone e texto da Aba 1. */}
         </button>
         <button
           onClick={() => setCurrentScreen("ministerio")} // [Funcionamento]: Altera o carrossel reativo para mostrar o agrupamento de ministério.
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "ministerio" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "ministerio" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
         >
           <Briefcase size={12} /> Ministério{" "}
           {/* [Funcionamento]: Ícone e texto da Aba 2. */}
         </button>
         <button
           onClick={() => setCurrentScreen("equilibrio")} // [Funcionamento]: Altera o carrossel reativo para mostrar as barras acústicas.
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "equilibrio" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "equilibrio" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
         >
           <Scale size={12} /> Equilíbrio{" "}
           {/* [Funcionamento]: Ícone e texto da Aba 3. */}
         </button>
         <button
           onClick={() => setCurrentScreen("resumo")} // [Funcionamento]: Altera o carrossel reativo para mostrar a Palavra e os botões de mídia.
-          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-[40px] cursor-pointer outline-none transition-all ${currentScreen === "resumo" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
+          className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 min-h-10 cursor-pointer outline-none transition-all ${currentScreen === "resumo" ? "bg-white text-slate-950 shadow-xs" : "text-slate-400"}`} // [Funcionamento]: Muda a cor para preto realçado se ativo.
         >
           <PieChart size={12} /> Resumo{" "}
           {/* [Funcionamento]: Ícone e texto da Aba 4. */}

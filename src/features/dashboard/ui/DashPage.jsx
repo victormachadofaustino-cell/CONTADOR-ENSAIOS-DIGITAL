@@ -43,11 +43,8 @@ const DashPage = ({ userData }) => {
   const [isFilterOpen, setIsFilterOpen] = useState(false); // [Funcionamento]: Controla se o pop-up de filtros está aberto ou fechado.
 
   // Estados de controle interno e paginação dos componentes filhos (Preservados estritamente)
-  const [topLimit, setTopLimit] = useState(5); // [Funcionamento]: Limite de linhas no ranking de hinos.
   const [presencaSlide, setPresencaSlide] = useState(0); // [Funcionamento]: Controle de página do carrossel de presença.
   const [equiSlide, setEquiSlide] = useState(0); // [Funcionamento]: Controle de página do carrossel de equilíbrio.
-  const [hinosSlide, setHinosSlide] = useState(0); // [Funcionamento]: Controle de página do carrossel de hinos chamados.
-  const [visitaOrigemSlide, setVisitaOrigemSlide] = useState(0); // [Funcionamento]: Controle de página do carrossel de geolocalização.
 
   // Estados dos seletores de filtros cronológicos e de busca
   const [filterType, setFilterType] = useState("year"); // [Funcionamento]: Tipo de agrupamento de tempo (padrão Anual).

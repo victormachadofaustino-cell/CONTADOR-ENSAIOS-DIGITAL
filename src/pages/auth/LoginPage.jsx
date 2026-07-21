@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react"; // Explicação: Importa as ferramentas de estado e efeitos do React.
 import { authService } from "../../shared/api/authService"; // Explicação: Importa o motor que cria a conta no Google Firebase.
+import { getAuth, sendPasswordResetEmail } from "firebase/auth"; // Explicação: Importa a função de redefinição de senha do Firebase.
 import {
   db,
   collection,
@@ -22,6 +23,7 @@ import {
   Send,
   Clock,
   LogOut,
+  X,
 } from "lucide-react"; // Explicação: Biblioteca de desenhos dos ícones.
 import { motion, AnimatePresence } from "framer-motion"; // Explicação: Sistema de animações fluidas da tela.
 
@@ -42,6 +44,11 @@ const LoginPage = ({
   const [loading, setLoading] = useState(false); // Explicação: Controle do símbolo de "carregando".
   const [emailSent, setEmailSent] = useState(false); // Explicação: Controle do aviso de verificação de e-mail e SPAM.
 
+  // --- Estados para o modal de redefinição de senha ---
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+
   const [regionais, setRegionais] = useState([]); // Explicação: Lista de Regionais para o cadastro.
   const [cidades, setCidades] = useState([]); // Explicação: Lista de Cidades filtradas.
   const [igrejasDisponiveis, setIgrejasDisponiveis] = useState([]); // Explicação: Lista de igrejas filtradas.
@@ -50,6 +57,8 @@ const LoginPage = ({
   const [selectedCityId, setSelectedCityId] = useState(""); // Explicação: Guarda qual Cidade o usuário escolheu.
   const [selectedChurch, setSelectedChurch] = useState(null); // Explicação: Guarda o objeto completo da igreja escolhida.
   const [listaCargosLocal, setListaCargosLocal] = useState([]); // Explicação: Lista oficial de cargos vinda do banco.
+
+  const auth = getAuth(); // Explicação: Pega a instância de autenticação do Firebase.
 
   // 1. CARGA DINÂMICA DE REGIONAIS
   useEffect(() => {
@@ -63,7 +72,7 @@ const LoginPage = ({
         }));
         setRegionais(lista.sort((a, b) => a.nome.localeCompare(b.nome)));
       },
-      (error) => {
+      () => {
         console.warn("Aguardando permissão de regionais...");
       },
     );
@@ -187,6 +196,31 @@ const LoginPage = ({
     }
   };
 
+  // --- Função para enviar o e-mail de redefinição ---
+  const handlePasswordReset = async () => {
+    if (!resetEmail) {
+      return toast.error("Por favor, informe seu e-mail.");
+    }
+    setResetLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      toast.success("E-mail enviado! Verifique sua caixa de entrada e SPAM.", {
+        duration: 8000,
+      });
+      setShowResetModal(false);
+      setResetEmail("");
+    } catch (error) {
+      if (error.code === "auth/user-not-found") {
+        toast.error("Nenhum usuário encontrado com este e-mail.");
+      } else {
+        toast.error("Ocorreu um erro. Tente novamente.");
+      }
+      console.error("Erro ao redefinir senha:", error);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   // --- LÓGICA DE AVISO INTELIGENTE DE HIERARQUIA v2.2 ---
   const getProximoPasso = () => {
     const cargo = userData?.role || "";
@@ -217,7 +251,7 @@ const LoginPage = ({
           </div>
           <div className="space-y-4">
             <div className="space-y-1">
-              <h3 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
+              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-slate-950 leading-none">
                 Aguardando Aprovação
               </h3>
               <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest italic flex items-center justify-center gap-1">
@@ -293,10 +327,10 @@ const LoginPage = ({
 
         <div className="space-y-4 mb-12 text-center">
           <div className="text-center space-y-2 pt-4 leading-none">
-            <h2 className="text-slate-950 text-3xl font-[900] tracking-[0.2em] uppercase leading-none italic">
+            <h2 className="text-slate-950 text-3xl font-black tracking-[0.2em] uppercase leading-none italic">
               Contador de
             </h2>
-            <h2 className="text-slate-800 text-4xl font-[900] tracking-[0.1em] italic uppercase leading-none opacity-90">
+            <h2 className="text-slate-800 text-4xl font-black tracking-widest italic uppercase leading-none opacity-90">
               Ensaios Musicais
             </h2>
           </div>
@@ -304,7 +338,7 @@ const LoginPage = ({
 
         <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-white/20 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-950" />
-          <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-8 leading-none">
+          <h3 className="text-xl font-black uppercase italic tracking-tighter text-slate-950 mb-8 leading-none">
             {authMode === "login" ? "Acessar Conta" : "Nova Solicitação"}
           </h3>
 
@@ -450,6 +484,18 @@ const LoginPage = ({
               />
             </div>
 
+            {authMode === "login" && (
+              <div className="text-right -mt-2 pr-1">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(true)}
+                  className="text-blue-600 hover:underline font-black uppercase italic text-[9px] tracking-widest"
+                >
+                  Esqueceu a senha?
+                </button>
+              </div>
+            )}
+
             <button
               disabled={loading}
               type="submit"
@@ -468,20 +514,71 @@ const LoginPage = ({
             </button>
           </form>
 
-          <button
-            className="w-full mt-8 text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center"
-            onClick={() => {
-              setEmailSent(false);
-              typeof setAuthMode === "function" &&
-                setAuthMode(authMode === "login" ? "register" : "login");
-            }}
-          >
-            {authMode === "login"
-              ? "Não tem conta? Solicite Acesso"
-              : "Já possui conta? Faça Login"}
-          </button>
+          <div className="flex items-center justify-center mt-8">
+            <button
+              className="text-slate-400 font-black uppercase italic text-[9px] tracking-widest text-center"
+              onClick={() => {
+                setEmailSent(false);
+                typeof setAuthMode === "function" &&
+                  setAuthMode(authMode === "login" ? "register" : "login");
+              }}
+            >
+              {authMode === "login"
+                ? "Não tem conta? Solicite Acesso"
+                : "Já possui conta? Faça Login"}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* --- MODAL DE REDEFINIÇÃO DE SENHA --- */}
+      <AnimatePresence>
+        {showResetModal && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative text-left"
+            >
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="absolute top-6 right-6 text-slate-400"
+              >
+                <X size={20} />
+              </button>
+              <h3 className="text-xl font-black text-slate-950 uppercase italic tracking-tighter mb-4">
+                Redefinir Senha
+              </h3>
+              <p className="text-xs text-slate-500 mb-5">
+                Digite seu e-mail para receber o link de recuperação.
+              </p>
+              <div className="space-y-1.5">
+                <label className="text-[8px] font-black text-slate-400 uppercase ml-2 italic flex items-center gap-1.5">
+                  <Mail size={10} /> E-mail Cadastrado
+                </label>
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="seu-email@exemplo.com"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-xs font-black text-slate-950 outline-none"
+                />
+              </div>
+              <button
+                onClick={handlePasswordReset}
+                disabled={resetLoading}
+                className="w-full bg-blue-600 text-white py-5 rounded-[1.8rem] font-black uppercase text-[10px] tracking-[0.2em] shadow-xl active:scale-95 transition-all mt-6 flex justify-center items-center gap-3 disabled:bg-slate-300"
+              >
+                {resetLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  "Enviar Link de Recuperação"
+                )}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
