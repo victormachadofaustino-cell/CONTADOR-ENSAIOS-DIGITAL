@@ -52,6 +52,10 @@ const DashPage = ({ userData }) => {
   const [listaCidades, setListaCidades] = useState([]); // [Funcionamento]: Armazena a lista de cidades pertencentes à regional.
   const [listaIgrejas, setListaIgrejas] = useState([]); // [Funcionamento]: Armazena a lista de comuns/igrejas mapeadas.
 
+  // 🚀 ESTADOS DE CONTROLE DOS CARROSÉIS: Gerenciam a página ativa dos gráficos de pizza e barras.
+  const [presencaSlide, setPresencaSlide] = useState(0);
+  const [equilibrioSlide, setEquilibrioSlide] = useState(0);
+
   // MATRIZ DE PODER: Transforma os seletores estáticos em Estados Reativos controlados pelos menus da Lupa
   const [selectedCityId, setSelectedCityId] = useState(
     userData?.activeCityId || userData?.cidadeId || "all",
@@ -336,7 +340,13 @@ const DashPage = ({ userData }) => {
               transition={{ duration: 0.12 }}
               className="w-full"
             >
-              <AnalyticsCarousel chartArray={analytics.chartArray} />
+              <AnalyticsCarousel
+                chartArray={analytics.chartArray}
+                presencaSlide={presencaSlide}
+                setPresencaSlide={setPresencaSlide}
+                equilibrioSlide={equilibrioSlide}
+                setEquilibrioSlide={setEquilibrioSlide}
+              />
             </motion.div>
           )}
 

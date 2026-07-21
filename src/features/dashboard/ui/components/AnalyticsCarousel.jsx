@@ -56,13 +56,19 @@ const AnalyticsCarousel = ({
   chartArray = [],
   presencaSlide,
   setPresencaSlide,
-  equiSlide,
-  setEquiSlide,
+  equilibrioSlide,
+  setEquilibrioSlide,
 }) => {
   // [Funcionamento]: Inicia o componente do carrossel recebendo os arrays históricos e as funções de controle de estados de páginas.
-  // Auxiliares de navegação circular dos carrosséis de toque (Tamanho mínimo de 44px de área de clique)
-  const handlePrev = (curr, set, max) => set(curr === 0 ? max - 1 : curr - 1); // [Funcionamento]: Função auxiliar que subtrai uma página do slide de forma circular.
-  const handleNext = (curr, set, max) => set((curr + 1) % max); // [Funcionamento]: Função auxiliar que avança uma página do slide retornando ao zero se atingir o máximo.
+  // 🚀 CORREÇÃO DE ROBUSTEZ: Funções de navegação foram especializadas para cada carrossel,
+  // eliminando a função genérica `handleNext` que causava o erro "set is not a function"
+  // devido a problemas de escopo/closure quando passada como callback.
+  const onPrevPresenca = () => setPresencaSlide(presencaSlide === 0 ? 1 : 0);
+  const onNextPresenca = () => setPresencaSlide((presencaSlide + 1) % 2);
+
+  const onPrevEquilibrio = () =>
+    setEquilibrioSlide(equilibrioSlide === 0 ? 2 : equilibrioSlide - 1);
+  const onNextEquilibrio = () => setEquilibrioSlide((equilibrioSlide + 1) % 3);
 
   // 🚀 CALIBRAÇÃO EM TEMPO REAL: Normaliza os naipes e garante que o Saxofone nunca fique em branco por falha de mapeamento
   const calibratedData = chartArray.map((m) => {
@@ -77,12 +83,14 @@ const AnalyticsCarousel = ({
     const teclasVisita = parseInt(m.teclasV) || 0; // [Funcionamento]: Converte e limpa o valor de músicos de teclas visitantes.
 
     // Alinha o Saxofone extraindo os dados da árvore ou aplicando fallback resiliente
-    const saxLocal =
-      m.sax !== undefined ? parseInt(m.sax) : Math.floor(madeirasLocal * 0.4); // [Funcionamento]: Isola os saxofones locais salvos ou gera fallback de 40% das madeiras.
-    const saxVisita =
+    const saxLocal = // 🚀 CORREÇÃO DE ROBUSTEZ: Garante que `null` ou `undefined` não resultem em NaN.
+      m.sax !== undefined
+        ? parseInt(m.sax) || 0
+        : Math.floor(madeirasLocal * 0.4); // [Funcionamento]: Isola os saxofones locais salvos ou gera fallback de 40% das madeiras.
+    const saxVisita = // 🚀 CORREÇÃO DE ROBUSTEZ: Garante que `null` ou `undefined` não resultem em NaN.
       m.saxV !== undefined
-        ? parseInt(m.saxV)
-        : Math.floor(m.saxV || madeirasVisita * 0.4); // [Funcionamento]: Isola os saxofones visitantes salvos ou gera fallback de proporção.
+        ? parseInt(m.saxV) || 0
+        : Math.floor(madeirasVisita * 0.4); // [Funcionamento]: Isola os saxofones visitantes salvos ou gera fallback de proporção.
 
     const cTot = cordasLocal + cordasVisita;
     const madTot = madeirasLocal + saxLocal + madeirasVisita + saxVisita; // [Funcionamento]: Soma Madeiras e Saxofones para uma família unificada.
@@ -242,8 +250,8 @@ const AnalyticsCarousel = ({
             ? "Distribuição Geral de Naipes (%)"
             : "Proporções dos Naipes por Mês (%)"
         } // [Funcionamento]: Alterna o título do cabeçalho da moldura de forma automática baseando-se na página do carrossel.
-        onPrev={() => handlePrev(presencaSlide, setPresencaSlide, 2)} // [Funcionamento]: Aciona o retrocesso cíclico de páginas de 0 a 1.
-        onNext={() => handleNext(presencaSlide, setPresencaSlide, 2)} // [Funcionamento]: Aciona o avanço cíclico de páginas de 0 a 1.
+        onPrev={onPrevPresenca}
+        onNext={onNextPresenca}
       >
         {presencaSlide === 0 ? ( // [Funcionamento]: Condicional de carrossel: se a página ativa for 0, desenha o gráfico de pizza consolidada.
           <div className="w-full h-full flex flex-col justify-between">
@@ -419,14 +427,14 @@ const AnalyticsCarousel = ({
       {/* 3. CARROSSEL DE EQUILÍBRIO SEGREGADO (UMA COLUNA ÚNICA EMPILHADA LOCAL X VISITA COM RÓTULOS ABSORVIDOS NO CENTRO) */}
       <CarouselBox
         title={
-          equiSlide === 0
+          equilibrioSlide === 0
             ? "Cordas (Local x Visita)"
-            : equiSlide === 1
+            : equilibrioSlide === 1
               ? "Madeiras e Sax (Local x Visita)"
               : "Metais (Local x Visita)"
         } // [Funcionamento]: Altera o título de forma automática baseando-se no slide de equilíbrio ativo (0 a 3).
-        onPrev={() => handlePrev(equiSlide, setEquiSlide, 3)} // [Funcionamento]: Navegação circular reversa das 3 famílias orquestrais.
-        onNext={() => handleNext(equiSlide, setEquiSlide, 3)} // [Funcionamento]: Navegação circular de avanço das 3 famílias orquestrais.
+        onPrev={onPrevEquilibrio}
+        onNext={onNextEquilibrio}
       >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -470,7 +478,7 @@ const AnalyticsCarousel = ({
               wrapperStyle={{ fontSize: 10, fontWeight: 700, paddingTop: 15 }}
             />{" "}
             {/* [Funcionamento]: Legenda circular inferior dividindo as cores de músicos locais vs visitas. */}
-            {equiSlide === 0 && ( // [Funcionamento]: Slide de Equilíbrio 0: renderiza as colunas de Cordas da casa vs visitantes.
+            {equilibrioSlide === 0 && ( // [Funcionamento]: Slide de Equilíbrio 0: renderiza as colunas de Cordas da casa vs visitantes.
               <>
                 <Bar
                   name="Cordas Locais"
@@ -506,7 +514,7 @@ const AnalyticsCarousel = ({
                 </Bar>
               </>
             )}
-            {equiSlide === 1 && ( // [Funcionamento]: Slide de Equilíbrio 1: renderiza as colunas de Madeiras da casa vs visitantes.
+            {equilibrioSlide === 1 && ( // [Funcionamento]: Slide de Equilíbrio 1: renderiza as colunas de Madeiras da casa vs visitantes.
               <>
                 <Bar
                   name="Madeiras Locais"
@@ -542,7 +550,7 @@ const AnalyticsCarousel = ({
                 </Bar>
               </>
             )}
-            {equiSlide === 2 && ( // [Funcionamento]: Slide de Equilíbrio 2: renderiza as colunas de Metais da casa vs visitantes.
+            {equilibrioSlide === 2 && ( // [Funcionamento]: Slide de Equilíbrio 2: renderiza as colunas de Metais da casa vs visitantes.
               <>
                 <Bar
                   name="Metais Locais"

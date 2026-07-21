@@ -1,6 +1,9 @@
 import { initializeApp } from "firebase/app"; // Explicação: Inicia a conexão básica com o ecossistema do Google Firebase.
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   onSnapshot,
@@ -15,7 +18,6 @@ import {
   getDocs,
   writeBatch,
   collectionGroup,
-  enableIndexedDbPersistence,
   or,
   documentId, // 🚀 CONEXÃO DE PEÇA: Importa o documentId para consultas por ID.
   and, // 🚀 CONEXÃO DE PEÇA: Importa oficialmente o conector lógico "E" diretamente da biblioteca do Firestore da Google.
@@ -42,18 +44,23 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig); // Explicação: Liga os motores do Firebase aplicando a fiação das suas chaves de credenciais configuradas acima.
 
-const db = getFirestore(app); // Explicação: Inicializa o banco de dados Firestore com a configuração padrão.
-
-// ATIVAÇÃO DO MODO OFFLINE
-enableIndexedDbPersistence(db).catch((err) => {
-  // Explicação: Tenta ativar o cache persistente no disco do dispositivo.
-  if (err.code == "failed-precondition") {
-    // Múltiplas abas abertas, o que não é um problema no celular.
-    // A persistência só pode ser ativada em uma aba por vez.
-  } else if (err.code == "unimplemented") {
-    // O navegador não suporta o modo offline (muito raro hoje em dia).
-  }
-});
+// 🚀 INICIALIZAÇÃO ROBUSTA DO FIRESTORE COM PERSISTÊNCIA MULTI-ABAS
+// A função `initializeFirestore` substitui a combinação de `getFirestore` e `enableIndexedDbPersistence`,
+// ativando o modo offline de forma mais moderna e segura, com suporte para múltiplas abas.
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  });
+} catch (e) {
+  console.error(
+    "Falha ao inicializar persistência multi-abas, usando cache em memória.",
+    e,
+  );
+  db = getFirestore(app);
+}
 
 const auth = getAuth(app); // Explicação: Liga o vigia oficial do sistema de autenticação para saber quem está operando o app.
 
