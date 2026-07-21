@@ -42,10 +42,6 @@ const DashPage = ({ userData }) => {
   // Controle do Modal Centralizado da Lupa (Filtros Simultâneos)
   const [isFilterOpen, setIsFilterOpen] = useState(false); // [Funcionamento]: Controla se o pop-up de filtros está aberto ou fechado.
 
-  // Estados de controle interno e paginação dos componentes filhos (Preservados estritamente)
-  const [presencaSlide, setPresencaSlide] = useState(0); // [Funcionamento]: Controle de página do carrossel de presença.
-  const [equiSlide, setEquiSlide] = useState(0); // [Funcionamento]: Controle de página do carrossel de equilíbrio.
-
   // Estados dos seletores de filtros cronológicos e de busca
   const [filterType, setFilterType] = useState("year"); // [Funcionamento]: Tipo de agrupamento de tempo (padrão Anual).
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // [Funcionamento]: Ano corrente extraído da máquina do usuário.
@@ -68,6 +64,19 @@ const DashPage = ({ userData }) => {
   const isComissao =
     level === "master" || level === "comissao" || level === "regional"; // [Funcionamento]: Valida se o usuário tem poderes de gerenciamento macro ou regional.
   const activeRegionalId = userData?.activeRegionalId || userData?.regionalId; // [Funcionamento]: Captura o ID da Regional do usuário.
+
+  // Otimização: Funções que encapsulam a lógica de carregamento ao mudar filtros.
+  const handleCityChange = (cityId) => {
+    setLoading(true);
+    setSelectedCityId(cityId);
+    // Reseta a seleção de comum ao trocar de cidade para evitar inconsistências.
+    setActiveComumId("consolidated");
+  };
+
+  const handleComumChange = (comumId) => {
+    setLoading(true);
+    setActiveComumId(comumId);
+  };
 
   // Conexão com a máquina matemática unificada (useMemo interno protegido contra loops)
   const analytics = useDashAnalytics(
@@ -127,7 +136,6 @@ const DashPage = ({ userData }) => {
   useEffect(() => {
     // [Funcionamento]: Ouve a coleção global de ensaios aplicando filtros severos na portaria para economizar internet.
     if (!activeRegionalId) return; // [Funcionamento]: Aborta se o ID de regional estiver ausente.
-    setLoading(true); // [Funcionamento]: Ativa o estado de carregamento dos gráficos.
 
     // Constrói os critérios de consulta baseados nas restrições de poder do crachá do usuário
     let constraints = [where("regionalId", "==", activeRegionalId)]; // [Funcionamento]: Trava incondicional da regional de direito.
@@ -151,6 +159,9 @@ const DashPage = ({ userData }) => {
     const unsubEvents = onSnapshot(qEvents, (snap) => {
       // [Funcionamento]: Ouve os ensaios em tempo real da regional.
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() })); // [Funcionamento]: Converte em lista JavaScript pura
+      if (data.length === 0) {
+        setSubCollectionAttendance([]); // Limpa a lista de presença se não houver ensaios.
+      }
       setEvents(data); // [Funcionamento]: Entrega para a caixa de memória central
       setLoading(false); // [Funcionamento]: Libera o esqueleto visual dos gráficos.
     }); // [Funcionamento]: Encerra canal de escuta.
@@ -161,12 +172,6 @@ const DashPage = ({ userData }) => {
   // Sensor 3: Escuta e acopla a chamada nominal das subcoleções na RAM de forma reativa
   useEffect(() => {
     // [Funcionamento]: Carrega em lote as listas de presença nominais de portaria de todos os ensaios filtrados.
-    if (events.length === 0) {
-      // [Funcionamento]: Se não houver ensaios no período.
-      setSubCollectionAttendance([]); // [Funcionamento]: Zera a lista nominal.
-      return; // [Funcionamento]: Aborta.
-    } // [Funcionamento]: Termina checagem de vetor vazio.
-
     const unsubs = []; // [Funcionamento]: Sacola de encerramento de canais.
     const allAttendanceData = {}; // [Funcionamento]: Gaveta temporária de dados brutos na RAM.
 
@@ -331,13 +336,7 @@ const DashPage = ({ userData }) => {
               transition={{ duration: 0.12 }}
               className="w-full"
             >
-              <AnalyticsCarousel
-                chartArray={analytics.chartArray}
-                presencaSlide={presencaSlide}
-                setPresencaSlide={setPresencaSlide}
-                equiSlide={equiSlide}
-                setEquiSlide={setEquiSlide}
-              />
+              <AnalyticsCarousel chartArray={analytics.chartArray} />
             </motion.div>
           )}
 
@@ -429,7 +428,7 @@ const DashPage = ({ userData }) => {
                   <select
                     disabled={!isComissao}
                     value={!isComissao ? userData?.cidadeId : selectedCityId}
-                    onChange={(e) => setSelectedCityId(e.target.value)}
+                    onChange={(e) => handleCityChange(e.target.value)}
                     className="bg-transparent text-slate-900 font-black text-sm uppercase outline-none w-full appearance-none cursor-pointer"
                   >
                     {!isComissao ? (
@@ -461,7 +460,7 @@ const DashPage = ({ userData }) => {
                   </span>
                   <select
                     value={activeComumId}
-                    onChange={(e) => setActiveComumId(e.target.value)}
+                    onChange={(e) => handleComumChange(e.target.value)}
                     className="bg-transparent text-white font-black text-sm uppercase outline-none w-full appearance-none cursor-pointer"
                   >
                     {!isComissao ? (

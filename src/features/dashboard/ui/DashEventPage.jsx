@@ -719,7 +719,6 @@ const DashEventPage = ({
           >
             <ScreenGeral
               stats={stats}
-              renderDelta={renderDelta}
               activeModal={activeModal}
               setActiveModal={setActiveModal}
               ataData={ataData}
@@ -770,21 +769,5 @@ const DashEventPage = ({
     </div>
   );
 };
-
-const renderDelta = (val) => {
-  // [Funcionamento]: Renderizador de diferencial numérico comparado ao ensaio do mês anterior.
-  if (val === 0 || isNaN(val))
-    return (
-      <span className="text-slate-300 font-black text-sm select-none">―</span>
-    ); // [Funcionamento]: Devolve traço se o valor for nulo ou empatado.
-  const isUp = val > 0; // [Funcionamento]: Define se o indicador é positivo.
-  return (
-    <span
-      className={`text-[11px] font-black flex items-center select-none ${isUp ? "text-emerald-600" : "text-rose-600"}`}
-    >
-      {isUp ? "▲" : "▼"} {isUp ? `+${val}` : val}
-    </span>
-  ); // [Funcionamento]: Retorna the badge colorida verde ou vermelha apontando a flutuação.
-}; // [Funcionamento]: Fecha escopo do renderizador delta.
 
 export default DashEventPage; // [Funcionamento]: Exporta o componente Maestro do Ensaio Local pronto para uso no ecossistema do app.

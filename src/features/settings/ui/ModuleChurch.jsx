@@ -50,7 +50,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
       }
     });
     return () => unsubDoc(); // Explicação: Desliga o ouvinte ao fechar o painel para proteger a cota do Firestore.
-  }, [localData?.id]);
+  }, [localData]);
 
   const handleFieldChange = (field, value, isAddress = false) => {
     // Explicação: Captura a digitação do usuário e força a gravação em letras maiúsculas automáticas.
@@ -86,6 +86,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
       if (onUpdate) onUpdate(formData); // Explicação: Sincroniza a memória da tela com as novas alterações.
       toast.success("Dados cadastrais salvos com sucesso!"); // Explicação: Mostra o balão verde de sucesso.
     } catch (e) {
+      console.error("Erro ao salvar dados cadastrais:", e);
       toast.error("Erro ao salvar dados cadastrais."); // Explicação: Alerta de falha de conexão.
     }
   };
@@ -108,6 +109,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
         diasSelecao: updated,
       }); // Explicação: Salva a nova matriz de dias diretamente no banco.
     } catch (e) {
+      console.error("Erro ao alterar agenda de cultos:", e);
       toast.error("Erro ao alterar agenda de cultos.");
     }
   };
@@ -166,7 +168,7 @@ const ModuleChurch = ({ localData, onUpdate }) => {
             <input
               disabled={!temPoderEdicao}
               placeholder="DIGITE O ENDEREÇO DA COMUM SEM CORTES"
-              className="w-full bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-200 uppercase italic outline-none focus:border-indigo-600 whitespace-normal break-words"
+              className="w-full bg-white p-4 rounded-2xl font-black text-slate-950 text-xs border border-slate-200 uppercase italic outline-none focus:border-indigo-600 whitespace-normal wrap-break-word"
               value={formData.endereco?.rua || ""}
               onChange={(e) => handleFieldChange("rua", e.target.value, true)}
               onBlur={saveToDatabase}

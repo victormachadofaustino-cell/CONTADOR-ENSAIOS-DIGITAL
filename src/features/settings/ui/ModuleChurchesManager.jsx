@@ -7,7 +7,6 @@ import {
   where,
   doc,
   deleteDoc,
-  updateDoc,
 } from "../../../shared/api/firebase"; // [Funcionamento]: Conecta com as ferramentas específicas de comunicação direta do banco de dados Firebase.
 import { churchService } from "../../../shared/api/churchService"; // [Funcionamento]: Conecta com o motor de serviços que dita as regras de negócio das igrejas comuns.
 import { Plus, Trash2, Edit3, Check, X, Home, Send } from "lucide-react"; // [Funcionamento]: Traz do estúdio de design os ícones gráficos impecáveis que usamos na tela.
@@ -31,20 +30,29 @@ const ModuleChurchesManager = ({
       // [Funcionamento]: Se não houver nenhuma cidade selecionada nos filtros superiores...
       setComuns([]); // ...limpa a lista de igrejas comuns da tela preventivamente.
       return; // [Funcionamento]: Interrompe a execução do monitor para evitar buscas desnecessárias.
-    } // [Funcionamento]: Encerra a verificação protetiva de cidade nula.
+    }
+
     const q = query(
       collection(db, "comuns"),
       where("cidadeId", "==", selectedCity.id),
-    ); // [Funcionamento]: Prepara uma pergunta ao banco de dados: "Me traga as comuns que pertencem a esta cidade específica".
-    const unsub = onSnapshot(q, (s) => {
-      // [Funcionamento]: Conecta uma escuta em tempo real. Se o banco mudar lá, a tela atualiza aqui instantaneamente sem recarregar.
-      setComuns(
-        s.docs
+    );
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => a.comum.localeCompare(b.comum)),
-      ); // [Funcionamento]: Transforma os documentos brutos em objetos JavaScript e os ordena em ordem alfabética de A-Z.
-    }); // [Funcionamento]: Encerra a configuração da escuta ativa em tempo real.
-    return () => unsub(); // [Funcionamento]: Regra de higiene do sistema: desliga a escuta quando o usuário sai desta tela para economizar memória do celular.
+          .sort((a, b) => a.comum.localeCompare(b.comum));
+        setComuns(data);
+      },
+      (error) => {
+        console.error("Falha ao buscar comuns:", error);
+        setComuns([]);
+      },
+    );
+
+    return () => {
+      unsub();
+    };
   }, [selectedCity]); // [Funcionamento]: Encerra o efeito e avisa que ele só roda novamente se a cidade selecionada for mudada pelo usuário.
 
   const handleAdd = async () => {
@@ -75,7 +83,8 @@ const ModuleChurchesManager = ({
       await churchService.updateChurchName(id, editValue.toUpperCase().trim()); // [Funcionamento]: Invoca o motor inteligente que muda o nome na matriz e também atualiza todos os ensaios antigos automaticamente.
       setEditingId(null); // [Funcionamento]: Fecha o modo de edição na tela, retornando o card para o estado visual de leitura comum.
     } catch (e) {
-      toast.error("Erro ao atualizar");
+      console.error("Erro ao atualizar comum:", e);
+      toast.error("Erro ao atualizar"); // [Funcionamento]: Captura falhas inesperadas e notifica o usuário na tela sem travar a interface.
     } // [Funcionamento]: Captura falhas inesperadas e notifica o usuário na tela sem travar a interface.
   }; // [Funcionamento]: Encerra a função de alteração.
 
@@ -100,6 +109,7 @@ const ModuleChurchesManager = ({
             }, // [Funcionamento]: Encerra o objeto de estilo do balão.
           }); // [Funcionamento]: Encerra a configuração da mensagem de sucesso do toast.
         } catch (e) {
+          console.error("Erro ao excluir comum:", e);
           // [Funcionamento]: Caso o banco rejeite a exclusão (por falta de permissão do crachá, por exemplo)...
           toast.error("Erro ao excluir"); // ...exibe um aviso vermelho informando a falha de operação.
         } // [Funcionamento]: Encerra o bloco de tratamento de erro da exclusão.

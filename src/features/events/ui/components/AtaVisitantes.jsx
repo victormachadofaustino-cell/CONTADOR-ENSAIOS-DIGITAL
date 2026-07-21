@@ -1,18 +1,88 @@
-import React from "react";
-import { UserPlus, Edit, Trash2 } from "lucide-react";
+import React, { useState } from "react";
+import {
+  UserPlus,
+  Edit,
+  Trash2,
+  X,
+  Music,
+  MapPin,
+  Phone,
+  Calendar,
+  Clock,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import toast from "react-hot-toast";
+import { Field, Select } from "./AtaUIComponents";
+import { ordenarLista } from "../../../../shared/utils/listUtils.js";
 
 /**
  * AtaVisitantes v2.0 - Adicionado checkbox "Tocando".
  * Gerencia a lista de visitantes do ministério, permitindo marcar quem
  * está tocando para evitar contagem dupla no total geral.
+ * v3.0 - Internalizado o controle do modal para corrigir o bug de digitação.
  */
 const AtaVisitantes = ({
   visitantes,
   isInputDisabled,
-  handleOpenVisitaModal,
   setVisitaToDelete,
   onToggleTocando,
+  onUpdateVisitantes,
+  referenciaMinisterio,
 }) => {
+  const [showVisitaModal, setShowVisitaModal] = useState(false);
+  const [editIndex, setEditIndex] = useState(null);
+  const [currentVisita, setCurrentVisita] = useState({
+    nome: "",
+    min: "",
+    inst: "",
+    bairro: "",
+    cidadeUf: "",
+    dataEnsaio: "",
+    hora: "",
+    contato: "",
+  });
+
+  const handleOpenVisitaModal = (v = null, idx = null) => {
+    if (isInputDisabled) return;
+    const initialState = {
+      nome: "",
+      min: "",
+      inst: "",
+      bairro: "",
+      cidadeUf: "",
+      dataEnsaio: "",
+      hora: "",
+      contato: "",
+    };
+    setCurrentVisita(v ? { ...v } : initialState);
+    setEditIndex(v ? idx : null);
+    setShowVisitaModal(true);
+  };
+
+  const handleSaveVisita = () => {
+    if (isInputDisabled) return;
+    if (!currentVisita.nome || !currentVisita.min)
+      return toast.error("Informe o nome e o ministério.");
+
+    // Boa prática: Normaliza os dados para maiúsculas apenas no momento de salvar.
+    const visitaToSave = {
+      ...currentVisita,
+      nome: currentVisita.nome.toUpperCase(),
+      inst: (currentVisita.inst || "").toUpperCase(),
+      bairro: (currentVisita.bairro || "").toUpperCase(),
+      cidadeUf: (currentVisita.cidadeUf || "").toUpperCase(),
+    };
+
+    let updated = [...(visitantes || [])];
+    if (editIndex !== null) {
+      updated[editIndex] = visitaToSave;
+    } else {
+      updated.push({ ...visitaToSave, id: Date.now() });
+    }
+    onUpdateVisitantes(ordenarLista(updated, "nome", "min"));
+    setShowVisitaModal(false);
+  };
+
   return (
     <div className="space-y-4">
       {!isInputDisabled && (
@@ -99,6 +169,117 @@ const AtaVisitantes = ({
           ))
         )}
       </div>
+
+      <AnimatePresence>
+        {showVisitaModal && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-200 flex items-start justify-center p-4 pt-20 overflow-y-auto no-scrollbar text-left">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 250 }}
+              className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar text-left relative"
+            >
+              <button
+                onClick={() => setShowVisitaModal(false)}
+                className="absolute top-8 right-8 text-slate-300 active:scale-95 transition-all"
+              >
+                <X size={24} />
+              </button>
+              <h3 className="text-2xl font-black text-slate-950 uppercase italic tracking-tighter mb-8 leading-none">
+                Dados da Visita
+              </h3>
+              <div className="space-y-4">
+                <Field
+                  label="Nome Completo *"
+                  val={currentVisita.nome}
+                  disabled={isInputDisabled}
+                  onChange={(v) =>
+                    setCurrentVisita({ ...currentVisita, nome: v })
+                  }
+                />
+                <Select
+                  label="Ministério / Cargo *"
+                  val={currentVisita.min}
+                  options={referenciaMinisterio}
+                  disabled={isInputDisabled}
+                  onChange={(v) =>
+                    setCurrentVisita({ ...currentVisita, min: v })
+                  }
+                />
+                <Field
+                  label="Instrumento"
+                  val={currentVisita.inst}
+                  disabled={isInputDisabled}
+                  onChange={(v) =>
+                    setCurrentVisita({ ...currentVisita, inst: v })
+                  }
+                  icon={<Music size={10} />}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Bairro"
+                    val={currentVisita.bairro}
+                    disabled={isInputDisabled}
+                    onChange={(v) =>
+                      setCurrentVisita({ ...currentVisita, bairro: v })
+                    }
+                    icon={<MapPin size={10} />}
+                  />
+                  <Field
+                    label="Cidade/UF"
+                    val={currentVisita.cidadeUf}
+                    disabled={isInputDisabled}
+                    onChange={(v) =>
+                      setCurrentVisita({ ...currentVisita, cidadeUf: v })
+                    }
+                  />
+                </div>
+                <Field
+                  label="Celular / Contato"
+                  val={currentVisita.contato}
+                  disabled={isInputDisabled}
+                  onChange={(v) =>
+                    setCurrentVisita({ ...currentVisita, contato: v })
+                  }
+                  icon={<Phone size={10} />}
+                />
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                  <Field
+                    label="Data Ensaio"
+                    val={currentVisita.dataEnsaio}
+                    disabled={isInputDisabled}
+                    onChange={(v) =>
+                      setCurrentVisita({ ...currentVisita, dataEnsaio: v })
+                    }
+                    icon={<Calendar size={10} />}
+                    placeholder="Ex: 3º Sábado"
+                  />
+                  <Field
+                    label="Horário"
+                    val={currentVisita.hora}
+                    disabled={isInputDisabled}
+                    onChange={(v) =>
+                      setCurrentVisita({ ...currentVisita, hora: v })
+                    }
+                    icon={<Clock size={10} />}
+                    placeholder="Ex: 19:00"
+                  />
+                </div>
+                {!isInputDisabled && (
+                  <button
+                    onClick={handleSaveVisita}
+                    disabled={!currentVisita.nome || !currentVisita.min}
+                    className={`w-full py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-xl mt-6 active:scale-95 transition-all ${!currentVisita.nome || !currentVisita.min ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white shadow-blue-100"}`}
+                  >
+                    Salvar Registro
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

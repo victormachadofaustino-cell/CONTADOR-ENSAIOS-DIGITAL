@@ -26,13 +26,13 @@ import {
   Check,
   AlertTriangle,
 } from "lucide-react"; // Explicação: Ícones visuais para a portaria.
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 // Importação do Cérebro de Autenticação para validar jurisdição
 import { useAuth } from "../../../app/providers/AuthContext"; // Explicação: Puxa o crachá de quem está operando a portaria.
 // v2.5: Importação do motor de permissões para validar promoção e rebaixamento
 import { hasPermission, ROLES } from "../../../shared/config/permissions"; // Explicação: Importa a Regra de Ouro do sistema.
 
-const ModuleAccess = ({ comumId, cargos }) => {
+const ModuleAccess = ({ comumId }) => {
   // Explicação: Inicia o módulo de controle de acesso.
   const { userData, user, loading: authLoading } = useAuth(); // Explicação: Pega os dados do gestor logado.
   const userEmail = user?.email;
@@ -77,12 +77,6 @@ const ModuleAccess = ({ comumId, cargos }) => {
       qUsers = query(qBase, where("email", "==", userEmail)); // Explicação: Filtra estritamente pelo e-mail do próprio usuário básico.
     }
 
-    if (!qUsers) {
-      // Se nenhuma query pôde ser construída (ex: aguardando IDs), mostra apenas o usuário logado.
-      setUsers(userData ? [{ id: user?.uid, ...userData }] : []);
-      return;
-    }
-
     const unsubUsers = onSnapshot(
       qUsers,
       (s) => {
@@ -108,7 +102,18 @@ const ModuleAccess = ({ comumId, cargos }) => {
       isMounted = false;
       unsubUsers();
     }; // Explicação: Limpa o monitor e desativa o canal quando a tela é fechada.
-  }, [authLoading, activeRegionalId, userData, userEmail, user?.uid, comumId]); // Explicação: Dependências que reiniciam o efeito se mudarem.
+  }, [
+    authLoading,
+    activeRegionalId,
+    userData,
+    userEmail,
+    user?.uid,
+    comumId,
+    isMaster,
+    isComissao,
+    isRegionalCidade,
+    isGemLocal,
+  ]); // Explicação: Dependências que reiniciam o efeito se mudarem.
 
   const usersGrouped = useMemo(() => {
     // Explicação: Organiza os usuários por nome da igreja na lista.
@@ -200,7 +205,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
     <div className="space-y-4 text-left font-sans animate-in fade-in duration-500">
       <div className="space-y-3">
         {sortedGroups.length === 0 ? ( // Explicação: Avalia se existem igrejas válidas mapeadas para exibição.
-          <div className="p-10 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
+          <div className="p-10 text-center bg-white rounded-4xl border border-dashed border-slate-200">
             <p className="text-[9px] font-black text-slate-400 uppercase italic">
               Nenhum cadastro encontrado.
             </p>
@@ -216,7 +221,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
               // Explicação: Retorna o layout de cartões organizados de cada congregação.
               <div
                 key={groupName}
-                className={`${isForcedOpen ? "" : "bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden mb-3"}`}
+                className={`${isForcedOpen ? "" : "bg-white rounded-4xl border border-slate-100 shadow-sm overflow-hidden mb-3"}`}
               >
                 {!isForcedOpen && ( // Explicação: Renderiza o cabeçalho expansível apenas se não houver trava de filtro.
                   <button
@@ -304,7 +309,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
       {/* Janela de Detalhes do Usuário */}
       <AnimatePresence>
         {selectedUser && ( // Explicação: Renderiza o painel flutuante (Modal) de detalhes ao clicar em um irmão.
-          <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-600 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -323,7 +328,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
                   <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest italic mb-1 leading-none">
                     Gestão de Portaria
                   </p>
-                  <h3 className="text-xl font-[900] text-slate-950 uppercase italic tracking-tighter leading-tight">
+                  <h3 className="text-xl font-black text-slate-950 uppercase italic tracking-tighter leading-tight">
                     {selectedUser.name}
                   </h3>
                   <div className="flex items-center gap-2 mt-2 text-slate-400 text-[9px] font-bold lowercase">
@@ -441,7 +446,7 @@ const ModuleAccess = ({ comumId, cargos }) => {
                           approved: !selectedUser.approved,
                         })
                       }
-                      className={`w-full py-5 rounded-2xl font-[900] text-[10px] uppercase italic transition-all shadow-xl flex items-center justify-center gap-2 ${selectedUser.approved ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-950 text-white"}`}
+                      className={`w-full py-5 rounded-2xl font-black text-[10px] uppercase italic transition-all shadow-xl flex items-center justify-center gap-2 ${selectedUser.approved ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-950 text-white"}`}
                     >
                       {selectedUser.approved ? (
                         <X size={16} />
